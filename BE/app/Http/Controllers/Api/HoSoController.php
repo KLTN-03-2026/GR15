@@ -25,30 +25,13 @@ use Illuminate\Support\Facades\Storage;
  */
 class HoSoController extends Controller
 {
-    private function unauthorizedResponse(): JsonResponse
-    {
-        return response()->json([
-            'success' => false,
-            'message' => 'Phiên đăng nhập không còn hợp lệ.',
-        ], 401);
-    }
-
     /**
      * GET /api/v1/ung-vien/ho-sos
      * Danh sách hồ sơ của người dùng đang đăng nhập.
      */
     public function index(Request $request): JsonResponse
     {
-        $nguoiDung = $request->user();
-
-        if (!$nguoiDung) {
-            return $this->unauthorizedResponse();
-        }
-
-        $query = HoSo::with([
-                'parsing:id,ho_so_id,parse_status,confidence_score,parser_version,error_message,updated_at'
-            ])
-            ->where('nguoi_dung_id', $nguoiDung->id);
+        $query = HoSo::where('nguoi_dung_id', $request->user()->id);
 
         if ($request->filled('trang_thai')) {
             $query->where('trang_thai', $request->trang_thai);
@@ -75,14 +58,8 @@ class HoSoController extends Controller
      */
     public function store(TaoHoSoRequest $request): JsonResponse
     {
-        $nguoiDung = $request->user();
-
-        if (!$nguoiDung) {
-            return $this->unauthorizedResponse();
-        }
-
         $data = $request->validated();
-        $data['nguoi_dung_id'] = $nguoiDung->id;
+        $data['nguoi_dung_id'] = $request->user()->id;
 
         // Upload file CV nếu có
         if ($request->hasFile('file_cv')) {
@@ -105,16 +82,7 @@ class HoSoController extends Controller
      */
     public function show(Request $request, int $id): JsonResponse
     {
-        $nguoiDung = $request->user();
-
-        if (!$nguoiDung) {
-            return $this->unauthorizedResponse();
-        }
-
-        $hoSo = HoSo::with([
-                'parsing:id,ho_so_id,raw_text,parsed_name,parsed_email,parsed_phone,parsed_skills_json,parsed_experience_json,parsed_education_json,parse_status,confidence_score,parser_version,error_message,updated_at'
-            ])
-            ->where('nguoi_dung_id', $nguoiDung->id)
+        $hoSo = HoSo::where('nguoi_dung_id', $request->user()->id)
             ->findOrFail($id);
 
         return response()->json([
@@ -129,13 +97,7 @@ class HoSoController extends Controller
      */
     public function update(CapNhatHoSoUngVienRequest $request, int $id): JsonResponse
     {
-        $nguoiDung = $request->user();
-
-        if (!$nguoiDung) {
-            return $this->unauthorizedResponse();
-        }
-
-        $hoSo = HoSo::where('nguoi_dung_id', $nguoiDung->id)
+        $hoSo = HoSo::where('nguoi_dung_id', $request->user()->id)
             ->findOrFail($id);
 
         $data = $request->validated();
@@ -164,13 +126,7 @@ class HoSoController extends Controller
      */
     public function destroy(Request $request, int $id): JsonResponse
     {
-        $nguoiDung = $request->user();
-
-        if (!$nguoiDung) {
-            return $this->unauthorizedResponse();
-        }
-
-        $hoSo = HoSo::where('nguoi_dung_id', $nguoiDung->id)
+        $hoSo = HoSo::where('nguoi_dung_id', $request->user()->id)
             ->findOrFail($id);
 
         // Xoá file CV nếu có
@@ -192,13 +148,7 @@ class HoSoController extends Controller
      */
     public function doiTrangThai(Request $request, int $id): JsonResponse
     {
-        $nguoiDung = $request->user();
-
-        if (!$nguoiDung) {
-            return $this->unauthorizedResponse();
-        }
-
-        $hoSo = HoSo::where('nguoi_dung_id', $nguoiDung->id)
+        $hoSo = HoSo::where('nguoi_dung_id', $request->user()->id)
             ->findOrFail($id);
 
         $hoSo->trang_thai = $hoSo->trang_thai ? 0 : 1;

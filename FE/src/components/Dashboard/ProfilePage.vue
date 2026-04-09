@@ -1,273 +1,144 @@
-<script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
-import { authService } from '@/services/api'
-import { useNotify } from '@/composables/useNotify'
-import { updateStoredCandidate } from '@/utils/authStorage'
-
-const notify = useNotify()
-
-const loading = ref(false)
-const saving = ref(false)
-const avatarPreview = ref('')
-const selectedAvatarFile = ref(null)
-
-const form = reactive({
-  ho_ten: '',
-  email: '',
-  so_dien_thoai: '',
-  ngay_sinh: '',
-  gioi_tinh: '',
-  dia_chi: '',
-  anh_dai_dien: '',
-  ten_vai_tro: '',
-})
-
-const genderOptions = [
-  { value: 'nam', label: 'Nam' },
-  { value: 'nu', label: 'Nữ' },
-  { value: 'khac', label: 'Khác' },
-]
-
-const avatarLetter = computed(() => (form.ho_ten || 'Ứng viên').trim().charAt(0).toUpperCase() || 'U')
-
-const profileStrength = computed(() => {
-  let score = 30
-  if (form.ho_ten) score += 15
-  if (form.email) score += 10
-  if (form.so_dien_thoai) score += 10
-  if (form.ngay_sinh) score += 10
-  if (form.gioi_tinh) score += 5
-  if (form.dia_chi) score += 10
-  if (form.anh_dai_dien || avatarPreview.value) score += 10
-  return Math.min(100, score)
-})
-
-const getAvatarUrl = (path) => {
-  if (!path) return ''
-  if (path.startsWith('http')) return path
-  return `http://127.0.0.1:8000/storage/${path}`
-}
-
-const syncStoredUser = (user) => {
-  if (!user) return
-  updateStoredCandidate(user)
-}
-
-const fillForm = (user) => {
-  form.ho_ten = user?.ho_ten || ''
-  form.email = user?.email || ''
-  form.so_dien_thoai = user?.so_dien_thoai || ''
-  form.ngay_sinh = user?.ngay_sinh ? String(user.ngay_sinh).slice(0, 10) : ''
-  form.gioi_tinh = user?.gioi_tinh || ''
-  form.dia_chi = user?.dia_chi || ''
-  form.anh_dai_dien = user?.anh_dai_dien || ''
-  form.ten_vai_tro = user?.ten_vai_tro || 'Ứng viên'
-  avatarPreview.value = user?.avatar_url || getAvatarUrl(user?.anh_dai_dien || '')
-}
-
-const fetchProfile = async () => {
-  loading.value = true
-  try {
-    const response = await authService.getProfile()
-    const user = response?.data || null
-    fillForm(user)
-    syncStoredUser(user)
-  } catch (error) {
-    notify.apiError(error, 'Không tải được hồ sơ cá nhân.')
-  } finally {
-    loading.value = false
-  }
-}
-
-const handleAvatarChange = (event) => {
-  const file = event.target.files?.[0]
-  if (!file) return
-
-  selectedAvatarFile.value = file
-  avatarPreview.value = URL.createObjectURL(file)
-}
-
-const submitProfile = async () => {
-  saving.value = true
-  try {
-    const payload = new FormData()
-    payload.append('ho_ten', form.ho_ten)
-    payload.append('email', form.email)
-    payload.append('so_dien_thoai', form.so_dien_thoai || '')
-    payload.append('ngay_sinh', form.ngay_sinh || '')
-    payload.append('gioi_tinh', form.gioi_tinh || '')
-    payload.append('dia_chi', form.dia_chi || '')
-
-    if (selectedAvatarFile.value) {
-      payload.append('anh_dai_dien', selectedAvatarFile.value)
-    }
-
-    const response = await authService.updateProfile(payload)
-    const updatedUser = response?.data || null
-    fillForm(updatedUser)
-    syncStoredUser(updatedUser)
-    selectedAvatarFile.value = null
-    notify.success('Cập nhật hồ sơ cá nhân thành công.')
-  } catch (error) {
-    notify.apiError(error, 'Không thể cập nhật hồ sơ cá nhân.')
-  } finally {
-    saving.value = false
-  }
-}
-
-onMounted(fetchProfile)
-</script>
-
 <template>
   <div class="max-w-5xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8">
+    <!-- Sidebar Profile Card -->
     <aside class="lg:col-span-4 flex flex-col gap-6">
       <div class="bg-white dark:bg-slate-900 rounded-xl p-6 shadow-sm border border-slate-200 dark:border-slate-800">
-        <div v-if="loading" class="space-y-4">
-          <div class="mx-auto h-32 w-32 animate-pulse rounded-full bg-slate-100 dark:bg-slate-800"></div>
-          <div class="h-6 animate-pulse rounded bg-slate-100 dark:bg-slate-800"></div>
-          <div class="h-4 animate-pulse rounded bg-slate-100 dark:bg-slate-800"></div>
-        </div>
-
-        <div v-else class="flex flex-col items-center text-center">
+        <div class="flex flex-col items-center text-center">
           <div class="relative group">
-            <div class="mb-4 flex size-32 items-center justify-center overflow-hidden rounded-full border-4 border-[#2463eb]/20 bg-slate-50 shadow-[0_12px_30px_rgba(15,23,42,0.18)]">
-              <img
-                v-if="avatarPreview"
-                :src="avatarPreview"
-                alt="Ảnh đại diện"
-                class="h-full w-full object-cover"
-              />
-              <span v-else class="text-4xl font-bold text-[#2463eb]">{{ avatarLetter }}</span>
-            </div>
-            <label
-              class="absolute bottom-3 right-1 flex size-11 cursor-pointer items-center justify-center rounded-full border-4 border-white bg-[#2463eb] text-white shadow-lg shadow-[#2463eb]/30 transition hover:bg-[#1f57cf] active:scale-95 dark:border-slate-900"
-            >
-              <span class="material-symbols-outlined text-[18px]">photo_camera</span>
-              <input class="hidden" type="file" accept="image/*" @change="handleAvatarChange" />
-            </label>
+            <div class="size-32 rounded-full overflow-hidden border-4 border-[#2463eb]/20 bg-slate-50 mb-4"></div>
+            <button class="absolute bottom-4 right-0 bg-[#2463eb] text-white p-2 rounded-full shadow-lg hover:bg-[#2463eb]/90 transition-transform active:scale-95">
+              <span class="material-symbols-outlined text-sm">photo_camera</span>
+            </button>
           </div>
-          <h3 class="text-xl font-bold text-slate-900 dark:text-slate-100">{{ form.ho_ten || 'Ứng viên' }}</h3>
-          <p class="text-slate-500 dark:text-slate-400 text-sm mb-4">{{ form.ten_vai_tro }}</p>
+          <h3 class="text-xl font-bold text-slate-900 dark:text-slate-100">Nguyen Van A</h3>
+          <p class="text-slate-500 dark:text-slate-400 text-sm mb-4">Senior Full Stack Developer</p>
           <div class="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden mb-2">
-            <div class="bg-[#2463eb] h-full rounded-full transition-all" :style="{ width: `${profileStrength}%` }"></div>
+            <div class="bg-[#2463eb] h-full w-[85%] rounded-full"></div>
           </div>
-          <p class="text-xs font-medium text-slate-400 mb-6">Hoàn thiện hồ sơ: {{ profileStrength }}%</p>
-          <button
-            class="w-full bg-[#2463eb] text-white font-bold py-2.5 rounded-lg hover:shadow-lg hover:shadow-[#2463eb]/30 transition-all disabled:opacity-60"
-            :disabled="saving"
-            type="button"
-            @click="submitProfile"
-          >
-            {{ saving ? 'Đang cập nhật...' : 'Lưu hồ sơ cá nhân' }}
-          </button>
+          <p class="text-xs font-medium text-slate-400 mb-6">Độ hoàn thiện hồ sơ: 85%</p>
+          <button class="w-full bg-[#2463eb] text-white font-bold py-2.5 rounded-lg hover:shadow-lg hover:shadow-[#2463eb]/30 transition-all">Cập nhật CV</button>
         </div>
       </div>
-
       <div class="bg-white dark:bg-slate-900 rounded-xl p-6 shadow-sm border border-slate-200 dark:border-slate-800">
         <h4 class="font-bold mb-4 flex items-center gap-2">
-          <span class="material-symbols-outlined text-[#2463eb]">badge</span> Tóm tắt tài khoản
+          <span class="material-symbols-outlined text-[#2463eb]">description</span> Tài liệu
         </h4>
-        <div class="space-y-3 text-sm text-slate-600 dark:text-slate-300">
-          <div class="rounded-lg border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 p-4">
-            <p class="text-xs uppercase tracking-wide text-slate-400">Email đăng nhập</p>
-            <p class="mt-2 font-semibold text-slate-900 dark:text-white">{{ form.email || 'Chưa cập nhật' }}</p>
+        <div class="space-y-3">
+          <div class="flex items-center justify-between p-3 rounded-lg border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
+            <div class="flex items-center gap-3">
+              <span class="material-symbols-outlined text-red-500">picture_as_pdf</span>
+              <div>
+                <p class="text-sm font-semibold truncate max-w-[120px]">CV_NguyenVanA.pdf</p>
+                <p class="text-[10px] text-slate-400">Thêm ngày 24/10/2023</p>
+              </div>
+            </div>
+            <button class="text-slate-400 hover:text-[#2463eb] transition-colors">
+              <span class="material-symbols-outlined">download</span>
+            </button>
           </div>
-          <div class="rounded-lg border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 p-4">
-            <p class="text-xs uppercase tracking-wide text-slate-400">Số điện thoại</p>
-            <p class="mt-2 font-semibold text-slate-900 dark:text-white">{{ form.so_dien_thoai || 'Chưa cập nhật' }}</p>
-          </div>
-          <div class="rounded-lg border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 p-4">
-            <p class="text-xs uppercase tracking-wide text-slate-400">Địa chỉ</p>
-            <p class="mt-2 font-semibold text-slate-900 dark:text-white">{{ form.dia_chi || 'Chưa cập nhật' }}</p>
-          </div>
+          <label class="cursor-pointer flex flex-col items-center justify-center p-4 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-lg hover:border-[#2463eb] transition-colors group">
+            <span class="material-symbols-outlined text-slate-400 group-hover:text-[#2463eb] mb-1">upload_file</span>
+            <p class="text-xs font-medium text-slate-500 group-hover:text-[#2463eb] text-center">Tải CV mới lên (PDF, tối đa 5MB)</p>
+            <input class="hidden" type="file" />
+          </label>
         </div>
       </div>
     </aside>
-
+    <!-- Main Form Section -->
     <div class="lg:col-span-8 space-y-8">
       <section class="bg-white dark:bg-slate-900 rounded-xl p-8 shadow-sm border border-slate-200 dark:border-slate-800">
         <div class="flex items-center justify-between mb-6">
           <h3 class="text-xl font-bold flex items-center gap-2">
             <span class="material-symbols-outlined text-[#2463eb]">person</span> Thông tin cá nhân
           </h3>
-          <span class="text-sm font-medium text-slate-400">Dữ liệu đang đồng bộ với tài khoản đăng nhập</span>
+          <button class="text-[#2463eb] text-sm font-bold flex items-center gap-1 hover:underline">
+            <span class="material-symbols-outlined text-sm">edit</span> Chỉnh sửa
+          </button>
         </div>
-
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div class="space-y-1">
             <label class="text-sm font-semibold text-slate-500 dark:text-slate-400">Họ và tên</label>
-            <input
-              v-model="form.ho_ten"
-              class="w-full bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-800 rounded-lg py-2.5 px-4 focus:ring-2 focus:ring-[#2463eb] focus:border-transparent transition-all"
-              type="text"
-            />
+            <input class="w-full bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-800 rounded-lg py-2.5 px-4 focus:ring-2 focus:ring-[#2463eb] focus:border-transparent transition-all" type="text" value="Nguyen Van A" />
           </div>
           <div class="space-y-1">
-            <label class="text-sm font-semibold text-slate-500 dark:text-slate-400">Email</label>
-            <input
-              v-model="form.email"
-              class="w-full bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-800 rounded-lg py-2.5 px-4 focus:ring-2 focus:ring-[#2463eb] focus:border-transparent transition-all"
-              type="email"
-            />
+            <label class="text-sm font-semibold text-slate-500 dark:text-slate-400">Địa chỉ email</label>
+            <input class="w-full bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-800 rounded-lg py-2.5 px-4 focus:ring-2 focus:ring-[#2463eb] focus:border-transparent transition-all" type="email" value="vana.nguyen@example.com" />
           </div>
           <div class="space-y-1">
             <label class="text-sm font-semibold text-slate-500 dark:text-slate-400">Số điện thoại</label>
-            <input
-              v-model="form.so_dien_thoai"
-              class="w-full bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-800 rounded-lg py-2.5 px-4 focus:ring-2 focus:ring-[#2463eb] focus:border-transparent transition-all"
-              type="tel"
-            />
+            <input class="w-full bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-800 rounded-lg py-2.5 px-4 focus:ring-2 focus:ring-[#2463eb] focus:border-transparent transition-all" type="tel" value="+84 987 654 321" />
           </div>
           <div class="space-y-1">
             <label class="text-sm font-semibold text-slate-500 dark:text-slate-400">Ngày sinh</label>
-            <input
-              v-model="form.ngay_sinh"
-              class="w-full bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-800 rounded-lg py-2.5 px-4 focus:ring-2 focus:ring-[#2463eb] focus:border-transparent transition-all"
-              type="date"
-            />
-          </div>
-          <div class="space-y-1">
-            <label class="text-sm font-semibold text-slate-500 dark:text-slate-400">Giới tính</label>
-            <select
-              v-model="form.gioi_tinh"
-              class="w-full bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-800 rounded-lg py-2.5 px-4 focus:ring-2 focus:ring-[#2463eb] focus:border-transparent transition-all"
-            >
-              <option value="">Chọn giới tính</option>
-              <option v-for="option in genderOptions" :key="option.value" :value="option.value">
-                {{ option.label }}
-              </option>
-            </select>
+            <input class="w-full bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-800 rounded-lg py-2.5 px-4 focus:ring-2 focus:ring-[#2463eb] focus:border-transparent transition-all" type="date" value="1995-05-15" />
           </div>
           <div class="md:col-span-2 space-y-1">
             <label class="text-sm font-semibold text-slate-500 dark:text-slate-400">Địa chỉ</label>
-            <input
-              v-model="form.dia_chi"
-              class="w-full bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-800 rounded-lg py-2.5 px-4 focus:ring-2 focus:ring-[#2463eb] focus:border-transparent transition-all"
-              type="text"
-            />
+            <input class="w-full bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-800 rounded-lg py-2.5 px-4 focus:ring-2 focus:ring-[#2463eb] focus:border-transparent transition-all" type="text" value="District 1, Ho Chi Minh City, Vietnam" />
           </div>
         </div>
       </section>
-
       <section class="bg-white dark:bg-slate-900 rounded-xl p-8 shadow-sm border border-slate-200 dark:border-slate-800">
         <div class="flex items-center justify-between mb-6">
           <h3 class="text-xl font-bold flex items-center gap-2">
-            <span class="material-symbols-outlined text-[#2463eb]">tips_and_updates</span> Gợi ý hoàn thiện
+            <span class="material-symbols-outlined text-[#2463eb]">psychology</span> Kỹ năng &amp; Kinh nghiệm
           </h3>
-          <span class="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">Dành cho hồ sơ ứng viên</span>
+          <button class="bg-[#2463eb]/10 text-[#2463eb] px-4 py-1.5 rounded-lg text-sm font-bold hover:bg-[#2463eb]/20 transition-colors">+ Thêm mới</button>
         </div>
-        <div class="space-y-4 text-sm text-slate-600 dark:text-slate-300">
-          <div class="rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 p-4">
-            Điền đầy đủ số điện thoại, ngày sinh và địa chỉ để tăng độ tin cậy khi ứng tuyển.
+        <div class="space-y-6">
+          <div class="p-4 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 flex flex-col md:flex-row md:items-center gap-4 justify-between">
+            <div class="flex items-center gap-4">
+              <div class="size-12 bg-white dark:bg-slate-900 rounded-lg shadow-sm flex items-center justify-center">
+                <span class="material-symbols-outlined text-[#F7DF1E]">javascript</span>
+              </div>
+              <div>
+                <p class="font-bold">JavaScript</p>
+                <p class="text-xs text-slate-500">Thành thạo nâng cao</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-6">
+              <div class="text-right">
+                <p class="text-sm font-semibold text-[#2463eb]">5+ năm</p>
+              </div>
+              <div class="flex gap-1">
+                <div class="w-6 h-2 rounded-full bg-[#2463eb]"></div>
+                <div class="w-6 h-2 rounded-full bg-[#2463eb]"></div>
+                <div class="w-6 h-2 rounded-full bg-[#2463eb]"></div>
+                <div class="w-6 h-2 rounded-full bg-slate-200 dark:bg-slate-700"></div>
+              </div>
+            </div>
           </div>
-          <div class="rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 p-4">
-            Nên sử dụng ảnh đại diện rõ khuôn mặt và chuyên nghiệp để hồ sơ cá nhân trông chỉn chu hơn.
-          </div>
-          <div class="rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 p-4">
-            Sau khi cập nhật thông tin cá nhân, hãy hoàn thiện thêm phần `CV của tôi` để tăng khả năng ứng tuyển thành công.
+          <div class="p-4 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 flex flex-col md:flex-row md:items-center gap-4 justify-between">
+            <div class="flex items-center gap-4">
+              <div class="size-12 bg-white dark:bg-slate-900 rounded-lg shadow-sm flex items-center justify-center">
+                <span class="material-symbols-outlined text-[#42B883]">hexagon</span>
+              </div>
+              <div>
+                <p class="font-bold">VueJS</p>
+                <p class="text-xs text-slate-500">Mức chuyên gia</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-6">
+              <div class="text-right">
+                <p class="text-sm font-semibold text-[#2463eb]">4 năm</p>
+              </div>
+              <div class="flex gap-1">
+                <div class="w-6 h-2 rounded-full bg-[#2463eb]"></div>
+                <div class="w-6 h-2 rounded-full bg-[#2463eb]"></div>
+                <div class="w-6 h-2 rounded-full bg-[#2463eb]"></div>
+                <div class="w-6 h-2 rounded-full bg-[#2463eb]"></div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
+      <div class="flex justify-end gap-4 pb-12">
+        <button class="px-8 py-3 rounded-lg border border-slate-300 dark:border-slate-700 font-bold hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">Hủy thay đổi</button>
+        <button class="px-8 py-3 rounded-lg bg-[#2463eb] text-white font-bold hover:shadow-lg transition-all">Lưu hồ sơ</button>
+      </div>
     </div>
   </div>
 </template>
+
+<script setup>
+</script>

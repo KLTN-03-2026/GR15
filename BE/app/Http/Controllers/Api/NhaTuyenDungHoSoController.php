@@ -75,12 +75,6 @@ class NhaTuyenDungHoSoController extends Controller
         // Phân trang
         $perPage = min((int) $request->get('per_page', 15), 100);
         $hoSos = $query->paginate($perPage);
-        $hoSos->getCollection()->transform(function (HoSo $hoSo) {
-            $hoSo->file_cv_url = $hoSo->file_cv
-                ? route('nha-tuyen-dung.ho-sos.cv', ['id' => $hoSo->id])
-                : null;
-            return $hoSo;
-        });
 
         return response()->json([
             'success' => true,
@@ -99,25 +93,10 @@ class NhaTuyenDungHoSoController extends Controller
         $hoSo = HoSo::with('nguoiDung:id,ho_ten,email,so_dien_thoai,anh_dai_dien')
             ->where('trang_thai', HoSo::TRANG_THAI_CONG_KHAI)
             ->findOrFail($id);
-        $hoSo->file_cv_url = $hoSo->file_cv
-            ? route('nha-tuyen-dung.ho-sos.cv', ['id' => $hoSo->id])
-            : null;
 
         return response()->json([
             'success' => true,
             'data' => $hoSo,
         ]);
-    }
-
-    public function downloadCv(int $id)
-    {
-        $hoSo = HoSo::where('trang_thai', HoSo::TRANG_THAI_CONG_KHAI)->findOrFail($id);
-
-        abort_unless($hoSo->file_cv, 404, 'Ứng viên này chưa có file CV.');
-
-        $path = storage_path('app/public/' . ltrim($hoSo->file_cv, '/'));
-        abort_unless(file_exists($path), 404, 'Không tìm thấy file CV.');
-
-        return response()->file($path);
     }
 }

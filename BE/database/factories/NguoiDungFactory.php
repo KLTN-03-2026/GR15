@@ -5,6 +5,7 @@ namespace Database\Factories;
 use App\Models\NguoiDung;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 
 /**
  * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Models\NguoiDung>
@@ -39,6 +40,7 @@ class NguoiDungFactory extends Factory
             'anh_dai_dien' => null,
             'vai_tro' => NguoiDung::VAI_TRO_UNG_VIEN,
             'trang_thai' => 1,
+            'remember_token' => Str::random(10),
         ];
     }
 

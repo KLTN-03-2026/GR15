@@ -19,11 +19,11 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
 
         $middleware->redirectGuestsTo(function (Request $request) {
-            if ($request->is('api/*')) {
+            if ($request->expectsJson() || $request->is('api/*')) {
                 return null;
             }
 
-            return '/login';
+            return route('auth.dang-nhap');
         });
 
         // Ghi chú: Hiện tại không dùng statefulApi() vì project dùng Bearer Token thuần túy

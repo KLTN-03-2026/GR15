@@ -15,12 +15,11 @@ use Illuminate\Http\Request;
  * Routes:
  *   GET    /api/v1/admin/ho-sos                    - Danh sách (có lọc + tìm kiếm + phân trang)
  *   GET    /api/v1/admin/ho-sos/thong-ke           - Thống kê
- *   GET    /api/v1/admin/ho-sos/da-xoa             - Danh sách hồ sơ lưu trữ
+ *   GET    /api/v1/admin/ho-sos/da-xoa             - Danh sách đã xoá mềm
  *   GET    /api/v1/admin/ho-sos/{id}               - Chi tiết
  *   PATCH  /api/v1/admin/ho-sos/{id}/trang-thai    - Đổi trạng thái (công khai/ẩn)
- *   DELETE /api/v1/admin/ho-sos/{id}               - Lưu trữ hồ sơ (soft delete)
- *   PATCH  /api/v1/admin/ho-sos/{id}/khoi-phuc     - Khôi phục hồ sơ đã lưu trữ
- *   DELETE /api/v1/admin/ho-sos/{id}/xoa-vinh-vien - Xóa vĩnh viễn hồ sơ đã lưu trữ
+ *   DELETE /api/v1/admin/ho-sos/{id}               - Xoá mềm (soft delete)
+ *   PATCH  /api/v1/admin/ho-sos/{id}/khoi-phuc     - Khôi phục hồ sơ đã xoá
  */
 class AdminHoSoController extends Controller
 {
@@ -83,9 +82,7 @@ class AdminHoSoController extends Controller
      */
     public function show(int $id): JsonResponse
     {
-        $hoSo = HoSo::withTrashed()
-            ->with('nguoiDung:id,ho_ten,email,so_dien_thoai')
-            ->findOrFail($id);
+        $hoSo = HoSo::with('nguoiDung:id,ho_ten,email,so_dien_thoai')->findOrFail($id);
 
         return response()->json([
             'success' => true,
@@ -95,7 +92,7 @@ class AdminHoSoController extends Controller
 
     /**
      * DELETE /api/v1/admin/ho-sos/{id}
-     * Admin lưu trữ hồ sơ (soft delete).
+     * Admin xoá mềm hồ sơ (soft delete).
      * Hồ sơ không bị xoá khỏi database, chỉ đánh dấu deleted_at.
      */
     public function destroy(int $id): JsonResponse
@@ -106,13 +103,13 @@ class AdminHoSoController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Đã lưu trữ hồ sơ. Có thể khôi phục sau.',
+            'message' => 'Xoá mềm hồ sơ thành công. Có thể khôi phục sau.',
         ]);
     }
 
     /**
      * PATCH /api/v1/admin/ho-sos/{id}/khoi-phuc
-     * Admin khôi phục hồ sơ đã lưu trữ.
+     * Admin khôi phục hồ sơ đã xoá mềm.
      */
     public function khoiPhuc(int $id): JsonResponse
     {
@@ -128,24 +125,8 @@ class AdminHoSoController extends Controller
     }
 
     /**
-     * DELETE /api/v1/admin/ho-sos/{id}/xoa-vinh-vien
-     * Xóa vĩnh viễn hồ sơ đã lưu trữ.
-     */
-    public function xoaVinhVien(int $id): JsonResponse
-    {
-        $hoSo = HoSo::onlyTrashed()->findOrFail($id);
-
-        $hoSo->forceDelete();
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Đã xóa vĩnh viễn hồ sơ.',
-        ]);
-    }
-
-    /**
      * GET /api/v1/admin/ho-sos/da-xoa
-     * Danh sách hồ sơ đang lưu trữ.
+     * Danh sách hồ sơ đã bị xoá mềm (thùng rác).
      */
     public function danhSachDaXoa(Request $request): JsonResponse
     {

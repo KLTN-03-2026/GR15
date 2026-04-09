@@ -3,7 +3,6 @@
 namespace App\Http\Requests\TinTuyenDung;
 
 use App\Models\TinTuyenDung;
-use Carbon\Carbon;
 use Illuminate\Foundation\Http\FormRequest;
 
 class TaoTinTuyenDungRequest extends FormRequest
@@ -24,40 +23,11 @@ class TaoTinTuyenDungRequest extends FormRequest
             'so_luong_tuyen' => ['nullable', 'integer', 'min:1'],
             'muc_luong' => ['nullable', 'integer', 'min:0'],
             'kinh_nghiem_yeu_cau' => ['nullable', 'string', 'max:100'],
-            'ngay_het_han' => [
-                'nullable',
-                'date',
-                function (string $attribute, mixed $value, \Closure $fail): void {
-                    try {
-                        if (Carbon::parse((string) $value, 'UTC')->lt(now('UTC'))) {
-                            $fail('Ngày giờ hết hạn phải lớn hơn thời điểm hiện tại.');
-                        }
-                    } catch (\Throwable) {
-                        $fail('Ngày giờ hết hạn không hợp lệ.');
-                    }
-                },
-            ],
+            'ngay_het_han' => ['nullable', 'date', 'after_or_equal:today'],
             'trang_thai' => ['nullable', 'integer', 'in:0,1'],
             'nganh_nghes' => ['required', 'array', 'min:1'],
             'nganh_nghes.*' => ['integer', 'exists:nganh_nghes,id'],
         ];
-    }
-
-    protected function prepareForValidation(): void
-    {
-        if (!$this->filled('ngay_het_han')) {
-            return;
-        }
-
-        try {
-            $this->merge([
-                'ngay_het_han' => Carbon::parse((string) $this->input('ngay_het_han'), 'Asia/Ho_Chi_Minh')
-                    ->utc()
-                    ->format('Y-m-d H:i:s'),
-            ]);
-        } catch (\Throwable) {
-            // Giữ nguyên giá trị để validator xử lý báo lỗi phù hợp.
-        }
     }
 
     public function messages(): array
@@ -66,6 +36,7 @@ class TaoTinTuyenDungRequest extends FormRequest
             'tieu_de.required' => 'Tiêu đề không được để trống.',
             'mo_ta_cong_viec.required' => 'Mô tả công việc không được để trống.',
             'dia_diem_lam_viec.required' => 'Địa điểm làm việc không được để trống.',
+            'ngay_het_han.after_or_equal' => 'Ngày hết hạn phải từ hôm nay trở đi.',
             'nganh_nghes.required' => 'Vui lòng chọn ít nhất 1 ngành nghề.',
             'nganh_nghes.min' => 'Vui lòng chọn ít nhất 1 ngành nghề.',
             'nganh_nghes.*.exists' => 'Ngành nghề không tồn tại.',

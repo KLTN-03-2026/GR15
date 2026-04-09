@@ -113,10 +113,11 @@ class AdminNguoiDungController extends Controller
             'ho_ten' => ['sometimes', 'string', 'max:150'],
             'email' => ['sometimes', 'email', 'max:150', "unique:nguoi_dungs,email,{$id}"],
             'mat_khau' => ['sometimes', 'string', 'min:6'],
-            'so_dien_thoai' => ['nullable', 'string', 'max:20'],
+            'so_dien_thoai' => ['nullable', 'string', 'min:10', 'max:20'],
             'ngay_sinh' => ['nullable', 'date'],
             'gioi_tinh' => ['nullable', 'in:nam,nu,khac'],
             'dia_chi' => ['nullable', 'string', 'max:255'],
+            'anh_dai_dien' => ['nullable', 'string'],
             'vai_tro' => ['sometimes', 'integer', 'in:0,1,2'],
             'trang_thai' => ['sometimes', 'integer', 'in:0,1'],
         ]);

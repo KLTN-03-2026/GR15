@@ -2,15 +2,12 @@
 
 namespace App\Models;
 
-use App\Notifications\ResetPasswordLinkNotification;
-use App\Notifications\VerifyEmailLinkNotification;
-use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 
-class NguoiDung extends Authenticatable implements MustVerifyEmail
+class NguoiDung extends Authenticatable
 {
     use HasApiTokens, HasFactory, Notifiable;
 
@@ -27,7 +24,6 @@ class NguoiDung extends Authenticatable implements MustVerifyEmail
         'email',
         'mat_khau',
         'so_dien_thoai',
-        'email_verified_at',
         'ngay_sinh',
         'gioi_tinh',
         'dia_chi',
@@ -41,13 +37,13 @@ class NguoiDung extends Authenticatable implements MustVerifyEmail
      */
     protected $hidden = [
         'mat_khau',
+        'remember_token',
     ];
 
     /**
      * Cast kiểu dữ liệu.
      */
     protected $casts = [
-        'email_verified_at' => 'datetime',
         'ngay_sinh' => 'date',
         'mat_khau' => 'hashed',
         'vai_tro' => 'integer',
@@ -134,44 +130,10 @@ class NguoiDung extends Authenticatable implements MustVerifyEmail
     }
 
     /**
-     * Các phiên chat AI của người dùng.
-     */
-    public function aiChatSessions()
-    {
-        return $this->hasMany(AiChatSession::class, 'nguoi_dung_id');
-    }
-
-    /**
-     * Các báo cáo mock interview của người dùng.
-     */
-    public function aiInterviewReports()
-    {
-        return $this->hasMany(AiInterviewReport::class, 'nguoi_dung_id');
-    }
-
-    /**
-     * Các báo cáo tư vấn nghề nghiệp đã sinh cho người dùng.
-     */
-    public function tuVanNgheNghieps()
-    {
-        return $this->hasMany(TuVanNgheNghiep::class, 'nguoi_dung_id');
-    }
-
-    /**
      * Override tên field password cho Laravel Auth.
      */
     public function getAuthPassword(): string
     {
         return $this->mat_khau;
-    }
-
-    public function sendPasswordResetNotification($token): void
-    {
-        $this->notify(new ResetPasswordLinkNotification($token));
-    }
-
-    public function sendEmailVerificationNotification(): void
-    {
-        $this->notify(new VerifyEmailLinkNotification());
     }
 }

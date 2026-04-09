@@ -37,10 +37,6 @@ class NhaTuyenDungTinTuyenDungController extends Controller
         }
 
         $query = TinTuyenDung::with('nganhNghes:id,ten_nganh')
-            ->withCount([
-                'acceptedApplications as so_luong_da_nhan',
-                'ungTuyens as tong_ung_tuyen_thuc_te' => fn ($query) => $query->whereNotNull('thoi_gian_ung_tuyen'),
-            ])
             ->where('cong_ty_id', $congTyId);
 
         if ($request->filled('trang_thai')) {
@@ -119,22 +115,7 @@ class NhaTuyenDungTinTuyenDungController extends Controller
     public function show(int $id): JsonResponse
     {
         $congTyId = $this->getCongTyId();
-        $tin = TinTuyenDung::with([
-                'nganhNghes:id,ten_nganh',
-                'parsing:id,tin_tuyen_dung_id,parsed_skills_json,parsed_requirements_json,parsed_benefits_json,parsed_salary_json,parsed_location_json,parse_status,parser_version,confidence_score,error_message,updated_at',
-                'kyNangYeuCaus.kyNang:id,ten_ky_nang,icon',
-            ])
-            ->withCount([
-                'acceptedApplications as so_luong_da_nhan',
-                'ungTuyens as tong_ung_tuyen_thuc_te' => fn ($query) => $query->whereNotNull('thoi_gian_ung_tuyen'),
-                'ungTuyens as tong_ho_so',
-                'ungTuyens as ho_so_dang_cho' => fn ($query) => $query->where('trang_thai', \App\Models\UngTuyen::TRANG_THAI_CHO_DUYET),
-                'ungTuyens as ho_so_da_xem' => fn ($query) => $query->where('trang_thai', \App\Models\UngTuyen::TRANG_THAI_DA_XEM),
-                'ungTuyens as ho_so_phong_van' => fn ($query) => $query->where('trang_thai', \App\Models\UngTuyen::TRANG_THAI_DA_HEN_PHONG_VAN),
-                'ungTuyens as ho_so_qua_phong_van' => fn ($query) => $query->where('trang_thai', \App\Models\UngTuyen::TRANG_THAI_QUA_PHONG_VAN),
-                'ungTuyens as ho_so_da_nhan' => fn ($query) => $query->where('trang_thai', \App\Models\UngTuyen::TRANG_THAI_TRUNG_TUYEN),
-                'ungTuyens as ho_so_tu_choi' => fn ($query) => $query->where('trang_thai', \App\Models\UngTuyen::TRANG_THAI_TU_CHOI),
-            ])
+        $tin = TinTuyenDung::with('nganhNghes:id,ten_nganh')
             ->where('cong_ty_id', $congTyId)
             ->findOrFail($id);
 
@@ -170,13 +151,7 @@ class NhaTuyenDungTinTuyenDungController extends Controller
         $congTyId = $this->getCongTyId();
         $tin = TinTuyenDung::where('cong_ty_id', $congTyId)->findOrFail($id);
 
-        if ($tin->ungTuyens()->whereNotNull('thoi_gian_ung_tuyen')->exists()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Tin tuyển dụng này đã có đơn ứng tuyển. Bạn chỉ có thể tạm ngưng thay vì xóa.',
-            ], 422);
-        }
-
+        // Các reference (chi_tiet_nganh_nghes, vv) sẽ bị cascade delete
         $tin->delete();
 
         return response()->json([

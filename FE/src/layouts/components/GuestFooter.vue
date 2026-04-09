@@ -1,14 +1,11 @@
-<script setup>
-import AppLogo from '@/components/AppLogo.vue'
-</script>
-
 <template>
   <footer class="bg-slate-900 py-12 text-slate-300">
     <div class="mx-auto max-w-7xl px-6">
       <div class="grid grid-cols-2 gap-8 md:grid-cols-4 lg:grid-cols-5">
         <div class="col-span-2 lg:col-span-2">
-          <div class="mb-6">
-            <AppLogo tone="light" subtitle="Career Intelligence Platform" />
+          <div class="flex items-center gap-2 text-white mb-6">
+            <span class="material-symbols-outlined text-3xl font-bold">rocket_launch</span>
+            <h2 class="text-xl font-bold">AI Recruitment</h2>
           </div>
           <p class="max-w-xs text-sm leading-relaxed">
             Định hình tương lai sự nghiệp của bạn bằng sức mạnh Trí tuệ Nhân tạo. Tìm việc nhanh hơn, hiệu quả hơn và đúng định hướng hơn.
@@ -46,8 +43,11 @@ import AppLogo from '@/components/AppLogo.vue'
         </div>
       </div>
       <div class="mt-12 border-t border-slate-800 pt-8 text-center text-xs">
-        <p>&copy; 2026 AI Recruitment &amp; Career Consulting System. All rights reserved.</p>
+        <p>&copy; 2024 AI Recruitment &amp; Career Consulting System. All rights reserved.</p>
       </div>
     </div>
   </footer>
 </template>
+
+<script setup>
+</script>

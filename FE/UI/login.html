@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "primary": "#2463eb",
+              "background-light": "#f6f6f8",
+              "background-dark": "#111621",
+            },
+            fontFamily: {
+              "display": ["Inter"]
+            },
+            borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<title>Login | AI Recruit</title>
+</head>
+<body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-slate-100 antialiased">
+<div class="flex min-h-screen">
+<!-- Left Section: Branding & Illustration -->
+<div class="hidden lg:flex lg:w-1/2 relative bg-primary items-center justify-center p-12 overflow-hidden">
+<div class="absolute inset-0 opacity-10">
+<div class="absolute top-0 -left-10 w-72 h-72 bg-white rounded-full blur-3xl"></div>
+<div class="absolute bottom-0 -right-10 w-96 h-96 bg-white rounded-full blur-3xl"></div>
+</div>
+<div class="relative z-10 max-w-lg text-center">
+<div class="mb-8 inline-flex items-center justify-center p-4 bg-white/10 rounded-2xl backdrop-blur-md">
+<span class="material-symbols-outlined text-white text-6xl">psychology</span>
+</div>
+<h1 class="text-white text-5xl font-black tracking-tight leading-tight mb-6">
+                Revolutionize Your Career Path with AI
+            </h1>
+<p class="text-primary-foreground/80 text-white/80 text-xl leading-relaxed">
+                Connect with the best opportunities using our advanced AI recruitment and career consulting platform.
+            </p>
+<div class="mt-12 grid grid-cols-2 gap-6">
+<div class="bg-white/5 border border-white/10 rounded-xl p-6 backdrop-blur-sm">
+<p class="text-white font-bold text-3xl mb-1">98%</p>
+<p class="text-white/60 text-sm">Match Accuracy</p>
+</div>
+<div class="bg-white/5 border border-white/10 rounded-xl p-6 backdrop-blur-sm">
+<p class="text-white font-bold text-3xl mb-1">12k+</p>
+<p class="text-white/60 text-sm">Active Roles</p>
+</div>
+</div>
+</div>
+<!-- Background Image/Pattern Overlay -->
+<div class="absolute inset-0 z-0 opacity-20" data-alt="Abstract geometric network pattern representing AI connectivity"></div>
+</div>
+<!-- Right Section: Login Form -->
+<div class="flex-1 flex flex-col justify-center items-center px-6 py-12 lg:px-24">
+<div class="w-full max-w-md">
+<!-- Header/Logo -->
+<div class="mb-10 flex items-center gap-2 lg:hidden">
+<div class="size-8 bg-primary rounded-lg flex items-center justify-center text-white">
+<span class="material-symbols-outlined text-xl">rocket_launch</span>
+</div>
+<h2 class="text-slate-900 dark:text-slate-100 text-2xl font-bold tracking-tight">AI Recruit</h2>
+</div>
+<div class="mb-10">
+<h2 class="text-3xl font-extrabold text-slate-900 dark:text-slate-100 tracking-tight">Welcome back</h2>
+<p class="text-slate-500 dark:text-slate-400 mt-2">Please enter your details to sign in.</p>
+</div>
+<form class="space-y-6" onsubmit="return false;">
+<!-- Email Input -->
+<div class="space-y-2">
+<label class="block text-sm font-semibold text-slate-700 dark:text-slate-300" for="email">
+                        Email Address
+                    </label>
+<div class="relative group">
+<div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 group-focus-within:text-primary transition-colors">
+<span class="material-symbols-outlined text-lg">mail</span>
+</div>
+<input autocomplete="email" class="block w-full pl-11 pr-4 py-3.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200" id="email" name="email" placeholder="m@example.com" required="" type="email"/>
+</div>
+</div>
+<!-- Password Input -->
+<div class="space-y-2">
+<div class="flex items-center justify-between">
+<label class="block text-sm font-semibold text-slate-700 dark:text-slate-300" for="password">
+                            Password
+                        </label>
+<a class="text-sm font-semibold text-primary hover:text-primary/80 transition-colors" href="#">
+                            Forgot password?
+                        </a>
+</div>
+<div class="relative group">
+<div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 group-focus-within:text-primary transition-colors">
+<span class="material-symbols-outlined text-lg">lock</span>
+</div>
+<input autocomplete="current-password" class="block w-full pl-11 pr-12 py-3.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200" id="password" name="password" placeholder="••••••••" required="" type="password"/>
+<button class="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 hover:text-slate-600 transition-colors" type="button">
+<span class="material-symbols-outlined text-lg">visibility</span>
+</button>
+</div>
+</div>
+<!-- Remember Me -->
+<div class="flex items-center">
+<input class="h-5 w-5 rounded border-slate-300 text-primary focus:ring-primary/20 transition-all cursor-pointer" id="remember-me" name="remember-me" type="checkbox"/>
+<label class="ml-3 block text-sm font-medium text-slate-600 dark:text-slate-400 cursor-pointer" for="remember-me">
+                        Remember me for 30 days
+                    </label>
+</div>
+<!-- Login Button -->
+<button class="w-full flex justify-center items-center gap-2 py-4 px-4 bg-primary hover:bg-primary/90 text-white text-base font-bold rounded-xl shadow-lg shadow-primary/20 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary" type="submit">
+                    Sign in to account
+                    <span class="material-symbols-outlined text-xl">arrow_forward</span>
+</button>
+<!-- Social Login Separator -->
+<div class="relative py-4">
+<div class="absolute inset-0 flex items-center">
+<div class="w-full border-t border-slate-200 dark:border-slate-800"></div>
+</div>
+<div class="relative flex justify-center text-sm">
+<span class="px-4 bg-background-light dark:bg-background-dark text-slate-500">Or continue with</span>
+</div>
+</div>
+<!-- Social Buttons -->
+<div class="grid grid-cols-2 gap-4">
+<button class="flex w-full items-center justify-center gap-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 py-2.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 transition-all" type="button">
+<img alt="Google" class="w-5 h-5" data-alt="Google logo icon" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDtRfm7lcwUMJt4EwVDm5uxPfH0TH1RmK2E-3TTX3sWiQep90DX1lbnZQ4a9KBAuwW7_M1SRmoL3OE1rCvn84Yqq9fajCZE_X3ycszgrCMk93lefBeKS1ZrttPzSHBJxGy2J3509l78kUnZ7xbEJCw3C3NRSIcrbefRCPzSntPuXLHE7jKVWti3apiFk-I8Y4gFX9JbafmnXWc8xfgdbE9soHiA0w9lAoQAsvCXheJWOlk3K1jtjs5viWQiK8cqECvCKNeGsXFriB9_"/>
+<span class="text-sm font-semibold text-slate-700 dark:text-slate-200">Google</span>
+</button>
+<button class="flex w-full items-center justify-center gap-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 py-2.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 transition-all" type="button">
+<span class="material-symbols-outlined text-slate-900 dark:text-white text-xl">work</span>
+<span class="text-sm font-semibold text-slate-700 dark:text-slate-200">LinkedIn</span>
+</button>
+</div>
+</form>
+<!-- Footer -->
+<p class="mt-10 text-center text-sm text-slate-500 dark:text-slate-400">
+                Don't have an account? 
+                <a class="font-bold text-primary hover:text-primary/80 transition-colors" href="#">Sign up for free</a>
+</p>
+</div>
+</div>
+</div>
+</body></html>

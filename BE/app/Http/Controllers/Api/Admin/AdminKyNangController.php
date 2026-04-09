@@ -8,6 +8,7 @@ use App\Http\Requests\KyNang\CapNhatKyNangRequest;
 use App\Models\KyNang;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * AdminKyNangController - Admin CRUD kỹ năng
@@ -24,6 +25,11 @@ use Illuminate\Http\Request;
  */
 class AdminKyNangController extends Controller
 {
+    private function isStoredIconPath(?string $value): bool
+    {
+        return is_string($value) && preg_match('/^(ky_nangs\/|storage\/ky_nangs\/|public\/storage\/ky_nangs\/)/', $value) === 1;
+    }
+
     /**
      * GET /api/v1/admin/ky-nangs
      * Danh sách tất cả kỹ năng.
@@ -71,7 +77,15 @@ class AdminKyNangController extends Controller
      */
     public function store(TaoKyNangRequest $request): JsonResponse
     {
-        $kyNang = KyNang::create($request->validated());
+        $data = $request->validated();
+
+        if ($request->hasFile('icon_file')) {
+            $data['icon'] = $request->file('icon_file')->store('ky_nangs', 'public');
+        }
+
+        unset($data['icon_file']);
+
+        $kyNang = KyNang::create($data);
 
         return response()->json([
             'success' => true,
@@ -102,7 +116,29 @@ class AdminKyNangController extends Controller
     {
         $kyNang = KyNang::findOrFail($id);
 
-        $kyNang->update($request->validated());
+        $data = $request->validated();
+        $currentIcon = $kyNang->icon;
+
+        if ($request->hasFile('icon_file')) {
+            if ($this->isStoredIconPath($currentIcon) && Storage::disk('public')->exists($currentIcon)) {
+                Storage::disk('public')->delete($currentIcon);
+            }
+
+            $data['icon'] = $request->file('icon_file')->store('ky_nangs', 'public');
+        }
+
+        if (
+            array_key_exists('icon', $data) &&
+            $this->isStoredIconPath($currentIcon) &&
+            $data['icon'] !== $currentIcon &&
+            Storage::disk('public')->exists($currentIcon)
+        ) {
+            Storage::disk('public')->delete($currentIcon);
+        }
+
+        unset($data['icon_file']);
+
+        $kyNang->update($data);
 
         return response()->json([
             'success' => true,
@@ -118,6 +154,10 @@ class AdminKyNangController extends Controller
     public function destroy(int $id): JsonResponse
     {
         $kyNang = KyNang::findOrFail($id);
+
+        if ($this->isStoredIconPath($kyNang->icon) && Storage::disk('public')->exists($kyNang->icon)) {
+            Storage::disk('public')->delete($kyNang->icon);
+        }
 
         $kyNang->delete();
 

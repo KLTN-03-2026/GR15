@@ -17,13 +17,10 @@ class TuVanNgheNghiep extends Model
         'nghe_de_xuat',
         'muc_do_phu_hop',
         'goi_y_ky_nang_bo_sung',
-        'bao_cao_chi_tiet',
-        'model_version',
     ];
 
     protected $casts = [
         'muc_do_phu_hop' => 'float',
-        'goi_y_ky_nang_bo_sung' => 'array',
     ];
 
     /**

@@ -8,6 +8,7 @@ use App\Http\Requests\NganhNghe\CapNhatNganhNgheRequest;
 use App\Models\NganhNghe;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * AdminNganhNgheController - Admin CRUD ngành nghề
@@ -25,6 +26,11 @@ use Illuminate\Http\Request;
  */
 class AdminNganhNgheController extends Controller
 {
+    private function isStoredIconPath(?string $value): bool
+    {
+        return is_string($value) && preg_match('/^(nganh_nghes\/|storage\/nganh_nghes\/|public\/storage\/nganh_nghes\/)/', $value) === 1;
+    }
+
     /**
      * GET /api/v1/admin/nganh-nghes
      * Danh sách tất cả ngành nghề (kể cả ẩn).
@@ -84,6 +90,12 @@ class AdminNganhNgheController extends Controller
         // Tự động tạo slug
         $data['slug'] = NganhNghe::taoSlug($data['ten_nganh']);
 
+        if ($request->hasFile('icon_file')) {
+            $data['icon'] = $request->file('icon_file')->store('nganh_nghes', 'public');
+        }
+
+        unset($data['icon_file']);
+
         $nganhNghe = NganhNghe::create($data);
 
         return response()->json([
@@ -118,6 +130,7 @@ class AdminNganhNgheController extends Controller
     {
         $nganhNghe = NganhNghe::findOrFail($id);
         $data = $request->validated();
+        $currentIcon = $nganhNghe->icon;
 
         // Không cho phép đặt cha là chính nó
         if (isset($data['danh_muc_cha_id']) && $data['danh_muc_cha_id'] == $id) {
@@ -131,6 +144,25 @@ class AdminNganhNgheController extends Controller
         if (isset($data['ten_nganh']) && $data['ten_nganh'] !== $nganhNghe->ten_nganh) {
             $data['slug'] = NganhNghe::taoSlug($data['ten_nganh'], $id);
         }
+
+        if ($request->hasFile('icon_file')) {
+            if ($this->isStoredIconPath($currentIcon) && Storage::disk('public')->exists($currentIcon)) {
+                Storage::disk('public')->delete($currentIcon);
+            }
+
+            $data['icon'] = $request->file('icon_file')->store('nganh_nghes', 'public');
+        }
+
+        if (
+            array_key_exists('icon', $data) &&
+            $this->isStoredIconPath($currentIcon) &&
+            $data['icon'] !== $currentIcon &&
+            Storage::disk('public')->exists($currentIcon)
+        ) {
+            Storage::disk('public')->delete($currentIcon);
+        }
+
+        unset($data['icon_file']);
 
         $nganhNghe->update($data);
 
@@ -158,6 +190,10 @@ class AdminNganhNgheController extends Controller
                 'success' => false,
                 'message' => "Không thể xoá. Ngành nghề này có {$soCon} danh mục con. Hãy xoá hoặc chuyển danh mục con trước.",
             ], 422);
+        }
+
+        if ($this->isStoredIconPath($nganhNghe->icon) && Storage::disk('public')->exists($nganhNghe->icon)) {
+            Storage::disk('public')->delete($nganhNghe->icon);
         }
 
         $nganhNghe->delete();

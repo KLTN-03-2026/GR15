@@ -17,7 +17,8 @@ class TaoNganhNgheRequest extends FormRequest
             'ten_nganh' => ['required', 'string', 'max:150'],
             'mo_ta' => ['nullable', 'string'],
             'danh_muc_cha_id' => ['nullable', 'integer', 'exists:nganh_nghes,id'],
-            'icon' => ['nullable', 'string', 'max:100'],
+            'icon' => ['nullable', 'string', 'max:255', 'required_without:icon_file'],
+            'icon_file' => ['nullable', 'image', 'mimes:jpeg,png,jpg,webp,svg', 'max:2048', 'required_without:icon'],
             'trang_thai' => ['nullable', 'integer', 'in:0,1'],
         ];
     }
@@ -28,7 +29,12 @@ class TaoNganhNgheRequest extends FormRequest
             'ten_nganh.required' => 'Tên ngành nghề không được để trống.',
             'ten_nganh.max' => 'Tên ngành nghề tối đa 150 ký tự.',
             'danh_muc_cha_id.exists' => 'Danh mục cha không tồn tại.',
-            'icon.max' => 'Icon tối đa 100 ký tự.',
+            'icon.max' => 'Icon tối đa 255 ký tự.',
+            'icon.required_without' => 'Vui lòng nhập icon hoặc chọn ảnh tải lên.',
+            'icon_file.required_without' => 'Vui lòng chọn ảnh tải lên hoặc nhập icon.',
+            'icon_file.image' => 'Icon tải lên phải là file ảnh.',
+            'icon_file.mimes' => 'Icon tải lên chỉ chấp nhận: jpeg, png, jpg, webp, svg.',
+            'icon_file.max' => 'Icon tải lên tối đa 2MB.',
             'trang_thai.in' => 'Trạng thái phải là 0 (ẩn) hoặc 1 (hiển thị).',
         ];
     }

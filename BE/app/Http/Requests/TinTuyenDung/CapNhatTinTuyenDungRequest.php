@@ -3,7 +3,6 @@
 namespace App\Http\Requests\TinTuyenDung;
 
 use App\Models\TinTuyenDung;
-use Carbon\Carbon;
 use Illuminate\Foundation\Http\FormRequest;
 
 class CapNhatTinTuyenDungRequest extends FormRequest
@@ -29,23 +28,6 @@ class CapNhatTinTuyenDungRequest extends FormRequest
             'nganh_nghes' => ['sometimes', 'array', 'min:1'],
             'nganh_nghes.*' => ['integer', 'exists:nganh_nghes,id'],
         ];
-    }
-
-    protected function prepareForValidation(): void
-    {
-        if (!$this->filled('ngay_het_han')) {
-            return;
-        }
-
-        try {
-            $this->merge([
-                'ngay_het_han' => Carbon::parse((string) $this->input('ngay_het_han'), 'Asia/Ho_Chi_Minh')
-                    ->utc()
-                    ->format('Y-m-d H:i:s'),
-            ]);
-        } catch (\Throwable) {
-            // Giữ nguyên để validator xử lý.
-        }
     }
 
     public function messages(): array

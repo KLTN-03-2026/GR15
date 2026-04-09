@@ -1,16 +1,16 @@
 <template>
-  <div class="fixed top-20 left-0 right-0 mx-auto max-w-[1000px] z-50 pointer-events-none">
+  <div class="fixed right-6 top-20 z-50 pointer-events-none">
     <div 
       v-if="message"
       :class="typeClasses"
-      class="px-6 py-3 rounded-lg mx-4 flex items-center gap-2 pointer-events-auto shadow-lg animate-in slide-in-from-top duration-300"
+      class="inline-flex max-w-[min(90vw,560px)] w-fit items-center gap-2 rounded-lg px-4 py-3 pointer-events-auto shadow-lg animate-in slide-in-from-top duration-300"
     >
       <span class="material-symbols-outlined text-lg">{{ icon }}</span>
-      <span>{{ message }}</span>
+      <span class="whitespace-nowrap">{{ message }}</span>
       <button 
         type="button"
         @click="$emit('close')"
-        class="ml-auto"
+        class="ml-2 flex-shrink-0"
       >
         <span class="material-symbols-outlined text-lg">close</span>
       </button>

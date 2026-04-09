@@ -14,24 +14,12 @@ use Illuminate\Http\Request;
  */
 class UngVienLuuTinController extends Controller
 {
-    private function unauthorizedResponse(): JsonResponse
-    {
-        return response()->json([
-            'success' => false,
-            'message' => 'Phiên đăng nhập không còn hợp lệ.',
-        ], 401);
-    }
-
     /**
      * Danh sách các tin tuyển dụng đã lưu
      */
     public function index(Request $request): JsonResponse
     {
         $user = auth()->user();
-
-        if (!$user) {
-            return $this->unauthorizedResponse();
-        }
         
         // Lấy tin đã lưu kèm thông tin hiển thị cơ bản
         $query = clone $user->tinDaLuus()
@@ -61,10 +49,6 @@ class UngVienLuuTinController extends Controller
         $tin = TinTuyenDung::findOrFail($tin_id);
         
         $user = auth()->user();
-
-        if (!$user) {
-            return $this->unauthorizedResponse();
-        }
 
         // Hàm toggle() trả về array chứa 'attached' và 'detached' IDS
         $changes = $user->tinDaLuus()->toggle($tin_id);

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import time
 from typing import Iterator
 
 from app.core.config import settings
@@ -52,10 +51,7 @@ def generate_career_chat_reply(
             "error": None,
         }
 
-    provider_name, provider = _resolve_provider()
-    prefers_model = provider_name in {"ollama", "openai"}
-
-    if not prefers_model and intent in DETERMINISTIC_INTENTS and not (force_model and intent in MODEL_PREFERRED_INTENTS):
+    if intent in DETERMINISTIC_INTENTS and not (force_model and intent in MODEL_PREFERRED_INTENTS):
         answer = _normalize_answer(build_template_answer(message, context, history, intent))
         return {
             "success": True,
@@ -69,7 +65,7 @@ def generate_career_chat_reply(
             "error": None,
         }
 
-    if not prefers_model and not force_model and should_use_fast_path(message, intent=intent):
+    if not force_model and should_use_fast_path(message, intent=intent):
         answer = _normalize_answer(build_template_answer(message, context, history, intent))
         return {
             "success": True,
@@ -83,13 +79,8 @@ def generate_career_chat_reply(
             "error": None,
         }
 
-    try:
-        answer = _normalize_answer(provider.generate(message, context, history))
-    except Exception as exc:
-        logger.warning("Chat provider failed, fallback to template. provider=%s error=%s", provider_name, exc)
-        answer = _normalize_answer(build_template_answer(message, context, history, intent))
-        provider_name = "template_fallback"
-
+    provider_name, provider = _resolve_provider()
+    answer = _normalize_answer(provider.generate(message, context, history))
     if _looks_like_provider_guardrail(answer):
         answer = _normalize_answer(build_template_answer(message, context, history, intent))
         provider_name = "template_fallback"
@@ -131,7 +122,8 @@ def stream_career_chat_reply(
                 "intent": intent,
             },
         )
-        yield from _emit_chunked_sse(OUT_OF_SCOPE_MESSAGE)
+        for chunk in _chunk_text(OUT_OF_SCOPE_MESSAGE):
+            yield _sse_event("chunk", {"content": chunk})
         yield _sse_event(
             "done",
             {
@@ -144,59 +136,59 @@ def stream_career_chat_reply(
         )
         return
 
+    if intent in DETERMINISTIC_INTENTS and not (force_model and intent in MODEL_PREFERRED_INTENTS):
+        answer = _normalize_answer(build_template_answer(message, context, history, intent))
+        yield _sse_event(
+            "meta",
+            {
+                "success": True,
+                "model_version": f"{MODEL_VERSION}::intent_template",
+                "provider": "intent_template",
+                "guardrail_triggered": False,
+                "intent": intent,
+            },
+        )
+        for chunk in _chunk_text(answer):
+            yield _sse_event("chunk", {"content": chunk})
+        yield _sse_event(
+            "done",
+            {
+                "answer": answer,
+                "model_version": f"{MODEL_VERSION}::intent_template",
+                "provider": "intent_template",
+                "guardrail_triggered": False,
+                "intent": intent,
+            },
+        )
+        return
+
+    if not force_model and should_use_fast_path(message, intent=intent):
+        answer = _normalize_answer(build_template_answer(message, context, history, intent))
+        yield _sse_event(
+            "meta",
+            {
+                "success": True,
+                "model_version": f"{MODEL_VERSION}::fast_template",
+                "provider": "fast_template",
+                "guardrail_triggered": False,
+                "intent": intent,
+            },
+        )
+        for chunk in _chunk_text(answer):
+            yield _sse_event("chunk", {"content": chunk})
+        yield _sse_event(
+            "done",
+            {
+                "answer": answer,
+                "model_version": f"{MODEL_VERSION}::fast_template",
+                "provider": "fast_template",
+                "guardrail_triggered": False,
+                "intent": intent,
+            },
+        )
+        return
+
     provider_name, provider = _resolve_provider()
-    prefers_model = provider_name in {"ollama", "openai"}
-
-    if not prefers_model and intent in DETERMINISTIC_INTENTS and not (force_model and intent in MODEL_PREFERRED_INTENTS):
-        answer = _normalize_answer(build_template_answer(message, context, history, intent))
-        yield _sse_event(
-            "meta",
-            {
-                "success": True,
-                "model_version": f"{MODEL_VERSION}::intent_template",
-                "provider": "intent_template",
-                "guardrail_triggered": False,
-                "intent": intent,
-            },
-        )
-        yield from _emit_chunked_sse(answer)
-        yield _sse_event(
-            "done",
-            {
-                "answer": answer,
-                "model_version": f"{MODEL_VERSION}::intent_template",
-                "provider": "intent_template",
-                "guardrail_triggered": False,
-                "intent": intent,
-            },
-        )
-        return
-
-    if not prefers_model and not force_model and should_use_fast_path(message, intent=intent):
-        answer = _normalize_answer(build_template_answer(message, context, history, intent))
-        yield _sse_event(
-            "meta",
-            {
-                "success": True,
-                "model_version": f"{MODEL_VERSION}::fast_template",
-                "provider": "fast_template",
-                "guardrail_triggered": False,
-                "intent": intent,
-            },
-        )
-        yield from _emit_chunked_sse(answer)
-        yield _sse_event(
-            "done",
-            {
-                "answer": answer,
-                "model_version": f"{MODEL_VERSION}::fast_template",
-                "provider": "fast_template",
-                "guardrail_triggered": False,
-                "intent": intent,
-            },
-        )
-        return
-
     model_version = f"{MODEL_VERSION}::{provider_name}"
 
     yield _sse_event(
@@ -222,7 +214,6 @@ def stream_career_chat_reply(
             for chunk in _chunk_text(answer):
                 chunks.append(chunk)
                 yield _sse_event("chunk", {"content": chunk})
-                time.sleep(0.035)
     except Exception as exc:
         logger.warning("Chat stream provider failed, fallback to generate. provider=%s error=%s", provider_name, exc)
         try:
@@ -230,7 +221,6 @@ def stream_career_chat_reply(
             for chunk in _chunk_text(answer):
                 chunks.append(chunk)
                 yield _sse_event("chunk", {"content": chunk})
-                time.sleep(0.035)
         except Exception as fallback_exc:
             yield _sse_event(
                 "error",
@@ -299,12 +289,6 @@ def _chunk_text(text: str, chunk_size: int = 60) -> list[str]:
         chunks.append(current)
 
     return chunks
-
-
-def _emit_chunked_sse(text: str, delay_seconds: float = 0.04) -> Iterator[str]:
-    for chunk in _chunk_text(text):
-        yield _sse_event("chunk", {"content": chunk})
-        time.sleep(delay_seconds)
 
 
 def _normalize_answer(text: str) -> str:

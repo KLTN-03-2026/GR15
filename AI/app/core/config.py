@@ -25,7 +25,7 @@ class Settings:
     openai_base_url: str = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1/responses")
     openai_model: str = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
     semantic_embedding_model: str = os.getenv("SEMANTIC_EMBEDDING_MODEL", "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
-    chatbot_provider: str = os.getenv("CHATBOT_PROVIDER", "ollama")
+    chatbot_provider: str = os.getenv("CHATBOT_PROVIDER", "template")
     mock_interview_provider: str = os.getenv("MOCK_INTERVIEW_PROVIDER", "ollama")
     ollama_keep_alive: str = os.getenv("OLLAMA_KEEP_ALIVE", "30m")
     chatbot_max_tokens: int = int(os.getenv("CHATBOT_MAX_TOKENS", "180"))

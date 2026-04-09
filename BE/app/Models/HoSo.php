@@ -77,30 +77,6 @@ class HoSo extends Model
         return $this->hasMany(\App\Models\UngTuyen::class, 'ho_so_id');
     }
 
-    /**
-     * Kết quả parse CV gần nhất của hồ sơ.
-     */
-    public function parsing()
-    {
-        return $this->hasOne(HoSoParsing::class, 'ho_so_id');
-    }
-
-    /**
-     * Các kết quả matching liên quan tới hồ sơ.
-     */
-    public function ketQuaMatchings()
-    {
-        return $this->hasMany(KetQuaMatching::class, 'ho_so_id');
-    }
-
-    /**
-     * Các báo cáo tư vấn nghề nghiệp sinh từ hồ sơ này.
-     */
-    public function tuVanNgheNghieps()
-    {
-        return $this->hasMany(TuVanNgheNghiep::class, 'ho_so_id');
-    }
-
     // ==========================================
     // HELPER METHODS
     // ==========================================

@@ -22,9 +22,6 @@ class AdminTinTuyenDungController extends Controller
         $query = TinTuyenDung::with([
             'congTy:id,ten_cong_ty,ma_so_thue',
             'nganhNghes:id,ten_nganh'
-        ])->withCount([
-            'acceptedApplications as so_luong_da_nhan',
-            'ungTuyens as tong_ung_tuyen_thuc_te' => fn ($query) => $query->whereNotNull('thoi_gian_ung_tuyen'),
         ]);
 
         if ($request->filled('search')) {
@@ -89,9 +86,6 @@ class AdminTinTuyenDungController extends Controller
         $tin = TinTuyenDung::with([
             'congTy:id,ten_cong_ty',
             'nganhNghes:id,ten_nganh'
-        ])->withCount([
-            'acceptedApplications as so_luong_da_nhan',
-            'ungTuyens as tong_ung_tuyen_thuc_te' => fn ($query) => $query->whereNotNull('thoi_gian_ung_tuyen'),
         ])->findOrFail($id);
 
         return response()->json([
@@ -145,14 +139,6 @@ class AdminTinTuyenDungController extends Controller
     public function destroy(int $id): JsonResponse
     {
         $tin = TinTuyenDung::findOrFail($id);
-
-        if ($tin->ungTuyens()->whereNotNull('thoi_gian_ung_tuyen')->exists()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Tin tuyển dụng này đã có đơn ứng tuyển. Hãy chuyển sang tạm ngưng/lưu trữ thay vì xóa cứng.',
-            ], 422);
-        }
-
         $tin->delete();
 
         return response()->json([

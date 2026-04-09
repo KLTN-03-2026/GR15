@@ -17,9 +17,7 @@ class AdminUngTuyenController extends Controller
         $tongSo = UngTuyen::count();
         $choDuyet = UngTuyen::where('trang_thai', UngTuyen::TRANG_THAI_CHO_DUYET)->count();
         $daXem = UngTuyen::where('trang_thai', UngTuyen::TRANG_THAI_DA_XEM)->count();
-        $daHenPhongVan = UngTuyen::where('trang_thai', UngTuyen::TRANG_THAI_DA_HEN_PHONG_VAN)->count();
-        $quaPhongVan = UngTuyen::where('trang_thai', UngTuyen::TRANG_THAI_QUA_PHONG_VAN)->count();
-        $trungTuyen = UngTuyen::where('trang_thai', UngTuyen::TRANG_THAI_TRUNG_TUYEN)->count();
+        $chapNhan = UngTuyen::where('trang_thai', UngTuyen::TRANG_THAI_CHAP_NHAN)->count();
         $tuChoi = UngTuyen::where('trang_thai', UngTuyen::TRANG_THAI_TU_CHOI)->count();
 
         return response()->json([
@@ -29,10 +27,7 @@ class AdminUngTuyenController extends Controller
                 'chi_tiet' => [
                     'cho_duyet' => $choDuyet,
                     'da_xem' => $daXem,
-                    'da_hen_phong_van' => $daHenPhongVan,
-                    'qua_phong_van' => $quaPhongVan,
-                    'trung_tuyen' => $trungTuyen,
-                    'chap_nhan' => $trungTuyen,
+                    'chap_nhan' => $chapNhan,
                     'tu_choi' => $tuChoi
                 ]
             ]

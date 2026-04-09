@@ -44,12 +44,4 @@ class KyNang extends Model
             ->withPivot('muc_do', 'nam_kinh_nghiem', 'so_chung_chi', 'hinh_anh')
             ->withTimestamps();
     }
-
-    /**
-     * Các kỹ năng được gắn làm yêu cầu cho tin tuyển dụng.
-     */
-    public function tinTuyenDungKyNangs()
-    {
-        return $this->hasMany(TinTuyenDungKyNang::class, 'ky_nang_id');
-    }
 }

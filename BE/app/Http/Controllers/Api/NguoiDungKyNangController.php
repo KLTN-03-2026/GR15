@@ -7,7 +7,6 @@ use App\Http\Requests\NguoiDungKyNang\ThemKyNangRequest;
 use App\Http\Requests\NguoiDungKyNang\CapNhatKyNangCaNhanRequest;
 use App\Models\NguoiDungKyNang;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
 /**
@@ -26,15 +25,6 @@ use Illuminate\Support\Facades\Storage;
  */
 class NguoiDungKyNangController extends Controller
 {
-    private function buildSkillImageUrl(?string $path): ?string
-    {
-        if (!$path) {
-            return null;
-        }
-
-        return url('/api/v1/chung-chi-ky-nang?path=' . urlencode($path));
-    }
-
     /**
      * GET /api/v1/ung-vien/ky-nangs
      * Danh sách kỹ năng của ứng viên đang đăng nhập.
@@ -48,7 +38,11 @@ class NguoiDungKyNangController extends Controller
             ->orderBy('created_at', 'desc')
             ->get()
             ->map(function ($item) {
-                $item->hinh_anh_url = $this->buildSkillImageUrl($item->hinh_anh);
+                if ($item->hinh_anh) {
+                    $item->hinh_anh_url = asset('storage/' . $item->hinh_anh);
+                } else {
+                    $item->hinh_anh_url = null;
+                }
                 return $item;
             });
 
@@ -94,7 +88,10 @@ class NguoiDungKyNangController extends Controller
         $data['nguoi_dung_id'] = $nguoiDungId;
         $record = NguoiDungKyNang::create($data);
 
-        $record->hinh_anh_url = $this->buildSkillImageUrl($record->hinh_anh);
+        // Thêm URL đầy đủ vào response
+        if ($record->hinh_anh) {
+            $record->hinh_anh_url = asset('storage/' . $record->hinh_anh);
+        }
 
         return response()->json([
             'success' => true,
@@ -137,7 +134,9 @@ class NguoiDungKyNangController extends Controller
         $record->update($data);
 
         $fresh = $record->fresh()->load('kyNang:id,ten_ky_nang,icon');
-        $fresh->hinh_anh_url = $this->buildSkillImageUrl($fresh->hinh_anh);
+        if ($fresh->hinh_anh) {
+            $fresh->hinh_anh_url = asset('storage/' . $fresh->hinh_anh);
+        }
 
         return response()->json([
             'success' => true,
@@ -168,19 +167,5 @@ class NguoiDungKyNangController extends Controller
             'success' => true,
             'message' => 'Xoá kỹ năng thành công.',
         ]);
-    }
-
-    public function hinhAnh(Request $request)
-    {
-        $path = (string) $request->query('path', '');
-
-        abort_unless(
-            $path !== '' && str_starts_with($path, 'chung-chi/'),
-            404
-        );
-
-        abort_unless(Storage::disk('public')->exists($path), 404);
-
-        return response()->file(Storage::disk('public')->path($path));
     }
 }
