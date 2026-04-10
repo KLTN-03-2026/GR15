@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Profile Management | Job Seeker</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#2463eb",
+                        "background-light": "#f6f6f8",
+                        "background-dark": "#111621",
+                    },
+                    fontFamily: {
+                        "display": ["Inter"]
+                    },
+                    borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<style>
+        body { font-family: 'Inter', sans-serif; }
+        .material-symbols-outlined { font-size: 24px; }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 font-display transition-colors duration-200">
+<div class="relative flex min-h-screen w-full flex-col overflow-x-hidden">
+<div class="layout-container flex h-full grow flex-col">
+<!-- Top Navigation Bar -->
+<header class="sticky top-0 z-50 flex items-center justify-between border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-background-dark/80 backdrop-blur-md px-6 md:px-20 py-3">
+<div class="flex items-center gap-4">
+<div class="size-8 text-primary">
+<span class="material-symbols-outlined !text-3xl">work</span>
+</div>
+<h2 class="text-slate-900 dark:text-slate-100 text-lg font-bold leading-tight tracking-tight">CareerFlow</h2>
+</div>
+<nav class="hidden md:flex flex-1 justify-center gap-8">
+<a class="text-sm font-medium hover:text-primary transition-colors" href="#">Jobs</a>
+<a class="text-sm font-medium hover:text-primary transition-colors" href="#">Applications</a>
+<a class="text-sm font-semibold text-primary" href="#">Profile</a>
+<a class="text-sm font-medium hover:text-primary transition-colors" href="#">Messages</a>
+</nav>
+<div class="flex items-center gap-4">
+<button class="flex items-center justify-center rounded-lg h-10 w-10 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 transition-colors">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<div class="h-10 w-10 rounded-full bg-primary/10 border-2 border-primary flex items-center justify-center overflow-hidden">
+<img alt="User Avatar" class="h-full w-full object-cover" data-alt="Professional profile photo of a developer" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDhSxuvRFoqx-7uHdfZGXrWTCoUFqKLwa1S3NTKOjAieuhbsO6GKeB4HDL0uKu8z-phXL6Ewy2igPFhQw9wpyp279W_Jkss56PT07c_lLWRi9FoIf1-uuVOhMigfqvw8LNSiXNpPLvuShOCfKRLYqPYh6agMLKkFoXYVWYe5D7ujgZg9oZ2FshOJcYA3u5Mhf3eTAfB2OS079iySF0LHJ_jBZewYkOuIEzriYbB1r947gmYCp9dKMebPEGVDRl9zS0rzct_jKGwtXBH"/>
+</div>
+</div>
+</header>
+<main class="flex-1 px-4 py-8 md:px-20 lg:px-40">
+<div class="max-w-5xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8">
+<!-- Sidebar Profile Card -->
+<aside class="lg:col-span-4 flex flex-col gap-6">
+<div class="bg-white dark:bg-slate-900 rounded-xl p-6 shadow-sm border border-slate-200 dark:border-slate-800">
+<div class="flex flex-col items-center text-center">
+<div class="relative group">
+<div class="size-32 rounded-full overflow-hidden border-4 border-primary/20 bg-slate-50 mb-4">
+<img alt="Avatar" class="h-full w-full object-cover" data-alt="User profile avatar circle" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDubs-ZT1ElXD_RqDA3eoD_Vm2Jainm-Kj9FahCRxMemFycgAPk2jvlMPeyquDiWhrSKiLN1--Ba0JIpXXq6QP3DnTEkka6oVVqnAc_bTFPyOKkine5T8DWWEB-fvwPRx_jE4QgActZjZlvjaxpDSdwmJ4I1tKhbqanKos4MJVsSgoQuo0HHEOlYOFQi_X0F1qOLHl1n6R0oXfH-9SXRUtUhzDUZrhGAlYulXBSZLa1FfGaXr4Im2uAjpXpDz3_ZtfEQ_hqKL4XjfGs"/>
+</div>
+<button class="absolute bottom-4 right-0 bg-primary text-white p-2 rounded-full shadow-lg hover:bg-primary/90 transition-transform active:scale-95">
+<span class="material-symbols-outlined !text-sm">photo_camera</span>
+</button>
+</div>
+<h3 class="text-xl font-bold text-slate-900 dark:text-slate-100">Nguyen Van A</h3>
+<p class="text-slate-500 dark:text-slate-400 text-sm mb-4">Senior Full Stack Developer</p>
+<div class="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden mb-2">
+<div class="bg-primary h-full w-[85%] rounded-full"></div>
+</div>
+<p class="text-xs font-medium text-slate-400 mb-6">Profile strength: 85%</p>
+<button class="w-full bg-primary text-white font-bold py-2.5 rounded-lg hover:shadow-lg hover:shadow-primary/30 transition-all">Update CV</button>
+</div>
+</div>
+<!-- Documents Section -->
+<div class="bg-white dark:bg-slate-900 rounded-xl p-6 shadow-sm border border-slate-200 dark:border-slate-800">
+<h4 class="font-bold mb-4 flex items-center gap-2">
+<span class="material-symbols-outlined text-primary">description</span> Documents
+                            </h4>
+<div class="space-y-3">
+<div class="flex items-center justify-between p-3 rounded-lg border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-red-500">picture_as_pdf</span>
+<div>
+<p class="text-sm font-semibold truncate max-w-[120px]">CV_NguyenVanA.pdf</p>
+<p class="text-[10px] text-slate-400">Added Oct 24, 2023</p>
+</div>
+</div>
+<button class="text-slate-400 hover:text-primary transition-colors">
+<span class="material-symbols-outlined">download</span>
+</button>
+</div>
+<label class="cursor-pointer flex flex-col items-center justify-center p-4 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-lg hover:border-primary transition-colors group">
+<span class="material-symbols-outlined text-slate-400 group-hover:text-primary mb-1">upload_file</span>
+<p class="text-xs font-medium text-slate-500 group-hover:text-primary text-center">Upload new CV (PDF, Max 5MB)</p>
+<input class="hidden" type="file"/>
+</label>
+</div>
+</div>
+</aside>
+<!-- Main Form Section -->
+<div class="lg:col-span-8 space-y-8">
+<!-- Personal Information -->
+<section class="bg-white dark:bg-slate-900 rounded-xl p-8 shadow-sm border border-slate-200 dark:border-slate-800">
+<div class="flex items-center justify-between mb-6">
+<h3 class="text-xl font-bold flex items-center gap-2">
+<span class="material-symbols-outlined text-primary">person</span> Personal Information
+                                </h3>
+<button class="text-primary text-sm font-bold flex items-center gap-1 hover:underline">
+<span class="material-symbols-outlined !text-sm">edit</span> Edit
+                                </button>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<div class="space-y-1">
+<label class="text-sm font-semibold text-slate-500 dark:text-slate-400">Full Name</label>
+<input class="w-full bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-800 rounded-lg py-2.5 px-4 focus:ring-2 focus:ring-primary focus:border-transparent transition-all" type="text" value="Nguyen Van A"/>
+</div>
+<div class="space-y-1">
+<label class="text-sm font-semibold text-slate-500 dark:text-slate-400">Email Address</label>
+<input class="w-full bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-800 rounded-lg py-2.5 px-4 focus:ring-2 focus:ring-primary focus:border-transparent transition-all" type="email" value="vana.nguyen@example.com"/>
+</div>
+<div class="space-y-1">
+<label class="text-sm font-semibold text-slate-500 dark:text-slate-400">Phone Number</label>
+<input class="w-full bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-800 rounded-lg py-2.5 px-4 focus:ring-2 focus:ring-primary focus:border-transparent transition-all" type="tel" value="+84 987 654 321"/>
+</div>
+<div class="space-y-1">
+<label class="text-sm font-semibold text-slate-500 dark:text-slate-400">Date of Birth</label>
+<input class="w-full bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-800 rounded-lg py-2.5 px-4 focus:ring-2 focus:ring-primary focus:border-transparent transition-all" type="date" value="1995-05-15"/>
+</div>
+<div class="md:col-span-2 space-y-1">
+<label class="text-sm font-semibold text-slate-500 dark:text-slate-400">Address</label>
+<input class="w-full bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-800 rounded-lg py-2.5 px-4 focus:ring-2 focus:ring-primary focus:border-transparent transition-all" type="text" value="District 1, Ho Chi Minh City, Vietnam"/>
+</div>
+</div>
+</section>
+<!-- Skills & Proficiency -->
+<section class="bg-white dark:bg-slate-900 rounded-xl p-8 shadow-sm border border-slate-200 dark:border-slate-800">
+<div class="flex items-center justify-between mb-6">
+<h3 class="text-xl font-bold flex items-center gap-2">
+<span class="material-symbols-outlined text-primary">psychology</span> Skills &amp; Experience
+                                </h3>
+<button class="bg-primary/10 text-primary px-4 py-1.5 rounded-lg text-sm font-bold hover:bg-primary/20 transition-colors">
+                                    + Add New
+                                </button>
+</div>
+<div class="space-y-6">
+<!-- Skill Item -->
+<div class="p-4 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 flex flex-col md:flex-row md:items-center gap-4 justify-between">
+<div class="flex items-center gap-4">
+<div class="size-12 bg-white dark:bg-slate-900 rounded-lg shadow-sm flex items-center justify-center">
+<span class="material-symbols-outlined text-[#F7DF1E]">javascript</span>
+</div>
+<div>
+<p class="font-bold">JavaScript</p>
+<p class="text-xs text-slate-500">Advanced Proficiency</p>
+</div>
+</div>
+<div class="flex items-center gap-6">
+<div class="text-right">
+<p class="text-sm font-semibold text-primary">5+ Years</p>
+<p class="text-[10px] text-slate-400 uppercase tracking-wider">Experience</p>
+</div>
+<div class="flex gap-1">
+<div class="w-6 h-2 rounded-full bg-primary"></div>
+<div class="w-6 h-2 rounded-full bg-primary"></div>
+<div class="w-6 h-2 rounded-full bg-primary"></div>
+<div class="w-6 h-2 rounded-full bg-slate-200 dark:bg-slate-700"></div>
+</div>
+</div>
+</div>
+<!-- Skill Item -->
+<div class="p-4 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 flex flex-col md:flex-row md:items-center gap-4 justify-between">
+<div class="flex items-center gap-4">
+<div class="size-12 bg-white dark:bg-slate-900 rounded-lg shadow-sm flex items-center justify-center">
+<span class="material-symbols-outlined text-[#FF2D20]">rocket</span>
+</div>
+<div>
+<p class="font-bold">Laravel</p>
+<p class="text-xs text-slate-500">Intermediate Proficiency</p>
+</div>
+</div>
+<div class="flex items-center gap-6">
+<div class="text-right">
+<p class="text-sm font-semibold text-primary">3 Years</p>
+<p class="text-[10px] text-slate-400 uppercase tracking-wider">Experience</p>
+</div>
+<div class="flex gap-1">
+<div class="w-6 h-2 rounded-full bg-primary"></div>
+<div class="w-6 h-2 rounded-full bg-primary"></div>
+<div class="w-6 h-2 rounded-full bg-slate-200 dark:bg-slate-700"></div>
+<div class="w-6 h-2 rounded-full bg-slate-200 dark:bg-slate-700"></div>
+</div>
+</div>
+</div>
+<!-- Skill Item -->
+<div class="p-4 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 flex flex-col md:flex-row md:items-center gap-4 justify-between">
+<div class="flex items-center gap-4">
+<div class="size-12 bg-white dark:bg-slate-900 rounded-lg shadow-sm flex items-center justify-center">
+<span class="material-symbols-outlined text-[#42B883]">hexagon</span>
+</div>
+<div>
+<p class="font-bold">VueJS</p>
+<p class="text-xs text-slate-500">Expert Proficiency</p>
+</div>
+</div>
+<div class="flex items-center gap-6">
+<div class="text-right">
+<p class="text-sm font-semibold text-primary">4 Years</p>
+<p class="text-[10px] text-slate-400 uppercase tracking-wider">Experience</p>
+</div>
+<div class="flex gap-1">
+<div class="w-6 h-2 rounded-full bg-primary"></div>
+<div class="w-6 h-2 rounded-full bg-primary"></div>
+<div class="w-6 h-2 rounded-full bg-primary"></div>
+<div class="w-6 h-2 rounded-full bg-primary"></div>
+</div>
+</div>
+</div>
+<!-- Skill Item -->
+<div class="p-4 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 flex flex-col md:flex-row md:items-center gap-4 justify-between">
+<div class="flex items-center gap-4">
+<div class="size-12 bg-white dark:bg-slate-900 rounded-lg shadow-sm flex items-center justify-center">
+<span class="material-symbols-outlined text-primary">database</span>
+</div>
+<div>
+<p class="font-bold">SQL / PostgreSQL</p>
+<p class="text-xs text-slate-500">Professional Proficiency</p>
+</div>
+</div>
+<div class="flex items-center gap-6">
+<div class="text-right">
+<p class="text-sm font-semibold text-primary">6 Years</p>
+<p class="text-[10px] text-slate-400 uppercase tracking-wider">Experience</p>
+</div>
+<div class="flex gap-1">
+<div class="w-6 h-2 rounded-full bg-primary"></div>
+<div class="w-6 h-2 rounded-full bg-primary"></div>
+<div class="w-6 h-2 rounded-full bg-primary"></div>
+<div class="w-6 h-2 rounded-full bg-slate-200 dark:bg-slate-700"></div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<div class="flex justify-end gap-4 pb-12">
+<button class="px-8 py-3 rounded-lg border border-slate-300 dark:border-slate-700 font-bold hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">Discard Changes</button>
+<button class="px-8 py-3 rounded-lg bg-primary text-white font-bold hover:shadow-lg transition-all">Save Profile</button>
+</div>
+</div>
+</div>
+</main>
+</div>
+</div>
+</body></html>

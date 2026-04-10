@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Industry Management | Admin Console</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:ital,wght@0,100..900;1,100..900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#ec5b13",
+                        "background-light": "#f8f6f6",
+                        "background-dark": "#221610",
+                    },
+                    fontFamily: {
+                        "display": ["Public Sans"]
+                    },
+                    borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+</head>
+<body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-slate-100 antialiased">
+<div class="relative flex h-auto min-h-screen w-full flex-col overflow-x-hidden">
+<div class="layout-container flex h-full grow flex-col">
+<!-- Top Navigation -->
+<header class="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-background-dark px-10 py-3 sticky top-0 z-50">
+<div class="flex items-center gap-8">
+<div class="flex items-center gap-4 text-primary">
+<div class="size-8 flex items-center justify-center bg-primary/10 rounded-lg">
+<span class="material-symbols-outlined">factory</span>
+</div>
+<h2 class="text-slate-900 dark:text-slate-100 text-lg font-bold leading-tight tracking-tight">Admin Console</h2>
+</div>
+<nav class="hidden md:flex items-center gap-6">
+<a class="text-slate-600 dark:text-slate-400 hover:text-primary dark:hover:text-primary text-sm font-medium transition-colors" href="#">Dashboard</a>
+<a class="text-slate-600 dark:text-slate-400 hover:text-primary dark:hover:text-primary text-sm font-medium transition-colors" href="#">Jobs</a>
+<a class="text-primary text-sm font-bold border-b-2 border-primary pb-1" href="#">Industries</a>
+<a class="text-slate-600 dark:text-slate-400 hover:text-primary dark:hover:text-primary text-sm font-medium transition-colors" href="#">Users</a>
+</nav>
+</div>
+<div class="flex flex-1 justify-end gap-6 items-center">
+<label class="hidden sm:flex flex-col min-w-40 h-10 max-w-64">
+<div class="flex w-full flex-1 items-stretch rounded-xl h-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+<div class="text-slate-400 flex items-center justify-center pl-4">
+<span class="material-symbols-outlined text-[20px]">search</span>
+</div>
+<input class="form-input flex w-full min-w-0 flex-1 border-none bg-transparent focus:ring-0 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 px-3 text-sm font-normal" placeholder="Search industries..." value=""/>
+</div>
+</label>
+<button class="relative text-slate-500 hover:text-primary">
+<span class="material-symbols-outlined">notifications</span>
+<span class="absolute top-0 right-0 block h-2 w-2 rounded-full bg-primary ring-2 ring-white dark:ring-background-dark"></span>
+</button>
+<div class="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-10 border border-slate-200" data-alt="User profile avatar placeholder" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuDRgTmVXkGtQmiV9yXfE486Xx1Uxkxv5uADtFjrz1aXd84xrH_wTrbUjmbBdfZLpcDTIQhfjsI0BZyRu0C7Ia53yTctx4Y8OMtpHYILaFr-a3Z32tNRYbvHgDFgUFZpXuL1Su3kF4HT2tE5fRVbVnzAHnvSpuk7UM61tp2rsi8F7Ay934JWI6ckwImycmYDNUN6zzPAnNZnaO9ussxrvQJjRtGfTnQfI6eA1KBi9d-rqrQeR0MtJI4gshsXrqDSF9Cjp2PDZSbUFbsi");'></div>
+</div>
+</header>
+<main class="flex flex-1 justify-center py-8">
+<div class="layout-content-container flex flex-col w-full max-w-[1200px] px-6 lg:px-10">
+<!-- Page Header -->
+<div class="flex flex-wrap justify-between items-end gap-4 mb-8">
+<div class="flex flex-col gap-2">
+<h1 class="text-slate-900 dark:text-slate-100 text-3xl font-extrabold tracking-tight">Industry Management</h1>
+<p class="text-slate-500 dark:text-slate-400 text-base max-w-2xl">Create, categorize, and control industry sectors for the platform's job ecosystem and advanced filters.</p>
+</div>
+<button class="flex items-center gap-2 cursor-pointer rounded-xl h-11 px-6 bg-primary text-white text-sm font-bold shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all">
+<span class="material-symbols-outlined text-sm">add</span>
+<span>Add New Industry</span>
+</button>
+</div>
+<!-- Stats Overview -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+<div class="flex flex-col gap-2 rounded-xl p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+<div class="flex items-center justify-between">
+<p class="text-slate-500 dark:text-slate-400 text-sm font-semibold uppercase tracking-wider">Total Sectors</p>
+<span class="material-symbols-outlined text-primary bg-primary/10 p-2 rounded-lg">category</span>
+</div>
+<p class="text-slate-900 dark:text-slate-100 text-3xl font-bold">42</p>
+<div class="flex items-center gap-1">
+<span class="text-emerald-500 text-sm font-bold">+2.4%</span>
+<span class="text-slate-400 text-xs font-normal">from last month</span>
+</div>
+</div>
+<div class="flex flex-col gap-2 rounded-xl p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+<div class="flex items-center justify-between">
+<p class="text-slate-500 dark:text-slate-400 text-sm font-semibold uppercase tracking-wider">Active Status</p>
+<span class="material-symbols-outlined text-primary bg-primary/10 p-2 rounded-lg">check_circle</span>
+</div>
+<p class="text-slate-900 dark:text-slate-100 text-3xl font-bold">38</p>
+<div class="flex items-center gap-1">
+<span class="text-emerald-500 text-sm font-bold">+1.2%</span>
+<span class="text-slate-400 text-xs font-normal">currently enabled</span>
+</div>
+</div>
+<div class="flex flex-col gap-2 rounded-xl p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+<div class="flex items-center justify-between">
+<p class="text-slate-500 dark:text-slate-400 text-sm font-semibold uppercase tracking-wider">Avg. Listings</p>
+<span class="material-symbols-outlined text-primary bg-primary/10 p-2 rounded-lg">work</span>
+</div>
+<p class="text-slate-900 dark:text-slate-100 text-3xl font-bold">156</p>
+<div class="flex items-center gap-1">
+<span class="text-rose-500 text-sm font-bold">-3.1%</span>
+<span class="text-slate-400 text-xs font-normal">jobs per industry</span>
+</div>
+</div>
+</div>
+<!-- Filters & Table -->
+<div class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
+<div class="flex border-b border-slate-200 dark:border-slate-800 px-6 overflow-x-auto scrollbar-hide">
+<a class="flex items-center h-14 border-b-2 border-primary text-primary font-bold text-sm px-4 whitespace-nowrap" href="#">
+                            All Industries
+                        </a>
+<a class="flex items-center h-14 border-b-2 border-transparent text-slate-500 dark:text-slate-400 font-medium text-sm px-4 hover:text-slate-700 dark:hover:text-slate-200 whitespace-nowrap" href="#">
+                            Active (38)
+                        </a>
+<a class="flex items-center h-14 border-b-2 border-transparent text-slate-500 dark:text-slate-400 font-medium text-sm px-4 hover:text-slate-700 dark:hover:text-slate-200 whitespace-nowrap" href="#">
+                            Inactive (4)
+                        </a>
+<a class="flex items-center h-14 border-b-2 border-transparent text-slate-500 dark:text-slate-400 font-medium text-sm px-4 hover:text-slate-700 dark:hover:text-slate-200 whitespace-nowrap" href="#">
+                            Archived
+                        </a>
+</div>
+<div class="overflow-x-auto">
+<table class="w-full text-left">
+<thead>
+<tr class="bg-slate-50 dark:bg-slate-800/50">
+<th class="px-6 py-4 text-slate-600 dark:text-slate-300 text-xs font-bold uppercase tracking-wider w-[40%]">Industry Name</th>
+<th class="px-6 py-4 text-slate-600 dark:text-slate-300 text-xs font-bold uppercase tracking-wider">Related Jobs</th>
+<th class="px-6 py-4 text-slate-600 dark:text-slate-300 text-xs font-bold uppercase tracking-wider">Visibility</th>
+<th class="px-6 py-4 text-slate-600 dark:text-slate-300 text-xs font-bold uppercase tracking-wider text-right">Actions</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+<!-- Row 1 -->
+<tr class="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
+<td class="px-6 py-5">
+<div class="flex items-center gap-3">
+<div class="size-10 rounded-lg bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 flex items-center justify-center">
+<span class="material-symbols-outlined text-[20px]">laptop_mac</span>
+</div>
+<div>
+<p class="text-slate-900 dark:text-slate-100 font-semibold">Information Technology</p>
+<p class="text-slate-500 dark:text-slate-400 text-xs">Software, SaaS, Hardware</p>
+</div>
+</div>
+</td>
+<td class="px-6 py-5">
+<div class="flex items-center gap-2">
+<span class="text-slate-700 dark:text-slate-200 font-medium">1,240</span>
+<span class="text-emerald-500 text-[10px] font-bold bg-emerald-50 dark:bg-emerald-500/10 px-1.5 py-0.5 rounded">High Demand</span>
+</div>
+</td>
+<td class="px-6 py-5">
+<label class="relative inline-flex items-center cursor-pointer">
+<input checked="" class="sr-only peer" type="checkbox"/>
+<div class="w-11 h-6 bg-slate-200 peer-focus:outline-none dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+<span class="ml-3 text-sm font-medium text-slate-600 dark:text-slate-400">Active</span>
+</label>
+</td>
+<td class="px-6 py-5 text-right">
+<div class="flex justify-end gap-2">
+<button class="p-2 text-slate-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors">
+<span class="material-symbols-outlined text-[20px]">edit</span>
+</button>
+<button class="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors">
+<span class="material-symbols-outlined text-[20px]">delete</span>
+</button>
+</div>
+</td>
+</tr>
+<!-- Row 2 -->
+<tr class="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
+<td class="px-6 py-5">
+<div class="flex items-center gap-3">
+<div class="size-10 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-600 flex items-center justify-center">
+<span class="material-symbols-outlined text-[20px]">medical_services</span>
+</div>
+<div>
+<p class="text-slate-900 dark:text-slate-100 font-semibold">Healthcare</p>
+<p class="text-slate-500 dark:text-slate-400 text-xs">Pharma, Clinical, Medical Device</p>
+</div>
+</div>
+</td>
+<td class="px-6 py-5">
+<span class="text-slate-700 dark:text-slate-200 font-medium">850</span>
+</td>
+<td class="px-6 py-5">
+<label class="relative inline-flex items-center cursor-pointer">
+<input checked="" class="sr-only peer" type="checkbox"/>
+<div class="w-11 h-6 bg-slate-200 peer-focus:outline-none dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+<span class="ml-3 text-sm font-medium text-slate-600 dark:text-slate-400">Active</span>
+</label>
+</td>
+<td class="px-6 py-5 text-right">
+<div class="flex justify-end gap-2">
+<button class="p-2 text-slate-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors">
+<span class="material-symbols-outlined text-[20px]">edit</span>
+</button>
+<button class="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors">
+<span class="material-symbols-outlined text-[20px]">delete</span>
+</button>
+</div>
+</td>
+</tr>
+<!-- Row 3 -->
+<tr class="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
+<td class="px-6 py-5">
+<div class="flex items-center gap-3">
+<div class="size-10 rounded-lg bg-amber-100 dark:bg-amber-900/30 text-amber-600 flex items-center justify-center">
+<span class="material-symbols-outlined text-[20px]">payments</span>
+</div>
+<div>
+<p class="text-slate-900 dark:text-slate-100 font-semibold">Finance</p>
+<p class="text-slate-500 dark:text-slate-400 text-xs">Banking, Fintech, Insurance</p>
+</div>
+</div>
+</td>
+<td class="px-6 py-5">
+<span class="text-slate-700 dark:text-slate-200 font-medium">620</span>
+</td>
+<td class="px-6 py-5">
+<label class="relative inline-flex items-center cursor-pointer">
+<input class="sr-only peer" type="checkbox"/>
+<div class="w-11 h-6 bg-slate-200 peer-focus:outline-none dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+<span class="ml-3 text-sm font-medium text-slate-400 dark:text-slate-500">Inactive</span>
+</label>
+</td>
+<td class="px-6 py-5 text-right">
+<div class="flex justify-end gap-2">
+<button class="p-2 text-slate-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors">
+<span class="material-symbols-outlined text-[20px]">edit</span>
+</button>
+<button class="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors">
+<span class="material-symbols-outlined text-[20px]">delete</span>
+</button>
+</div>
+</td>
+</tr>
+<!-- Row 4 -->
+<tr class="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
+<td class="px-6 py-5">
+<div class="flex items-center gap-3">
+<div class="size-10 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 flex items-center justify-center">
+<span class="material-symbols-outlined text-[20px]">school</span>
+</div>
+<div>
+<p class="text-slate-900 dark:text-slate-100 font-semibold">Education</p>
+<p class="text-slate-500 dark:text-slate-400 text-xs">K-12, EdTech, Higher Ed</p>
+</div>
+</div>
+</td>
+<td class="px-6 py-5">
+<span class="text-slate-700 dark:text-slate-200 font-medium">430</span>
+</td>
+<td class="px-6 py-5">
+<label class="relative inline-flex items-center cursor-pointer">
+<input checked="" class="sr-only peer" type="checkbox"/>
+<div class="w-11 h-6 bg-slate-200 peer-focus:outline-none dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+<span class="ml-3 text-sm font-medium text-slate-600 dark:text-slate-400">Active</span>
+</label>
+</td>
+<td class="px-6 py-5 text-right">
+<div class="flex justify-end gap-2">
+<button class="p-2 text-slate-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors">
+<span class="material-symbols-outlined text-[20px]">edit</span>
+</button>
+<button class="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors">
+<span class="material-symbols-outlined text-[20px]">delete</span>
+</button>
+</div>
+</td>
+</tr>
+<!-- Row 5 -->
+<tr class="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
+<td class="px-6 py-5">
+<div class="flex items-center gap-3">
+<div class="size-10 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 flex items-center justify-center">
+<span class="material-symbols-outlined text-[20px]">precision_manufacturing</span>
+</div>
+<div>
+<p class="text-slate-900 dark:text-slate-100 font-semibold">Manufacturing</p>
+<p class="text-slate-500 dark:text-slate-400 text-xs">Automotive, Supply Chain, R&amp;D</p>
+</div>
+</div>
+</td>
+<td class="px-6 py-5">
+<span class="text-slate-700 dark:text-slate-200 font-medium">310</span>
+</td>
+<td class="px-6 py-5">
+<label class="relative inline-flex items-center cursor-pointer">
+<input checked="" class="sr-only peer" type="checkbox"/>
+<div class="w-11 h-6 bg-slate-200 peer-focus:outline-none dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+<span class="ml-3 text-sm font-medium text-slate-600 dark:text-slate-400">Active</span>
+</label>
+</td>
+<td class="px-6 py-5 text-right">
+<div class="flex justify-end gap-2">
+<button class="p-2 text-slate-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors">
+<span class="material-symbols-outlined text-[20px]">edit</span>
+</button>
+<button class="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors">
+<span class="material-symbols-outlined text-[20px]">delete</span>
+</button>
+</div>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<!-- Pagination -->
+<div class="flex items-center justify-between px-6 py-4 border-t border-slate-100 dark:border-slate-800">
+<p class="text-sm text-slate-500 dark:text-slate-400">Showing 1 to 5 of 42 industries</p>
+<div class="flex items-center gap-2">
+<button class="p-2 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50" disabled="">
+<span class="material-symbols-outlined text-[18px]">chevron_left</span>
+</button>
+<button class="px-3 py-1 rounded-lg bg-primary text-white text-sm font-bold">1</button>
+<button class="px-3 py-1 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 text-sm font-medium">2</button>
+<button class="px-3 py-1 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 text-sm font-medium">3</button>
+<span class="text-slate-400">...</span>
+<button class="px-3 py-1 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 text-sm font-medium">9</button>
+<button class="p-2 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800">
+<span class="material-symbols-outlined text-[18px]">chevron_right</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Footer-like action -->
+<div class="mt-8 flex items-center justify-center p-8 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-2xl bg-white/40 dark:bg-slate-900/40">
+<div class="text-center">
+<p class="text-slate-600 dark:text-slate-300 font-semibold mb-2">Need to import bulk data?</p>
+<p class="text-slate-400 text-sm mb-4">Upload a CSV or XLSX file to add multiple industries at once.</p>
+<button class="px-4 py-2 border-2 border-primary text-primary hover:bg-primary hover:text-white rounded-xl text-sm font-bold transition-all inline-flex items-center gap-2">
+<span class="material-symbols-outlined text-sm">upload_file</span>
+                            Bulk Import
+                        </button>
+</div>
+</div>
+</div>
+</main>
+</div>
+</div>
+</body></html>

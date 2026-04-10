@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "primary": "#2463eb",
+              "background-light": "#f6f6f8",
+              "background-dark": "#111621",
+            },
+            fontFamily: {
+              "display": ["Inter"]
+            },
+            borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<title>Job Detail | JobPortal</title>
+</head>
+<body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-slate-100">
+<div class="relative flex min-h-screen w-full flex-col">
+<!-- Top Navigation -->
+<header class="sticky top-0 z-50 w-full border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-background-dark/80 backdrop-blur-md">
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+<div class="flex h-16 items-center justify-between">
+<div class="flex items-center gap-3">
+<div class="flex items-center justify-center w-8 h-8 rounded-lg bg-primary text-white">
+<span class="material-symbols-outlined text-xl">work</span>
+</div>
+<h1 class="text-xl font-bold tracking-tight text-slate-900 dark:text-white">JobPortal</h1>
+</div>
+<nav class="hidden md:flex items-center gap-8">
+<a class="text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-primary transition-colors" href="#">Find Jobs</a>
+<a class="text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-primary transition-colors" href="#">Companies</a>
+<a class="text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-primary transition-colors" href="#">Salaries</a>
+</nav>
+<div class="flex items-center gap-3">
+<button class="p-2 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors">
+<span class="material-symbols-outlined">bookmark</span>
+</button>
+<button class="p-2 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors">
+<span class="material-symbols-outlined">share</span>
+</button>
+<div class="h-8 w-8 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center">
+<span class="material-symbols-outlined text-primary text-sm">person</span>
+</div>
+</div>
+</div>
+</div>
+</header>
+<main class="flex-grow max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+<!-- Main Content Left Column -->
+<div class="lg:col-span-8 space-y-6">
+<!-- Job Header Card -->
+<div class="bg-white dark:bg-slate-900 p-6 md:p-8 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800">
+<div class="flex flex-col md:flex-row md:items-start gap-6">
+<div class="w-20 h-20 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center overflow-hidden flex-shrink-0">
+<img alt="TechFlow Solutions Logo" class="w-full h-full object-cover" data-alt="Modern minimalist corporate tech company logo" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBT324XNxmKyqnf2M86BLtEYcsDTlUGu0TImEkX-ppfyu7z9vcCydrVkUkYmEpd42f44Mgp-AIxpr8FYVnuUQKlh_Udsw8RgnjAa2bdYJRt_KgNxPsOyZIZTYU-dWL73HQ6UsUt8HwCnjQ89XOGHNCpFzKr_luyNc8ObLmjQyUWRPom1v6smJTF5Q2In4h4E9YNu5SI3E4v_oJrf1ksMPTssxsq2K9u8I6fGp_6WJF2Zwq0u_j6bB2ryY8NIMf0ezNxYAHZ4uphKcDU"/>
+</div>
+<div class="flex-grow">
+<h2 class="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white mb-2">Senior Software Engineer</h2>
+<div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-slate-600 dark:text-slate-400">
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-lg">corporate_fare</span>
+<span class="font-medium text-slate-900 dark:text-slate-200">TechFlow Solutions</span>
+</div>
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-lg">location_on</span>
+<span>San Francisco, CA (Remote Friendly)</span>
+</div>
+</div>
+<div class="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4 py-6 border-y border-slate-100 dark:border-slate-800">
+<div>
+<p class="text-xs uppercase tracking-wider text-slate-400 font-bold mb-1">Salary range</p>
+<p class="font-semibold text-slate-900 dark:text-white">$150k - $200k</p>
+</div>
+<div>
+<p class="text-xs uppercase tracking-wider text-slate-400 font-bold mb-1">Openings</p>
+<p class="font-semibold text-slate-900 dark:text-white">2 Positions</p>
+</div>
+<div>
+<p class="text-xs uppercase tracking-wider text-slate-400 font-bold mb-1">Job Type</p>
+<p class="font-semibold text-slate-900 dark:text-white">Full-time</p>
+</div>
+<div>
+<p class="text-xs uppercase tracking-wider text-slate-400 font-bold mb-1">Deadline</p>
+<p class="font-semibold text-red-500">Oct 30, 2024</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Job Description Section -->
+<div class="bg-white dark:bg-slate-900 p-6 md:p-8 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800">
+<h3 class="text-xl font-bold text-slate-900 dark:text-white mb-4">About the Role</h3>
+<div class="prose dark:prose-invert max-w-none text-slate-600 dark:text-slate-400 leading-relaxed space-y-4">
+<p>TechFlow Solutions is looking for a Senior Software Engineer to lead our core architecture team. You will be responsible for designing and implementing scalable backend services that power our global analytics platform.</p>
+<p>We are looking for someone who is passionate about building high-performance systems and enjoys mentoring junior developers. You will work closely with product managers and other stakeholders to deliver high-quality software solutions.</p>
+<h4 class="text-lg font-semibold text-slate-900 dark:text-white pt-2">What you'll do</h4>
+<ul class="list-disc pl-5 space-y-2">
+<li>Develop and maintain scalable backend services using Node.js and Go.</li>
+<li>Architect microservices and manage their deployment across multi-region AWS environments.</li>
+<li>Collaborate with cross-functional teams to define, design, and ship new features.</li>
+<li>Participate in code reviews and advocate for engineering best practices.</li>
+<li>Implement robust monitoring and logging for production systems.</li>
+</ul>
+</div>
+<div class="mt-8">
+<h4 class="text-sm font-bold uppercase tracking-widest text-slate-400 mb-4">Required Skills</h4>
+<div class="flex flex-wrap gap-2">
+<span class="px-3 py-1.5 bg-primary/10 text-primary text-sm font-medium rounded-lg border border-primary/20">Node.js</span>
+<span class="px-3 py-1.5 bg-primary/10 text-primary text-sm font-medium rounded-lg border border-primary/20">Go</span>
+<span class="px-3 py-1.5 bg-primary/10 text-primary text-sm font-medium rounded-lg border border-primary/20">TypeScript</span>
+<span class="px-3 py-1.5 bg-primary/10 text-primary text-sm font-medium rounded-lg border border-primary/20">PostgreSQL</span>
+<span class="px-3 py-1.5 bg-primary/10 text-primary text-sm font-medium rounded-lg border border-primary/20">Docker</span>
+<span class="px-3 py-1.5 bg-primary/10 text-primary text-sm font-medium rounded-lg border border-primary/20">AWS</span>
+<span class="px-3 py-1.5 bg-primary/10 text-primary text-sm font-medium rounded-lg border border-primary/20">Kubernetes</span>
+<span class="px-3 py-1.5 bg-primary/10 text-primary text-sm font-medium rounded-lg border border-primary/20">Microservices</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Right Sidebar: AI Matching -->
+<div class="lg:col-span-4 space-y-6">
+<div class="bg-white dark:bg-slate-900 rounded-xl shadow-lg border-2 border-primary/30 overflow-hidden">
+<div class="bg-primary p-6 text-white">
+<div class="flex items-center gap-2 mb-1">
+<span class="material-symbols-outlined">auto_awesome</span>
+<h3 class="font-bold text-lg">AI Matching Insight</h3>
+</div>
+<p class="text-primary-100 text-sm opacity-90">Based on your profile and resume</p>
+</div>
+<div class="p-6">
+<div class="flex items-center justify-between mb-2">
+<span class="text-slate-900 dark:text-white font-bold">Match Score</span>
+<span class="text-primary font-bold text-xl">82%</span>
+</div>
+<div class="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-3 mb-4">
+<div class="bg-primary h-3 rounded-full" style="width: 82%"></div>
+</div>
+<div class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 mb-6">
+<span class="material-symbols-outlined text-sm mr-1">check_circle</span>
+                                High Match Strength
+                            </div>
+<div class="space-y-4">
+<h4 class="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+<span class="material-symbols-outlined text-orange-500 text-lg">warning</span>
+                                    Skill Gap Analysis
+                                </h4>
+<p class="text-sm text-slate-500 dark:text-slate-400">Improve your chances by highlighting these skills or equivalent experience:</p>
+<ul class="space-y-3">
+<li class="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-100 dark:border-slate-800">
+<span class="w-2 h-2 rounded-full bg-orange-500"></span>
+<span class="text-sm font-medium text-slate-700 dark:text-slate-300">Docker</span>
+<span class="ml-auto text-[10px] font-bold uppercase text-slate-400">Critical</span>
+</li>
+<li class="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-100 dark:border-slate-800">
+<span class="w-2 h-2 rounded-full bg-orange-500"></span>
+<span class="text-sm font-medium text-slate-700 dark:text-slate-300">AWS (S3, EC2, Lambda)</span>
+<span class="ml-auto text-[10px] font-bold uppercase text-slate-400">Essential</span>
+</li>
+<li class="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-100 dark:border-slate-800">
+<span class="w-2 h-2 rounded-full bg-orange-500"></span>
+<span class="text-sm font-medium text-slate-700 dark:text-slate-300">Microservices Architecture</span>
+<span class="ml-auto text-[10px] font-bold uppercase text-slate-400">Preferred</span>
+</li>
+</ul>
+</div>
+<div class="mt-8 space-y-3">
+<button class="w-full bg-primary hover:bg-primary/90 text-white font-bold py-4 rounded-xl shadow-lg shadow-primary/30 flex items-center justify-center gap-2 transition-all transform active:scale-[0.98]">
+                                    Apply Now
+                                    <span class="material-symbols-outlined">arrow_forward</span>
+</button>
+<button class="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-bold py-4 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
+                                    Save Job
+                                </button>
+</div>
+</div>
+</div>
+<!-- Company Quick Info -->
+<div class="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800">
+<h4 class="text-sm font-bold text-slate-900 dark:text-white mb-4">Location Info</h4>
+<div class="aspect-video w-full rounded-lg bg-slate-100 dark:bg-slate-800 overflow-hidden mb-4 relative">
+<img alt="Map of San Francisco" class="w-full h-full object-cover grayscale opacity-60" data-location="San Francisco" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCYViV_y_miE5sHDcWarDQBl-Q7OND3DTwtokRDssrQ1mVVunUbiRRNpuqf5bASGB4wkyaa5hSy692IxzSSoKVA43wTYSpDnmLeG6Vtua32maXPXYGOd_EuPyiVYLov_zKRQ_nR81yhkgHpjs_3g1aFh6aNxYw4MJZL9V1xdO1FKMSERECAg8OrytX51UtCPFpjb7F1NO1e_yr_P6RQcV8BncXFYjp1_B_-NkzY4woqUpzBQMyEuGGaJElunxSOCkn6bPouMPcRgjB-"/>
+<div class="absolute inset-0 flex items-center justify-center">
+<div class="w-8 h-8 rounded-full bg-primary/20 border border-primary flex items-center justify-center">
+<span class="material-symbols-outlined text-primary">location_on</span>
+</div>
+</div>
+</div>
+<p class="text-sm text-slate-600 dark:text-slate-400">San Francisco Financial District, Mission St, Suite 400</p>
+</div>
+</div>
+</div>
+</main>
+<footer class="mt-auto border-t border-slate-200 dark:border-slate-800 py-8 bg-white dark:bg-background-dark">
+<div class="max-w-7xl mx-auto px-4 text-center">
+<p class="text-slate-500 text-sm">© 2024 JobPortal. All rights reserved.</p>
+</div>
+</footer>
+</div>
+</body></html>
