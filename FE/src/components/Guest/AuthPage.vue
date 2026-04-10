@@ -94,9 +94,9 @@
               <div>
                 <div class="mb-2 flex items-center justify-between gap-3">
                   <label class="block text-sm font-semibold text-slate-700">Mật khẩu</label>
-                  <button type="button" class="text-sm font-semibold text-[#2463eb] transition hover:text-blue-800">
+                  <RouterLink to="/forgot-password" class="text-sm font-semibold text-[#2463eb] transition hover:text-blue-800">
                     Quên mật khẩu?
-                  </button>
+                  </RouterLink>
                 </div>
                 <div class="relative">
                   <input

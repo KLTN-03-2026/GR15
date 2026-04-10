@@ -8,9 +8,11 @@ use App\Http\Requests\NguoiDung\DangNhapRequest;
 use App\Http\Requests\NguoiDung\DoiMatKhauRequest;
 use App\Http\Requests\NguoiDung\CapNhatHoSoRequest;
 use App\Models\NguoiDung;
+use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\Storage;
 
 /**
@@ -149,6 +151,94 @@ class AuthController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Đổi mật khẩu thành công. Vui lòng đăng nhập lại.',
+        ]);
+    }
+
+    /**
+     * POST /api/v1/quen-mat-khau
+     * Tạo token đặt lại mật khẩu và gửi email.
+     */
+    public function quenMatKhau(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'email' => ['required', 'email'],
+        ]);
+
+        $nguoiDung = NguoiDung::where('email', $data['email'])->first();
+
+        // Không tiết lộ email có tồn tại hay không (security by design)
+        if (!$nguoiDung) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Nếu email tồn tại trong hệ thống, chúng tôi đã gửi liên kết đặt lại mật khẩu.',
+            ]);
+        }
+
+        if (!$nguoiDung->isActive()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Tài khoản đã bị khoá. Vui lòng liên hệ quản trị viên.',
+            ], 403);
+        }
+
+        try {
+            $token = Password::broker()->createToken($nguoiDung);
+
+            // Gửi email sau response (không block response)
+            dispatch(function () use ($nguoiDung, $token): void {
+                $nguoiDung->fresh()?->sendPasswordResetNotification($token);
+            })->afterResponse();
+        } catch (\Throwable $exception) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Không thể gửi email đặt lại mật khẩu vào lúc này.',
+            ], 500);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Nếu email tồn tại trong hệ thống, chúng tôi đã gửi liên kết đặt lại mật khẩu.',
+        ]);
+    }
+
+    /**
+     * POST /api/v1/dat-lai-mat-khau
+     * Đặt lại mật khẩu bằng token đã cấp (từ email).
+     */
+    public function datLaiMatKhau(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'email'    => ['required', 'email'],
+            'token'    => ['required', 'string'],
+            'mat_khau' => ['required', 'string', 'min:6', 'confirmed'],
+        ], [
+            'mat_khau.confirmed' => 'Mật khẩu xác nhận không khớp.',
+        ]);
+
+        $status = Password::broker()->reset(
+            [
+                'email'                 => $data['email'],
+                'token'                 => $data['token'],
+                'password'              => $data['mat_khau'],
+                'password_confirmation' => $request->input('mat_khau_confirmation'),
+            ],
+            function (NguoiDung $nguoiDung, string $password): void {
+                $nguoiDung->forceFill(['mat_khau' => $password])->save();
+                $nguoiDung->tokens()->delete(); // Thu hồi tất cả token cũ
+                event(new PasswordReset($nguoiDung));
+            }
+        );
+
+        if ($status !== Password::PASSWORD_RESET) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Token đặt lại mật khẩu không hợp lệ hoặc đã hết hạn.',
+            ], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Đặt lại mật khẩu thành công. Vui lòng đăng nhập lại.',
         ]);
     }
 }

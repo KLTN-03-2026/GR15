@@ -189,15 +189,20 @@ export const authService = {
     }),
 
   forgotPassword: (email) =>
-    apiCall('/auth/forgot-password', {
+    apiCall('/quen-mat-khau', {
       method: 'POST',
       body: JSON.stringify({ email })
     }),
 
-  resetPassword: (token, newPassword, confirmPassword) =>
-    apiCall('/auth/reset-password', {
+  resetPassword: ({ email, token, password, confirmPassword }) =>
+    apiCall('/dat-lai-mat-khau', {
       method: 'POST',
-      body: JSON.stringify({ token, newPassword, confirmPassword })
+      body: JSON.stringify({
+        email,
+        token,
+        mat_khau: password,
+        mat_khau_confirmation: confirmPassword,
+      })
     }),
 
   verifyEmail: (token) =>
@@ -560,6 +565,33 @@ export const statsService = {
     })
 }
 
+
+// === Guest Job & Industry APIs ===
+export const jobService = {
+  getIndustries: (options = {}) => {
+    const params = new URLSearchParams()
+    if (options.search) params.append('search', options.search)
+    if (options.per_page !== undefined) params.append('per_page', options.per_page)
+    if (options.goc !== undefined) params.append('goc', options.goc)
+    if (options.danh_muc_cha_id) params.append('danh_muc_cha_id', options.danh_muc_cha_id)
+    const query = params.toString()
+    return apiCall(`/nganh-nghes${query ? `?${query}` : ''}`, { method: 'GET' })
+  },
+
+  getIndustryById: (id) =>
+    apiCall(`/nganh-nghes/${id}`, { method: 'GET' }),
+
+  getJobs: (options = {}) => {
+    const params = new URLSearchParams()
+    if (options.page) params.append('page', options.page)
+    if (options.per_page) params.append('per_page', options.per_page)
+    if (options.search) params.append('search', options.search)
+    if (options.nganh_nghe_id) params.append('nganh_nghe_id', options.nganh_nghe_id)
+    const query = params.toString()
+    return apiCall(`/tin-tuyen-dungs${query ? `?${query}` : ''}`, { method: 'GET' })
+  },
+}
+
 export default {
   authService,
   userService,
@@ -567,5 +599,6 @@ export default {
   industryService,
   skillService,
   jobPostingService,
-  statsService
+  statsService,
+  jobService,
 }

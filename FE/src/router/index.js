@@ -31,6 +31,30 @@ const routes = [
     meta: { layout: 'guest' }
   },
   {
+    path: '/forgot-password',
+    name: 'ForgotPassword',
+    component: () => import('@/components/Guest/ForgotPasswordPage.vue'),
+    meta: { layout: 'auth' }
+  },
+  {
+    path: '/reset-password',
+    name: 'ResetPassword',
+    component: () => import('@/components/Guest/ResetPasswordPage.vue'),
+    meta: { layout: 'auth' }
+  },
+  {
+    path: '/industries',
+    name: 'IndustryList',
+    component: () => import('@/components/Guest/IndustryListPage.vue'),
+    meta: { layout: 'guest' }
+  },
+  {
+    path: '/industries/:id',
+    name: 'IndustryDetail',
+    component: () => import('@/components/Guest/IndustryDetailPage.vue'),
+    meta: { layout: 'guest' }
+  },
+  {
     path: '/employer/auth',
     name: 'EmployerAuth',
     component: () => import('@/components/Employer/EmployerAuthPage.vue'),

@@ -55,6 +55,14 @@ Route::post('v1/dang-ky', [AuthController::class, 'dangKy'])
 Route::post('v1/dang-nhap', [AuthController::class, 'dangNhap'])
     ->name('auth.dang-nhap');
 
+// Quên mật khẩu — gửi email đặt lại mật khẩu
+Route::post('v1/quen-mat-khau', [AuthController::class, 'quenMatKhau'])
+    ->name('auth.quen-mat-khau');
+
+// Đặt lại mật khẩu bằng token từ email
+Route::post('v1/dat-lai-mat-khau', [AuthController::class, 'datLaiMatKhau'])
+    ->name('auth.dat-lai-mat-khau');
+
 // Danh sách ngành nghề hiển thị (dạng phẳng)
 Route::get('v1/nganh-nghes', [NganhNgheController::class, 'index'])
     ->name('nganh-nghes.index');
