@@ -8,15 +8,26 @@
       <nav class="hidden lg:flex items-center gap-8">
         <RouterLink to="/" class="text-sm font-medium hover:text-[#2463eb] transition-colors">Trang chủ</RouterLink>
         <RouterLink to="/jobs" class="text-sm font-medium hover:text-[#2463eb] transition-colors">Việc làm</RouterLink>
-        <RouterLink to="/ai-career" class="text-sm font-medium hover:text-[#2463eb] transition-colors">Tư vấn nghề nghiệp AI</RouterLink>
+        <RouterLink to="/profile" class="text-sm font-medium hover:text-[#2463eb] transition-colors">Profile ứng viên</RouterLink>
+        <RouterLink to="/my-cv" class="text-sm font-medium hover:text-[#2463eb] transition-colors">Quản lý CV</RouterLink>
       </nav>
       <div class="flex items-center gap-3">
-        <RouterLink to="/auth" class="hidden sm:flex h-10 items-center justify-center rounded-lg px-4 text-sm font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all">
-          Đăng nhập
-        </RouterLink>
-        <RouterLink to="/auth" class="flex h-10 items-center justify-center rounded-lg bg-[#2463eb] px-6 text-sm font-bold text-white shadow-lg shadow-[#2463eb]/20 hover:bg-blue-700 transition-all">
-          Đăng ký
-        </RouterLink>
+        <template v-if="!isAuthenticated">
+          <RouterLink to="/login" class="hidden sm:flex h-10 items-center justify-center rounded-lg px-4 text-sm font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all">
+            Đăng nhập
+          </RouterLink>
+          <RouterLink to="/register" class="flex h-10 items-center justify-center rounded-lg bg-[#2463eb] px-6 text-sm font-bold text-white shadow-lg shadow-[#2463eb]/20 hover:bg-blue-700 transition-all">
+            Đăng ký
+          </RouterLink>
+        </template>
+        <template v-else>
+          <RouterLink to="/profile" class="hidden sm:flex h-10 items-center justify-center rounded-lg px-4 text-sm font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all">
+            Hồ sơ
+          </RouterLink>
+          <RouterLink to="/my-cv" class="flex h-10 items-center justify-center rounded-lg bg-[#2463eb] px-6 text-sm font-bold text-white shadow-lg shadow-[#2463eb]/20 hover:bg-blue-700 transition-all">
+            CV của tôi
+          </RouterLink>
+        </template>
       </div>
     </div>
   </header>
@@ -24,4 +35,8 @@
 
 <script setup>
 import { RouterLink } from 'vue-router'
+import { computed } from 'vue'
+import { getAuthToken } from '@/utils/authStorage'
+
+const isAuthenticated = computed(() => Boolean(getAuthToken()))
 </script>

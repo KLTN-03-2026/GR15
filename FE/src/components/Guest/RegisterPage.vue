@@ -236,12 +236,16 @@
 
 <script setup>
 import { reactive, ref } from 'vue'
-import { RouterLink } from 'vue-router'
+import { RouterLink, useRouter } from 'vue-router'
+import { authService } from '@/services/api'
+import { useNotify } from '@/composables/useNotify'
 
 const isLoading = ref(false)
 const showPassword = ref(false)
 const successMessage = ref('')
 const errorMessage = ref('')
+const router = useRouter()
+const notify = useNotify()
 
 const registerBenefits = [
   {
@@ -306,18 +310,35 @@ const validateRegister = () => {
   return Object.values(registerErrors).every((value) => !value)
 }
 
-const handleRegister = () => {
+const handleRegister = async () => {
   if (!validateRegister()) {
     successMessage.value = ''
     return
   }
 
+  isLoading.value = true
   errorMessage.value = ''
-  successMessage.value = 'Đây là bản giao diện mẫu. Form đăng ký hiện không gửi dữ liệu lên backend.'
+  successMessage.value = ''
+
+  try {
+    const response = await authService.registerCandidate(
+      registerForm.fullName,
+      registerForm.email,
+      registerForm.phone.replace(/\s+/g, ''),
+      registerForm.password
+    )
+    successMessage.value = response?.message || 'Tạo tài khoản thành công.'
+    notify.success(successMessage.value)
+    await router.push('/login')
+  } catch (error) {
+    errorMessage.value = error?.message || 'Đăng ký thất bại.'
+  } finally {
+    isLoading.value = false
+  }
 }
 
 const handleSocialLogin = (provider) => {
   errorMessage.value = ''
-  successMessage.value = `Đăng ký với ${provider} đang được tắt trong bản UI-only.`
+  successMessage.value = `Đăng ký với ${provider} chưa được bật trong bản HoangLong.`
 }
 </script>

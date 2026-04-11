@@ -99,9 +99,9 @@
               <div>
                 <div class="mb-2 flex items-center justify-between gap-3">
                   <label class="block text-sm font-semibold text-slate-700">Mật khẩu</label>
-                  <button type="button" class="text-sm font-semibold text-[#2463eb] transition hover:text-blue-800">
+                  <RouterLink to="/forgot-password" class="text-sm font-semibold text-[#2463eb] transition hover:text-blue-800">
                     Quên mật khẩu?
-                  </button>
+                  </RouterLink>
                 </div>
                 <div class="relative">
                   <input
@@ -214,12 +214,18 @@
 
 <script setup>
 import { reactive, ref } from 'vue'
-import { RouterLink } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
+import { authService } from '@/services/api'
+import { persistAuthSession } from '@/utils/authStorage'
+import { useNotify } from '@/composables/useNotify'
 
 const isLoading = ref(false)
 const showPassword = ref(false)
 const errorMessage = ref('')
 const successMessage = ref('')
+const router = useRouter()
+const route = useRoute()
+const notify = useNotify()
 
 const featureCards = [
   {
@@ -267,18 +273,38 @@ const validateLogin = () => {
   return Object.values(loginErrors).every((value) => !value)
 }
 
-const handleLogin = () => {
+const handleLogin = async () => {
   if (!validateLogin()) {
     successMessage.value = ''
     return
   }
 
+  isLoading.value = true
   errorMessage.value = ''
-  successMessage.value = 'Đây là bản giao diện mẫu. Form đăng nhập hiện không kết nối backend.'
+  successMessage.value = ''
+
+  try {
+    const response = await authService.login(loginForm.email, loginForm.password)
+    const token = response?.data?.access_token || response?.access_token
+    const user = response?.data?.nguoi_dung || response?.nguoi_dung
+
+    if (token && user) {
+      persistAuthSession(token, user)
+    }
+
+    successMessage.value = response?.message || 'Đăng nhập thành công.'
+    notify.success(successMessage.value)
+
+    await router.push(typeof route.query.redirect === 'string' ? route.query.redirect : '/profile')
+  } catch (error) {
+    errorMessage.value = error?.message || 'Đăng nhập thất bại.'
+  } finally {
+    isLoading.value = false
+  }
 }
 
 const handleSocialLogin = (provider) => {
   errorMessage.value = ''
-  successMessage.value = `Đăng nhập với ${provider} đang được tắt trong bản UI-only.`
+  successMessage.value = `Đăng nhập với ${provider} chưa được bật trong bản HoangLong.`
 }
 </script>
