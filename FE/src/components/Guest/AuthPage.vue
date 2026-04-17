@@ -67,8 +67,13 @@
               </p>
             </div>
 
-            <div v-if="errorMessage" class="mb-6 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-              {{ errorMessage }}
+            <div v-if="errorMessage || successMessage" class="mb-6 space-y-3">
+              <div v-if="errorMessage" class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                {{ errorMessage }}
+              </div>
+              <div v-if="successMessage" class="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                {{ successMessage }}
+              </div>
             </div>
 
             <form class="space-y-5" @submit.prevent="handleLogin">
@@ -209,13 +214,12 @@
 
 <script setup>
 import { reactive, ref } from 'vue'
-import { RouterLink, useRouter } from 'vue-router'
-import { authService } from '@/services/api'
+import { RouterLink } from 'vue-router'
 
-const router = useRouter()
 const isLoading = ref(false)
 const showPassword = ref(false)
 const errorMessage = ref('')
+const successMessage = ref('')
 
 const featureCards = [
   {
@@ -263,43 +267,18 @@ const validateLogin = () => {
   return Object.values(loginErrors).every((value) => !value)
 }
 
-const handleLogin = async () => {
+const handleLogin = () => {
   if (!validateLogin()) {
+    successMessage.value = ''
     return
   }
 
-  isLoading.value = true
   errorMessage.value = ''
-
-  try {
-    const response = await authService.login(loginForm.email, loginForm.password)
-    const payload = response.data || {}
-    const token = payload.access_token || response.access_token || response.token
-    const user = payload.nguoi_dung || payload.user || response.user || null
-
-    if (token) {
-      localStorage.setItem('access_token', token)
-    }
-
-    if (user) {
-      localStorage.setItem('user', JSON.stringify(user))
-    }
-
-    if (loginForm.rememberMe) {
-      localStorage.setItem('guest_email', loginForm.email)
-    } else {
-      localStorage.removeItem('guest_email')
-    }
-
-    router.push('/dashboard')
-  } catch (error) {
-    errorMessage.value = error.message || 'Đăng nhập thất bại'
-  } finally {
-    isLoading.value = false
-  }
+  successMessage.value = 'Đây là bản giao diện mẫu. Form đăng nhập hiện không kết nối backend.'
 }
 
 const handleSocialLogin = (provider) => {
-  console.log(`Đăng nhập với ${provider}`)
+  errorMessage.value = ''
+  successMessage.value = `Đăng nhập với ${provider} đang được tắt trong bản UI-only.`
 }
 </script>

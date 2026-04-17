@@ -1,10 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { redirectAdminFromLogin, requireAdminAuth } from './guards/admin'
-import { redirectEmployerFromLogin, requireEmployerAuth } from './guards/employer'
-import { redirectCandidateFromLogin, requireCandidateAuth } from './guards/candidate'
 
 const routes = [
-  // Guest pages
   {
     path: '/',
     name: 'Landing',
@@ -15,8 +11,7 @@ const routes = [
     path: '/login',
     name: 'Login',
     component: () => import('@/components/Guest/AuthPage.vue'),
-    meta: { layout: 'auth' },
-    beforeEnter: redirectCandidateFromLogin
+    meta: { layout: 'auth' }
   },
   {
     path: '/register',

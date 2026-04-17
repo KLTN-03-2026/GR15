@@ -314,6 +314,153 @@ http://127.0.0.1:8001
 
 ---
 
+## Tách mã Backend và Frontend các chức năng
+
+Dưới đây là tóm tắt mã nguồn (Frontend bằng Vue 3, Backend bằng Laravel) cho 6 chức năng chính: **Lấy lại mật khẩu, Thông tin công ty (Nhà tuyển dụng), Dashboard admin, Hồ sơ admin, Quản lý đơn ứng tuyển, Quản lý kỹ năng**.
+
+### 1. Lấy lại mật khẩu (Reset Password)
+Chức năng cho phép người dùng đặt lại mật khẩu mới thông qua token được gửi tới email.
+
+*   **Frontend (`ResetPasswordPage.vue`)**
+    *   **Luồng hoạt động**: Tự động lấy `email` và `token` từ Query String (URL params) khi người dùng click link trong email. Cung cấp Form 3 trường (Mật khẩu mới, Xác nhận mật khẩu) với chức năng Show/Hide. Sử dụng `authService.resetPassword()`.
+    *   **API File**: `authService.resetPassword({ email, token, mat_khau, mat_khau_confirmation })`
+    *   **Giao diện**:
+        ```vue
+        <template>
+          <form @submit.prevent="handleSubmit">
+            <input type="password" v-model="form.mat_khau" placeholder="Mật khẩu mới" />
+            <input type="password" v-model="form.mat_khau_confirmation" placeholder="Xác nhận mật khẩu mới" />
+            <button :disabled="loading">Xác nhận đổi mật khẩu</button>
+          </form>
+        </template>
+        ```
+
+*   **Backend (`AuthController.php`)**
+    *   **Action**: `datLaiMatKhau(DatLaiMatKhauRequest $request)`
+    *   **Route**: `POST /api/v1/dat-lai-mat-khau`
+    *   **Logic**:
+        *   Broker xử lý reset password thông qua `Password::broker()->reset()`.
+        *   Validate email, password mới (`min:8`...).
+        *   Xóa toàn bộ token API cũ (Sanctum Tokens) của người dùng để bắt buộc phải đăng nhập lại với mật khẩu mới.
+        ```php
+        // Xóa toàn bộ phiên đăng nhập
+        $nguoiDung->tokens()->delete();
+        ```
+
+### 2. Thông tin công ty (Nhà tuyển dụng)
+Nhà tuyển dụng quản lý hồ sơ công ty và cấu hình các thành viên nhân sự HR nội bộ với phân quyền.
+
+*   **Frontend (`EmployerCompanyPage.vue`)**
+    *   **Luồng hoạt động**: Cho phép lấy toàn bộ chi tiết công ty, update/tạo mới công ty (`employerCompanyService.updateCompany()`). Hỗ trợ Realtime WebSocket follower qua Laravel Echo. Cung cấp Panel quản lý nhân sự HR (Thêm/Sửa role/Xóa member).
+    *   **API File**: `employerCompanyService.getCompany()`, `createCompany()`, `updateCompany()`, `addMember()`, `updateMemberRole()`, `removeMember()`
+    *   **Giao diện**:
+        ```vue
+        <script setup>
+        // Flow Tải Company: Promise.all([fetchIndustries(), fetchCompany(), fetchStats()])
+        // Realtime Connect: subscribeFollowerChannel(companyId) -> lắng nghe '.company.followers.updated'
+        </script>
+        ```
+
+*   **Backend (`NhaTuyenDungCongTyController.php`)**
+    *   **Routes**: `GET/POST/PUT /api/v1/nha-tuyen-dung/cong-ty`, `GET/POST/PUT/DELETE /api/v1/nha-tuyen-dung/cong-ty/thanh-viens`
+    *   **Logic**:
+        *   Cập nhật Logo file upload bằng Laravel Storage `request->file('logo')->store('cong_ty_logos')`.
+        *   Check quan hệ `la_chu_so_huu`: Xác định chủ công ty được quyền quản lý Role theo `vai_tro_noi_bo` trên bảng pivot `nguoi_dung_cong_ty`.
+        *   Ràng buộc: Mỗi Nhà tuyển dụng chỉ được sở hữu 1 công ty.
+        ```php
+        // Logic Cập nhật Role HR
+        $congTy->thanhViens()->updateExistingPivot($memberId, [
+              'vai_tro_noi_bo' => $data['vai_tro_noi_bo'],
+        ]);
+        ```
+
+### 3. Dashboard Admin
+Khu vực thống kê overview thị trường tổng quan và sức khoẻ của hệ thống tuyển dụng dành cho Quản trị viên.
+
+*   **Frontend (`AdminDashboardPage.vue`)**
+    *   **Luồng hoạt động**: Gọi song song 3 API để lấy thống kê chi tiết của Người dùng, Công ty, và Thị trường. Tính toán xu hướng chart theo phần trăm. Render giao diện với số liệu Real-time.
+    *   **API File**: `adminMarketService.getDashboard()`, `userService.getUserStats()`, `companyService.getCompanyStats()`
+    *   **Giao diện**: Render nhiều Cards (`overview`, `top_categories`, `monthly_job_trend`). Hiển thị Insight động từ thị trường (`hints`).
+
+*   **Backend (`AdminMarketDashboardController.php`)**
+    *   **Route**: `GET /api/v1/admin/dashboard/market`
+    *   **Logic**: Tổng hợp phân tích Data Market live job (Job đang active).
+        *   Thống kê tỷ lệ các công ty có Job theo level, form work (Remote, Offline).
+        *   Phân tích Top list kỹ năng yêu cầu (group by `tin_tuyen_dung_ky_nangs` bảng pivot).
+        *   Lấy Market Trend (Job Creation Flow theo 6 tháng).
+        ```php
+        public function overview(): JsonResponse {
+            return response()->json([
+                'overview' => $this->buildOverview(),
+                'top_categories' => $this->buildTopCategories(...),
+                'monthly_job_trend' => $this->buildMonthlyJobTrend(),
+                // Tính toán Insight báo cáo tự động...
+            ]);
+        }
+        ```
+
+### 4. Hồ sơ Admin
+Trang cá nhân cho phép Quản trị viên chỉnh sửa thông tin tài khoản và đổi Avatar.
+
+*   **Frontend (`AdminProfilePage.vue`)**
+    *   **Luồng hoạt động**: Tải adminProfile info từ `authService.getProfile()`. Cho phép Preview ảnh Avatar ngay khi chọn thông qua `URL.createObjectURL()`. Tự động gọi API upload Avatar lập tức sau khi file được handle (`uploadAvatarImmediately()`).
+    *   **Giao diện**: Form profile hỗ trợ đồng bộ (`syncStoredAdmin()`) thông tin user vào localStorage để cập nhật toàn cục trạng thái đăng nhập hệ thống bằng Dispatch Event `admin-profile-updated`.
+
+*   **Backend (`AuthController.php` / `UserProfileController.php`)**
+    *   **Action**: Lấy qua `me(Request $request)`, update bằng `capNhatHoSo(CapNhatHoSoRequest $request)`.
+    *   **Logic**:
+        *   Admin là `User` có role đặc biệt. Profile API có thể xử lý việc tải hình ảnh file lên AWS S3 / Local System disk (lưu tại storage `public/avatars`).
+        *   Phản hồi `avatar_url` có chứa full Public URL ảnh.
+
+### 5. Quản lý đơn ứng tuyển (Toàn hệ thống)
+Theo dõi toàn bộ các luồng luân chuyển hồ sơ xin việc trên hệ thống, kèm theo các trạng thái phỏng vấn/từ chối.
+
+*   **Frontend (`ApplicationManagementPage.vue`)**
+    *   **Luồng hoạt động**: Sử dụng AdminPaginationBar để xem danh sách `applications`. Hỗ trợ bộ lọc Status linh hoạt (Waiting, Checked, Interview, Accept/Deny). Form Detail xem thông tin Thư xin việc (Cover Letter) kèm trạng thái hẹn Interview lịch.
+    *   **API File**: `adminApplicationService.getApplications()`, `adminApplicationService.getStats()`
+    *   **Giao diện**:
+        ```javascript
+        // Lọc Filter động:
+        const loadApplications = async () => {
+            adminApplicationService.getApplications({ page: 1, trang_thai: selectedStatus, cong_ty_id: selectedCompany })
+        }
+        ```
+
+*   **Backend (`AdminUngTuyenController.php`)**
+    *   **Routes**: `GET /api/v1/admin/ung-tuyens`, `GET /api/v1/admin/ung-tuyens/thong-ke`
+    *   **Logic**: Sử dụng Eager Loading (`with`) tối ưu N+1 Query. Load `TinTuyenDung`, Load `HoSo`, Load Email của User thuộc về hồ sơ.
+        ```php
+        $query = UngTuyen::with([
+            'tinTuyenDung:id,cong_ty_id,tieu_de,trang_thai',
+            'tinTuyenDung.congTy:id,ten_cong_ty',
+            'hoSo' => function ($q) {
+                $q->withTrashed()->with('nguoiDung:id,email'); // Chỉ load email ứng viên liên đới
+            }
+        ]);
+        ```
+
+### 6. Quản lý Kỹ năng (Skils Collection)
+Bộ kỹ năng từ khóa phục vụ cho AI matching sau này như hệ thống Catalog.
+
+*   **Frontend (`SkillManagementPage.vue`)**
+    *   **Luồng hoạt động**: Bảng danh sách Kỹ Năng Admin sử dụng Debounce Search chống spam request ($250 \text{ms}$). Popup Modal thêm/Sửa kỹ năng cùng confirm delete Kĩ năng. Quản lý Thống kê (`có Icon`, `có mô tả`).
+    *   **Giao diện**: Render Data Table truyền thống, kết hợp cùng Form Modal cho CRUD thao tác nhanh ngay trên màn hình. Mọi thay đổi đều Refresh API danh sách kèm Update Stats lập tức.
+
+*   **Backend (`AdminKyNangController.php`)**
+    *   **Routes**: RESTful Resource (index, store, show, update, destroy, thongKe). `GET/POST/PUT/DELETE /api/v1/admin/ky-nangs`
+    *   **Logic**:
+        *   Khởi tạo Data từ request validation: `TaoKyNangRequest`, `CapNhatKyNangRequest`.
+        *   Hỗ trợ sắp xếp Sort Động (`sort_by`, `sort_dir`) kết hợp Filter Search (`LIKE`) cho tên kỹ năng.
+        ```php
+        // Logic Filter Search mạnh:
+        $query->where(function ($q) use ($search) {
+            $q->where('ten_ky_nang', 'like', "%{$search}%")
+              ->orWhere('mo_ta', 'like', "%{$search}%");
+        });
+        ```
+
+---
+
 ## Hướng phát triển tương lai
 
 - Cải thiện độ chính xác của matching và semantic search.
