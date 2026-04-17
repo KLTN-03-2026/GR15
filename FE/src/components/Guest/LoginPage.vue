@@ -102,7 +102,7 @@ const handleLogin = async () => {
         response?.data?.nguoi_dung?.vai_tro ??
         0
       )
-      const fallback = role === 0 ? '/applications' : '/skills'
+      const fallback = role === 2 ? '/admin' : role === 1 ? '/employer' : '/dashboard'
       router.push(typeof route.query.redirect === 'string' ? route.query.redirect : fallback)
     }, 500)
   } catch (error) {

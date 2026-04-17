@@ -12,10 +12,15 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__ . '/../routes/console.php',
         health: '/up',
     )
+    ->withBroadcasting(
+        __DIR__ . '/../routes/channels.php',
+        ['middleware' => ['auth:sanctum']],
+    )
     ->withMiddleware(function (Middleware $middleware): void {
         // Đăng ký middleware alias cho vai trò
         $middleware->alias([
             'role' => \App\Http\Middleware\KiemTraVaiTro::class,
+            'company_role' => \App\Http\Middleware\KiemTraVaiTroNoiBoCongTy::class,
         ]);
 
         $middleware->redirectGuestsTo(function (Request $request) {

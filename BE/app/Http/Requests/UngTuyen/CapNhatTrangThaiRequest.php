@@ -55,6 +55,11 @@ class CapNhatTrangThaiRequest extends FormRequest
                 'string',
                 'max:255'
             ],
+            'hr_phu_trach_id' => [
+                'nullable',
+                'integer',
+                'exists:nguoi_dungs,id',
+            ],
             'ghi_chu' => [
                 'nullable',
                 'string',

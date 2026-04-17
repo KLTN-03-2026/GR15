@@ -51,7 +51,7 @@ const loadSkills = async () => {
   } catch (error) {
     skills.value = []
     totalSkills.value = 0
-    notify.apiError(error, 'Khong the tai danh sach ky nang.')
+    notify.apiError(error, 'Không thể tải danh sách kỹ năng.')
   } finally {
     loading.value = false
   }
@@ -78,32 +78,34 @@ onMounted(loadSkills)
 <template>
   <section class="py-14 lg:py-16">
     <div class="mx-auto max-w-7xl px-6">
-      <div class="rounded-[32px] border border-slate-200 bg-gradient-to-r from-white via-blue-50 to-indigo-100 p-8 shadow-xl">
+      <div class="rounded-[32px] border border-slate-200 bg-gradient-to-r from-white via-blue-50 to-indigo-100 p-8 shadow-xl dark:border-slate-800 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800">
         <p class="text-sm font-bold uppercase tracking-[0.35em] text-[#2463eb]">Skill Directory</p>
-        <h1 class="mt-4 text-4xl font-black tracking-tight text-slate-900">Danh sach ky nang</h1>
-        <p class="mt-4 max-w-3xl text-base leading-8 text-slate-600">
-          Chi giu lai phan duyet, tim kiem va xem chi tiet ky nang de tap trung vao luong cot loi.
+        <h1 class="mt-4 text-4xl font-black tracking-tight text-slate-900 dark:text-white">
+          Khám phá kỹ năng đang được tuyển dụng
+        </h1>
+        <p class="mt-4 max-w-3xl text-base leading-8 text-slate-600 dark:text-slate-400">
+          Duyệt nhanh toàn bộ kỹ năng phổ biến trong hệ thống để đi từ kỹ năng sang các việc làm và gợi ý nghề nghiệp liên quan.
         </p>
       </div>
 
-      <div class="mt-8 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div class="mt-8 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <div class="grid gap-4 lg:grid-cols-[1fr_220px_180px]">
-          <div class="rounded-2xl bg-slate-50 px-4">
-            <label class="block pt-3 text-xs font-bold uppercase tracking-[0.3em] text-slate-400">Tim ky nang</label>
+          <div class="rounded-2xl bg-slate-50 px-4 dark:bg-slate-950">
+            <label class="block pt-3 text-xs font-bold uppercase tracking-[0.3em] text-slate-400">Tìm kỹ năng</label>
             <input
               v-model="filters.search"
               type="text"
-              class="w-full border-none bg-transparent py-3 text-slate-900 shadow-none outline-none ring-0 placeholder:text-slate-400 focus:ring-0"
-              placeholder="Ten ky nang..."
+              class="w-full border-none bg-transparent py-3 text-slate-900 shadow-none outline-none ring-0 placeholder:text-slate-400 focus:ring-0 dark:text-white"
+              placeholder="Tên kỹ năng..."
               @keyup.enter="applyFilters"
             />
           </div>
 
-          <label class="rounded-2xl bg-slate-50 px-4">
-            <span class="block pt-3 text-xs font-bold uppercase tracking-[0.3em] text-slate-400">So dong / trang</span>
+          <label class="rounded-2xl bg-slate-50 px-4 dark:bg-slate-950">
+            <span class="block pt-3 text-xs font-bold uppercase tracking-[0.3em] text-slate-400">Số dòng / trang</span>
             <select
               v-model="filters.perPage"
-              class="w-full border-none bg-transparent py-3 text-slate-900 outline-none ring-0 focus:ring-0"
+              class="w-full border-none bg-transparent py-3 text-slate-900 outline-none ring-0 focus:ring-0 dark:text-white"
               @change="applyFilters"
             >
               <option :value="12">12</option>
@@ -117,21 +119,21 @@ onMounted(loadSkills)
             class="rounded-2xl bg-[#2463eb] px-6 py-4 text-sm font-bold text-white transition hover:bg-blue-700"
             @click="applyFilters"
           >
-            Ap dung
+            Áp dụng
           </button>
         </div>
       </div>
 
-      <div class="mt-6 flex items-center justify-between text-sm text-slate-500">
-        <p>{{ totalSkills }} ky nang dang hien thi</p>
-        <RouterLink to="/register" class="font-semibold text-[#2463eb] hover:underline">Dang ky tai khoan</RouterLink>
+      <div class="mt-6 flex items-center justify-between text-sm text-slate-500 dark:text-slate-400">
+        <p>{{ totalSkills }} kỹ năng đang hiển thị</p>
+        <RouterLink to="/" class="font-semibold text-[#2463eb] hover:underline">Quay lại trang chủ</RouterLink>
       </div>
 
       <div v-if="loading" class="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <div
           v-for="index in filters.perPage"
           :key="index"
-          class="h-40 animate-pulse rounded-3xl bg-slate-200/70"
+          class="h-40 animate-pulse rounded-3xl bg-slate-200/70 dark:bg-slate-800/70"
         ></div>
       </div>
 
@@ -139,54 +141,40 @@ onMounted(loadSkills)
         <div
           v-for="skill in skills"
           :key="skill.id"
-          class="group flex h-full flex-col rounded-3xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:border-[#2463eb]/40 hover:shadow-xl"
+          class="group flex h-full flex-col rounded-3xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:border-[#2463eb]/40 hover:shadow-xl dark:border-slate-800 dark:bg-slate-900"
         >
           <div class="flex items-center justify-between gap-4">
-            <h2 class="text-lg font-bold text-slate-900 group-hover:text-[#2463eb]">
+            <h2 class="text-lg font-bold text-slate-900 group-hover:text-[#2463eb] dark:text-white">
               {{ skill.ten_ky_nang || skill.ten }}
             </h2>
-            <span class="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-[#2463eb]">Skill</span>
+            <span class="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-[#2463eb] dark:bg-slate-800 dark:text-blue-300">
+              Skill
+            </span>
           </div>
 
-          <p class="mt-4 flex-1 text-sm leading-7 text-slate-600">
-            {{ skill.mo_ta || 'Ky nang nay dang duoc cap nhat them mo ta va boi canh su dung.' }}
+          <p class="mt-4 flex-1 text-sm leading-7 text-slate-600 dark:text-slate-400">
+            {{ skill.mo_ta || 'Kỹ năng này đang được cập nhật thêm mô tả và bối cảnh áp dụng trong tuyển dụng.' }}
           </p>
 
-          <div class="mt-5">
+          <div class="mt-5 flex items-center justify-between gap-3">
+            <RouterLink
+              :to="{ path: '/jobs', query: { search: skill.ten_ky_nang || skill.ten } }"
+              class="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 transition hover:border-[#2463eb] hover:text-[#2463eb] dark:border-slate-700 dark:text-slate-200"
+            >
+              Xem việc
+            </RouterLink>
             <RouterLink
               :to="`/skills/${skill.id}`"
-              class="inline-flex rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white transition hover:bg-[#2463eb]"
+              class="shrink-0 rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white transition hover:bg-[#2463eb] dark:bg-white dark:text-slate-900 dark:hover:bg-[#2463eb] dark:hover:text-white"
             >
-              Chi tiet
+              Chi tiết
             </RouterLink>
           </div>
         </div>
       </div>
 
-      <div v-else class="mt-8 rounded-3xl border border-dashed border-slate-300 p-12 text-center">
-        <p class="text-lg font-semibold text-slate-700">Chua tim thay ky nang phu hop.</p>
-      </div>
-
-      <div v-if="!loading && totalPages > 1" class="mt-8 flex items-center justify-center gap-2">
-        <button
-          type="button"
-          class="rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-600 disabled:opacity-50"
-          :disabled="filters.page <= 1"
-          @click="filters.page -= 1; syncRoute(); loadSkills()"
-        >
-          Truoc
-        </button>
-        <span class="rounded-xl bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700">
-          {{ filters.page }} / {{ totalPages }}
-        </span>
-        <button
-          type="button"
-          class="rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-600 disabled:opacity-50"
-          :disabled="filters.page >= totalPages"
-          @click="filters.page += 1; syncRoute(); loadSkills()"
-        >
-          Sau
-        </button>
+      <div v-else class="mt-8 rounded-3xl border border-dashed border-slate-300 p-12 text-center dark:border-slate-700">
+        <p class="text-lg font-semibold text-slate-700 dark:text-slate-300">Chưa tìm thấy kỹ năng phù hợp.</p>
       </div>
     </div>
   </section>

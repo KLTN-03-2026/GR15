@@ -27,6 +27,14 @@ class AiClientService
         ]);
     }
 
+    public function parseCvFromRawText(int $hoSoId, string $rawText): array
+    {
+        return $this->post('/parse/cv', [
+            'ho_so_id' => $hoSoId,
+            'raw_text' => $rawText,
+        ]);
+    }
+
     public function parseJd(int $tinTuyenDungId, string $jobText): array
     {
         return $this->post('/parse/jd', [

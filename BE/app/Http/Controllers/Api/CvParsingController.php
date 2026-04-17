@@ -24,15 +24,17 @@ class CvParsingController extends Controller
     {
         $hoSo = HoSo::where('nguoi_dung_id', $request->user()->id)->findOrFail($id);
 
-        if (!$hoSo->file_cv) {
+        if (!$hoSo->file_cv && !$this->hasBuilderContent($hoSo)) {
             return response()->json([
                 'success' => false,
-                'message' => 'Hồ sơ chưa có file CV để phân tích.',
+                'message' => 'Hồ sơ chưa có dữ liệu CV để phân tích.',
             ], 422);
         }
 
         try {
-            $result = $this->aiClientService->parseCv($hoSo->id, $hoSo->file_cv);
+            $result = $hoSo->file_cv
+                ? $this->aiClientService->parseCv($hoSo->id, $hoSo->file_cv)
+                : $this->aiClientService->parseCvFromRawText($hoSo->id, $this->buildBuilderCvRawText($hoSo, $request));
             $data = $result['data'] ?? [];
 
             $parsing = HoSoParsing::updateOrCreate(
@@ -102,6 +104,117 @@ class CvParsingController extends Controller
             'updated_fields' => $updatedFields,
             'synced_skills' => $syncedSkills,
         ];
+    }
+
+    private function hasBuilderContent(HoSo $hoSo): bool
+    {
+        return filled($hoSo->muc_tieu_nghe_nghiep)
+            || filled($hoSo->mo_ta_ban_than)
+            || !empty($hoSo->ky_nang_json)
+            || !empty($hoSo->kinh_nghiem_json)
+            || !empty($hoSo->hoc_van_json)
+            || !empty($hoSo->du_an_json)
+            || !empty($hoSo->chung_chi_json);
+    }
+
+    private function buildBuilderCvRawText(HoSo $hoSo, Request $request): string
+    {
+        $owner = $request->user();
+        $sections = [];
+
+        $sections[] = trim((string) ($owner?->ho_ten ?? ''));
+        $sections[] = trim((string) ($owner?->email ?? ''));
+        $sections[] = trim((string) ($owner?->so_dien_thoai ?? ''));
+        $sections[] = 'Tieu de ho so: ' . trim((string) ($hoSo->tieu_de_ho_so ?? ''));
+        $sections[] = 'Vi tri muc tieu: ' . trim((string) ($hoSo->vi_tri_ung_tuyen_muc_tieu ?? ''));
+        $sections[] = 'Nganh nghe muc tieu: ' . trim((string) ($hoSo->ten_nganh_nghe_muc_tieu ?? ''));
+        $sections[] = 'Muc tieu nghe nghiep: ' . trim((string) ($hoSo->muc_tieu_nghe_nghiep ?? ''));
+        $sections[] = 'Mo ta ban than: ' . trim((string) ($hoSo->mo_ta_ban_than ?? ''));
+        $sections[] = 'Trinh do: ' . trim((string) ($hoSo->trinh_do ?? ''));
+        $sections[] = 'So nam kinh nghiem: ' . trim((string) ($hoSo->kinh_nghiem_nam ?? ''));
+
+        $skills = collect($hoSo->ky_nang_json ?? [])
+            ->map(fn ($item) => trim((string) ($item['ten'] ?? '')))
+            ->filter()
+            ->values()
+            ->all();
+        if ($skills !== []) {
+            $sections[] = "Ky nang:\n- " . implode("\n- ", $skills);
+        }
+
+        $experiences = collect($hoSo->kinh_nghiem_json ?? [])
+            ->map(function ($item) {
+                $parts = array_filter([
+                    trim((string) ($item['vi_tri'] ?? '')),
+                    trim((string) ($item['cong_ty'] ?? '')),
+                    trim((string) ($item['bat_dau'] ?? '')),
+                    trim((string) ($item['ket_thuc'] ?? '')),
+                    trim((string) ($item['mo_ta'] ?? '')),
+                ]);
+                return $parts === [] ? null : implode(' | ', $parts);
+            })
+            ->filter()
+            ->values()
+            ->all();
+        if ($experiences !== []) {
+            $sections[] = "Kinh nghiem:\n- " . implode("\n- ", $experiences);
+        }
+
+        $educations = collect($hoSo->hoc_van_json ?? [])
+            ->map(function ($item) {
+                $parts = array_filter([
+                    trim((string) ($item['truong'] ?? '')),
+                    trim((string) ($item['chuyen_nganh'] ?? '')),
+                    trim((string) ($item['bat_dau'] ?? '')),
+                    trim((string) ($item['ket_thuc'] ?? '')),
+                    trim((string) ($item['mo_ta'] ?? '')),
+                ]);
+                return $parts === [] ? null : implode(' | ', $parts);
+            })
+            ->filter()
+            ->values()
+            ->all();
+        if ($educations !== []) {
+            $sections[] = "Hoc van:\n- " . implode("\n- ", $educations);
+        }
+
+        $projects = collect($hoSo->du_an_json ?? [])
+            ->map(function ($item) {
+                $parts = array_filter([
+                    trim((string) ($item['ten'] ?? '')),
+                    trim((string) ($item['vai_tro'] ?? '')),
+                    trim((string) ($item['cong_nghe'] ?? '')),
+                    trim((string) ($item['mo_ta'] ?? '')),
+                    trim((string) ($item['link'] ?? '')),
+                ]);
+                return $parts === [] ? null : implode(' | ', $parts);
+            })
+            ->filter()
+            ->values()
+            ->all();
+        if ($projects !== []) {
+            $sections[] = "Du an:\n- " . implode("\n- ", $projects);
+        }
+
+        $certificates = collect($hoSo->chung_chi_json ?? [])
+            ->map(function ($item) {
+                $parts = array_filter([
+                    trim((string) ($item['ten'] ?? '')),
+                    trim((string) ($item['don_vi'] ?? '')),
+                    trim((string) ($item['nam'] ?? '')),
+                ]);
+                return $parts === [] ? null : implode(' | ', $parts);
+            })
+            ->filter()
+            ->values()
+            ->all();
+        if ($certificates !== []) {
+            $sections[] = "Chung chi:\n- " . implode("\n- ", $certificates);
+        }
+
+        return collect($sections)
+            ->filter(fn ($value) => trim((string) $value) !== '')
+            ->implode("\n\n");
     }
 
     private function dongBoKyNangChoNguoiDung(int $nguoiDungId, array $parsedSkills, float $confidenceScore): int

@@ -26,6 +26,7 @@ class CapNhatTinTuyenDungRequest extends FormRequest
             'kinh_nghiem_yeu_cau' => ['nullable', 'string', 'max:100'],
             'ngay_het_han' => ['nullable', 'date'],
             'trang_thai' => ['nullable', 'integer', 'in:0,1'],
+            'hr_phu_trach_id' => ['nullable', 'integer', 'exists:nguoi_dungs,id'],
             'nganh_nghes' => ['sometimes', 'array', 'min:1'],
             'nganh_nghes.*' => ['integer', 'exists:nganh_nghes,id'],
         ];

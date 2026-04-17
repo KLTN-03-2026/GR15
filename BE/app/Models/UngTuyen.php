@@ -14,6 +14,7 @@ class UngTuyen extends Model
     protected $fillable = [
         'tin_tuyen_dung_id',
         'ho_so_id',
+        'hr_phu_trach_id',
         'trang_thai',
         'da_rut_don',
         'thoi_gian_rut_don',
@@ -73,6 +74,7 @@ class UngTuyen extends Model
         'ngay_hen_phong_van' => 'datetime',
         'thoi_gian_phan_hoi_phong_van' => 'datetime',
         'trang_thai' => 'integer',
+        'hr_phu_trach_id' => 'integer',
         'da_rut_don' => 'boolean',
         'trang_thai_tham_gia_phong_van' => 'integer',
     ];
@@ -91,5 +93,10 @@ class UngTuyen extends Model
     public function hoSo()
     {
         return $this->belongsTo(HoSo::class, 'ho_so_id')->withTrashed(); // Lấy cả hồ sơ bị xoá mềm để lưu vết
+    }
+
+    public function hrPhuTrach()
+    {
+        return $this->belongsTo(NguoiDung::class, 'hr_phu_trach_id');
     }
 }

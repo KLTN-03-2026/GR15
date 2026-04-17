@@ -27,7 +27,10 @@ class TinTuyenDung extends Model
         'ngay_het_han',
         'luot_xem',
         'cong_ty_id',
+        'hr_phu_trach_id',
         'trang_thai',
+        'published_at',
+        'reactivated_at',
     ];
 
     protected $casts = [
@@ -37,8 +40,11 @@ class TinTuyenDung extends Model
         'muc_luong_den' => 'integer',
         'luot_xem' => 'integer',
         'cong_ty_id' => 'integer',
+        'hr_phu_trach_id' => 'integer',
         'trang_thai' => 'integer',
         'ngay_het_han' => 'datetime',
+        'published_at' => 'datetime',
+        'reactivated_at' => 'datetime',
     ];
 
     protected $appends = [
@@ -64,6 +70,11 @@ class TinTuyenDung extends Model
     public function congTy()
     {
         return $this->belongsTo(CongTy::class, 'cong_ty_id');
+    }
+
+    public function hrPhuTrach()
+    {
+        return $this->belongsTo(NguoiDung::class, 'hr_phu_trach_id');
     }
 
     /**

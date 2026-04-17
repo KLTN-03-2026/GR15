@@ -87,3 +87,11 @@ export const updateStoredCandidate = (user) => {
   storage.setItem(USER_KEY, JSON.stringify(user))
   emitAuthChanged()
 }
+
+export const updateStoredEmployer = (user) => {
+  const storage = getStorage()
+  if (!storage || !user) return
+
+  storage.setItem(EMPLOYER_KEY, JSON.stringify(user))
+  emitAuthChanged()
+}

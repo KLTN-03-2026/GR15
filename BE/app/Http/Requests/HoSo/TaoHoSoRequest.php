@@ -6,6 +6,31 @@ use Illuminate\Foundation\Http\FormRequest;
 
 class TaoHoSoRequest extends FormRequest
 {
+    protected function prepareForValidation(): void
+    {
+        $jsonFields = [
+            'ky_nang_json',
+            'kinh_nghiem_json',
+            'hoc_van_json',
+            'du_an_json',
+            'chung_chi_json',
+        ];
+
+        $payload = [];
+
+        foreach ($jsonFields as $field) {
+            $value = $this->input($field);
+            if (is_string($value)) {
+                $decoded = json_decode($value, true);
+                $payload[$field] = json_last_error() === JSON_ERROR_NONE ? $decoded : [];
+            }
+        }
+
+        if ($payload !== []) {
+            $this->merge($payload);
+        }
+    }
+
     public function authorize(): bool
     {
         return true;
@@ -20,6 +45,18 @@ class TaoHoSoRequest extends FormRequest
             'kinh_nghiem_nam' => ['nullable', 'integer', 'min:0', 'max:50'],
             'mo_ta_ban_than' => ['nullable', 'string'],
             'file_cv' => ['nullable', 'file', 'mimes:pdf,doc,docx', 'max:5120'],
+            'nguon_ho_so' => ['nullable', 'string', 'in:upload,builder,hybrid'],
+            'mau_cv' => ['nullable', 'string', 'max:100'],
+            'che_do_mau_cv' => ['nullable', 'string', 'in:style,position'],
+            'vi_tri_ung_tuyen_muc_tieu' => ['nullable', 'string', 'max:150'],
+            'ten_nganh_nghe_muc_tieu' => ['nullable', 'string', 'max:150'],
+            'che_do_anh_cv' => ['nullable', 'string', 'in:profile,upload'],
+            'anh_cv' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
+            'ky_nang_json' => ['nullable', 'array'],
+            'kinh_nghiem_json' => ['nullable', 'array'],
+            'hoc_van_json' => ['nullable', 'array'],
+            'du_an_json' => ['nullable', 'array'],
+            'chung_chi_json' => ['nullable', 'array'],
             'trang_thai' => ['nullable', 'integer', 'in:0,1'],
         ];
     }
@@ -36,6 +73,12 @@ class TaoHoSoRequest extends FormRequest
             'file_cv.file' => 'File CV phải là một tệp tin.',
             'file_cv.mimes' => 'File CV chỉ chấp nhận: pdf, doc, docx.',
             'file_cv.max' => 'File CV tối đa 5MB.',
+            'nguon_ho_so.in' => 'Nguồn hồ sơ không hợp lệ.',
+            'che_do_mau_cv.in' => 'Chế độ template không hợp lệ.',
+            'che_do_anh_cv.in' => 'Chế độ ảnh CV không hợp lệ.',
+            'anh_cv.image' => 'Ảnh CV phải là file hình hợp lệ.',
+            'anh_cv.mimes' => 'Ảnh CV chỉ chấp nhận: jpg, jpeg, png, webp.',
+            'anh_cv.max' => 'Ảnh CV tối đa 2MB.',
             'trang_thai.in' => 'Trạng thái phải là 0 (ẩn) hoặc 1 (công khai).',
         ];
     }

@@ -116,11 +116,87 @@ class NguoiDung extends Authenticatable implements MustVerifyEmail
     }
 
     /**
-     * Công ty của nhà tuyển dụng (mỗi NTD có 1 công ty).
+     * Công ty do nhà tuyển dụng sở hữu theo schema cũ.
      */
     public function congTy()
     {
         return $this->hasOne(\App\Models\CongTy::class, 'nguoi_dung_id');
+    }
+
+    /**
+     * Danh sách công ty mà nhà tuyển dụng là thành viên.
+     */
+    public function congTyThanhViens()
+    {
+        return $this->belongsToMany(\App\Models\CongTy::class, 'cong_ty_nguoi_dungs', 'nguoi_dung_id', 'cong_ty_id')
+            ->withPivot('id', 'vai_tro_noi_bo', 'duoc_tao_boi')
+            ->withTimestamps();
+    }
+
+    /**
+     * Danh sách công ty mà ứng viên đang theo dõi.
+     */
+    public function congTyTheoDois()
+    {
+        return $this->belongsToMany(\App\Models\CongTy::class, 'theo_doi_cong_tys', 'nguoi_dung_id', 'cong_ty_id')
+            ->withTimestamps();
+    }
+
+    public function congTyHienTai(): ?\App\Models\CongTy
+    {
+        $company = $this->congTyThanhViens()
+            ->orderByRaw("
+                CASE
+                    WHEN cong_ty_nguoi_dungs.vai_tro_noi_bo = ? THEN 0
+                    ELSE 1
+                END
+            ", [CongTy::VAI_TRO_NOI_BO_OWNER])
+            ->first();
+
+        return $company ?: $this->congTy()->first();
+    }
+
+    public function laChuSoHuuCongTy(int $congTyId): bool
+    {
+        if ($this->congTy()->whereKey($congTyId)->exists()) {
+            return true;
+        }
+
+        return $this->congTyThanhViens()
+            ->where('cong_tys.id', $congTyId)
+            ->wherePivot('vai_tro_noi_bo', CongTy::VAI_TRO_NOI_BO_OWNER)
+            ->exists();
+    }
+
+    public function layVaiTroNoiBoCongTy(?CongTy $congTy = null): ?string
+    {
+        $company = $congTy ?? $this->congTyHienTai();
+
+        if (!$company) {
+            return null;
+        }
+
+        $membership = $this->congTyThanhViens()
+            ->where('cong_tys.id', $company->id)
+            ->first();
+
+        if ($membership?->pivot?->vai_tro_noi_bo) {
+            return $membership->pivot->vai_tro_noi_bo;
+        }
+
+        if ($this->congTy()->whereKey($company->id)->exists()) {
+            return CongTy::VAI_TRO_NOI_BO_OWNER;
+        }
+
+        return null;
+    }
+
+    public function coVaiTroNoiBoCongTy(array|string $roles, ?CongTy $congTy = null): bool
+    {
+        $currentRole = $this->layVaiTroNoiBoCongTy($congTy);
+        $allowedRoles = is_array($roles) ? $roles : [$roles];
+
+        return $currentRole !== null && in_array($currentRole, $allowedRoles, true);
     }
 
     /**

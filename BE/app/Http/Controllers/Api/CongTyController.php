@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\CongTy;
+use App\Models\NguoiDung;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -19,14 +20,28 @@ use Illuminate\Support\Facades\Storage;
  */
 class CongTyController extends Controller
 {
-    private function mapCompanyData(CongTy $congTy): array
+    private function mapCompanyData(CongTy $congTy, array $followedCompanyIds = []): array
     {
         $data = $congTy->toArray();
         $data['logo_url'] = $congTy->logo
             ? url('/api/v1/cong-ty-logo?path=' . urlencode($congTy->logo))
             : null;
+        $data['so_nguoi_theo_doi'] = (int) ($data['so_nguoi_theo_doi'] ?? 0);
+        $data['da_theo_doi'] = in_array((int) $congTy->id, $followedCompanyIds, true);
 
         return $data;
+    }
+
+    private function getFollowedCompanyIds(?NguoiDung $nguoiDung): array
+    {
+        if (!$nguoiDung?->isUngVien()) {
+            return [];
+        }
+
+        return $nguoiDung->congTyTheoDois()
+            ->pluck('cong_tys.id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
     }
 
     /**
@@ -35,8 +50,12 @@ class CongTyController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
+        $nguoiDung = auth('sanctum')->user();
+        $followedCompanyIds = $this->getFollowedCompanyIds($nguoiDung);
+
         $query = CongTy::with('nganhNghe:id,ten_nganh')
             ->withCount([
+                'nguoiDungTheoDois as so_nguoi_theo_doi',
                 'tinTuyenDungs as so_tin_dang_hoat_dong' => function ($q) {
                     $q->where('trang_thai', \App\Models\TinTuyenDung::TRANG_THAI_HOAT_DONG)
                         ->where(function ($subQ) {
@@ -75,8 +94,8 @@ class CongTyController extends Controller
         return response()->json([
             'success' => true,
             'data' => $data instanceof \Illuminate\Pagination\LengthAwarePaginator
-                ? $data->through(fn ($item) => $this->mapCompanyData($item))
-                : $data->map(fn ($item) => $this->mapCompanyData($item)),
+                ? $data->through(fn ($item) => $this->mapCompanyData($item, $followedCompanyIds))
+                : $data->map(fn ($item) => $this->mapCompanyData($item, $followedCompanyIds)),
         ]);
     }
 
@@ -86,6 +105,9 @@ class CongTyController extends Controller
      */
     public function show(int $id): JsonResponse
     {
+        $nguoiDung = auth('sanctum')->user();
+        $followedCompanyIds = $this->getFollowedCompanyIds($nguoiDung);
+
         $congTy = CongTy::with([
             'nganhNghe:id,ten_nganh',
             'nguoiDung:id,ho_ten,email',
@@ -103,6 +125,7 @@ class CongTyController extends Controller
             },
         ])
             ->withCount([
+                'nguoiDungTheoDois as so_nguoi_theo_doi',
                 'tinTuyenDungs as so_tin_dang_hoat_dong' => function ($query) {
                     $query->where('trang_thai', \App\Models\TinTuyenDung::TRANG_THAI_HOAT_DONG)
                         ->where(function ($subQ) {
@@ -116,7 +139,7 @@ class CongTyController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $this->mapCompanyData($congTy),
+            'data' => $this->mapCompanyData($congTy, $followedCompanyIds),
         ]);
     }
 

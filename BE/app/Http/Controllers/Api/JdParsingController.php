@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Api\Concerns\ResolvesEmployerCompany;
 use App\Http\Controllers\Controller;
 use App\Models\KyNang;
 use App\Models\TinTuyenDung;
@@ -13,6 +14,8 @@ use RuntimeException;
 
 class JdParsingController extends Controller
 {
+    use ResolvesEmployerCompany;
+
     public function __construct(
         private readonly AiClientService $aiClientService
     ) {
@@ -20,7 +23,7 @@ class JdParsingController extends Controller
 
     public function parse(int $id): JsonResponse
     {
-        $congTyId = auth()->user()->congTy?->id;
+        $congTyId = $this->getCurrentEmployerCompany()?->id;
 
         if (!$congTyId) {
             return response()->json([

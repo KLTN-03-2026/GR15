@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\Storage;
 
 class HoSo extends Model
 {
@@ -26,6 +27,18 @@ class HoSo extends Model
         'kinh_nghiem_nam',
         'mo_ta_ban_than',
         'file_cv',
+        'nguon_ho_so',
+        'mau_cv',
+        'che_do_mau_cv',
+        'vi_tri_ung_tuyen_muc_tieu',
+        'ten_nganh_nghe_muc_tieu',
+        'che_do_anh_cv',
+        'anh_cv',
+        'ky_nang_json',
+        'kinh_nghiem_json',
+        'hoc_van_json',
+        'du_an_json',
+        'chung_chi_json',
         'trang_thai',
     ];
 
@@ -36,6 +49,15 @@ class HoSo extends Model
         'nguoi_dung_id' => 'integer',
         'kinh_nghiem_nam' => 'integer',
         'trang_thai' => 'integer',
+        'ky_nang_json' => 'array',
+        'kinh_nghiem_json' => 'array',
+        'hoc_van_json' => 'array',
+        'du_an_json' => 'array',
+        'chung_chi_json' => 'array',
+    ];
+
+    protected $appends = [
+        'anh_cv_url',
     ];
 
     // ==========================================
@@ -142,5 +164,16 @@ class HoSo extends Model
             'khac' => 'Khác',
             default => $this->trinh_do ?? 'Chưa cập nhật',
         };
+    }
+
+    public function getAnhCvUrlAttribute(): ?string
+    {
+        $path = $this->attributes['anh_cv'] ?? null;
+
+        if (!$path) {
+            return null;
+        }
+
+        return Storage::disk('public')->url($path);
     }
 }

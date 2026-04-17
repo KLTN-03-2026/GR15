@@ -338,7 +338,7 @@ class TinTuyenDungSeeder extends Seeder
 
             foreach ($danhSachTin as $mau) {
                 $record = TinTuyenDung::create([
-                    'tieu_de' => $mau['prefix'] . ' - ' . $congTy->ten_cong_ty,
+                    'tieu_de' => $mau['prefix'],
                     'mo_ta_cong_viec' => $mau['mo_ta_cong_viec'],
                     'dia_diem_lam_viec' => $mau['dia_diem'],
                     'hinh_thuc_lam_viec' => $mau['hinh_thuc'],

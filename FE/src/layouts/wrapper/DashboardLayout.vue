@@ -1,7 +1,7 @@
 <script setup>
 import { ref } from 'vue'
-import DashboardSidebar from '@/layouts/components/MinimalDashboardSidebar.vue'
-import DashboardHeader from '@/layouts/components/MinimalDashboardHeader.vue'
+import DashboardSidebar from '@/layouts/components/DashboardSidebar.vue'
+import DashboardHeader from '@/layouts/components/DashboardHeader.vue'
 
 const sidebarCollapsed = ref(false)
 </script>

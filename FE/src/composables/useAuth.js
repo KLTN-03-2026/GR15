@@ -25,7 +25,7 @@ export const useAuth = () => {
       clearAuthStorage()
       user.value = null
       isLoading.value = false
-      await router.push('/skills')
+      await router.push('/')
     }
   }
 

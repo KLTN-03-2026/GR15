@@ -38,6 +38,7 @@ class TaoTinTuyenDungRequest extends FormRequest
                 },
             ],
             'trang_thai' => ['nullable', 'integer', 'in:0,1'],
+            'hr_phu_trach_id' => ['nullable', 'integer', 'exists:nguoi_dungs,id'],
             'nganh_nghes' => ['required', 'array', 'min:1'],
             'nganh_nghes.*' => ['integer', 'exists:nganh_nghes,id'],
         ];
