@@ -2,8 +2,30 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { getAuthToken, getStoredUser } from '@/utils/authStorage'
 
 const ROLE_CANDIDATE = 0
+const ROLE_ADMIN = 2
 
-const isAuthenticated = () => Boolean(getAuthToken() && getStoredUser())
+const getAuthState = () => {
+  const token = getAuthToken()
+  const user = getStoredUser()
+  const role = user?.vai_tro !== undefined && user?.vai_tro !== null ? Number(user.vai_tro) : null
+
+  return {
+    token,
+    user,
+    role,
+    isAuthenticated: Boolean(token && user),
+  }
+}
+
+const getHomeByRole = (role) => {
+  switch (role) {
+    case ROLE_ADMIN:
+      return '/admin/matchings'
+    case ROLE_CANDIDATE:
+    default:
+      return '/dashboard'
+  }
+}
 
 const routes = [
   {
@@ -65,6 +87,34 @@ const routes = [
     meta: { layout: 'dashboard', requiresAuth: true, role: ROLE_CANDIDATE }
   },
   {
+    path: '/ai-center',
+    component: () => import('@/components/Dashboard/AICenterPage.vue'),
+    meta: { layout: 'dashboard', requiresAuth: true, role: ROLE_CANDIDATE },
+    redirect: { name: 'AICenterChatbot' },
+    children: [
+      {
+        path: 'chatbot',
+        name: 'AICenterChatbot',
+        component: () => import('@/components/Dashboard/AICenterChatPage.vue'),
+      },
+      {
+        path: 'mock-interview',
+        name: 'AICenterMockInterview',
+        component: () => import('@/components/Dashboard/AICenterMockInterviewPage.vue'),
+      },
+    ],
+  },
+  {
+    path: '/admin/matchings',
+    name: 'AdminMatchingManagement',
+    component: () => import('@/components/Admin/MatchingManagementPage.vue'),
+    meta: { layout: 'dashboard', requiresAuth: true, role: ROLE_ADMIN }
+  },
+  {
+    path: '/admin',
+    redirect: '/admin/matchings'
+  },
+  {
     path: '/:pathMatch(.*)*',
     redirect: '/'
   },
@@ -79,22 +129,22 @@ const router = createRouter({
 })
 
 router.beforeEach((to) => {
-  const user = getStoredUser()
-  const role = Number(user?.vai_tro ?? ROLE_CANDIDATE)
+  const auth = getAuthState()
+  const role = Number(auth.role ?? ROLE_CANDIDATE)
 
-  if (to.meta?.requiresAuth && !isAuthenticated()) {
+  if (to.meta?.requiresAuth && !auth.isAuthenticated) {
     return {
       path: '/login',
       query: { redirect: to.fullPath },
     }
   }
 
-  if ((to.path === '/login' || to.path === '/register') && isAuthenticated()) {
-    return role === ROLE_CANDIDATE ? '/dashboard' : '/'
+  if ((to.path === '/login' || to.path === '/register') && auth.isAuthenticated) {
+    return getHomeByRole(role)
   }
 
   if (to.meta?.role !== undefined && role !== Number(to.meta.role)) {
-    return '/'
+    return getHomeByRole(role)
   }
 })
 

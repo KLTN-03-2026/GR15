@@ -1,14 +1,18 @@
 <?php
 
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\AiChatMessageController;
+use App\Http\Controllers\Api\AiChatSessionController;
 use App\Http\Controllers\Api\CareerReportController;
 use App\Http\Controllers\Api\HoSoController;
 use App\Http\Controllers\Api\KyNangController;
 use App\Http\Controllers\Api\MatchingController;
+use App\Http\Controllers\Api\MockInterviewController;
 use App\Http\Controllers\Api\NguoiDungKyNangController;
 use App\Http\Controllers\Api\TinTuyenDungController;
 use App\Http\Controllers\Api\UngVienKetQuaMatchingController;
 use App\Http\Controllers\Api\UngVienTuVanNgheNghiepController;
+use App\Http\Controllers\Api\Admin\AdminKetQuaMatchingController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('v1/dang-ky', [AuthController::class, 'dangKy'])->name('auth.dang-ky');
@@ -44,6 +48,26 @@ Route::middleware('auth:sanctum')->group(function (): void {
         Route::post('v1/ung-vien/ho-sos/{id}/matching', [MatchingController::class, 'generate'])->name('ung-vien.ho-sos.matching');
         Route::post('v1/ung-vien/ho-sos/{id}/career-report', [CareerReportController::class, 'generate'])->name('ung-vien.ho-sos.career-report');
 
+        Route::get('v1/ai-chat/sessions', [AiChatSessionController::class, 'index'])->name('ai-chat.sessions.index');
+        Route::post('v1/ai-chat/sessions', [AiChatSessionController::class, 'store'])->name('ai-chat.sessions.store');
+        Route::patch('v1/ai-chat/sessions/{id}/status', [AiChatSessionController::class, 'updateStatus'])->name('ai-chat.sessions.update-status');
+        Route::get('v1/ai-chat/sessions/{id}/messages', [AiChatSessionController::class, 'messages'])->name('ai-chat.sessions.messages');
+        Route::delete('v1/ai-chat/sessions/{id}/messages', [AiChatSessionController::class, 'clearMessages'])->name('ai-chat.sessions.clear-messages');
+        Route::post('v1/ai-chat/messages', [AiChatMessageController::class, 'store'])->name('ai-chat.messages.store');
+        Route::post('v1/ai-chat/messages/stream', [AiChatMessageController::class, 'stream'])->name('ai-chat.messages.stream');
+
+        Route::get('v1/mock-interview/sessions', [MockInterviewController::class, 'index'])->name('mock-interview.sessions.index');
+        Route::get('v1/mock-interview/dashboard', [MockInterviewController::class, 'dashboard'])->name('mock-interview.dashboard');
+        Route::post('v1/mock-interview/sessions', [MockInterviewController::class, 'store'])->name('mock-interview.sessions.store');
+        Route::get('v1/mock-interview/sessions/{id}/messages', [MockInterviewController::class, 'messages'])->name('mock-interview.sessions.messages');
+        Route::patch('v1/mock-interview/sessions/{id}/status', [MockInterviewController::class, 'updateStatus'])->name('mock-interview.sessions.update-status');
+        Route::delete('v1/mock-interview/sessions/{id}', [MockInterviewController::class, 'clearSession'])->name('mock-interview.sessions.destroy');
+        Route::post('v1/mock-interview/messages', [MockInterviewController::class, 'answer'])->name('mock-interview.messages.answer');
+        Route::post('v1/mock-interview/messages/stream', [MockInterviewController::class, 'stream'])->name('mock-interview.messages.stream');
+        Route::post('v1/mock-interview/sessions/{id}/report', [MockInterviewController::class, 'generateReport'])->name('mock-interview.sessions.report.generate');
+        Route::post('v1/mock-interview/sessions/{id}/report/stream', [MockInterviewController::class, 'streamReport'])->name('mock-interview.sessions.report.stream');
+        Route::get('v1/mock-interview/sessions/{id}/report', [MockInterviewController::class, 'showReport'])->name('mock-interview.sessions.report.show');
+
         Route::get('v1/ung-vien/ket-qua-matchings', [UngVienKetQuaMatchingController::class, 'index'])->name('ung-vien.ket-qua-matchings.index');
         Route::get('v1/ung-vien/tu-van-nghe-nghieps', [UngVienTuVanNgheNghiepController::class, 'index'])->name('ung-vien.tu-van-nghe-nghieps.index');
 
@@ -52,5 +76,10 @@ Route::middleware('auth:sanctum')->group(function (): void {
         Route::post('v1/ung-vien/ky-nangs/{id}', [NguoiDungKyNangController::class, 'update'])->name('ung-vien.ky-nangs.update.multipart');
         Route::put('v1/ung-vien/ky-nangs/{id}', [NguoiDungKyNangController::class, 'update'])->name('ung-vien.ky-nangs.update');
         Route::delete('v1/ung-vien/ky-nangs/{id}', [NguoiDungKyNangController::class, 'destroy'])->name('ung-vien.ky-nangs.destroy');
+    });
+
+    Route::middleware('role:admin')->group(function (): void {
+        Route::get('v1/admin/ket-qua-matchings/thong-ke', [AdminKetQuaMatchingController::class, 'thongKe'])->name('admin.ket-qua-matchings.thong-ke');
+        Route::get('v1/admin/ket-qua-matchings', [AdminKetQuaMatchingController::class, 'index'])->name('admin.ket-qua-matchings.index');
     });
 });
