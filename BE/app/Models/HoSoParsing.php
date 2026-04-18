@@ -2,10 +2,13 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class HoSoParsing extends Model
 {
+    use HasFactory;
+
     protected $table = 'ho_so_parsings';
 
     protected $fillable = [

@@ -41,7 +41,7 @@ class NguoiDungKyNangController extends Controller
      */
     public function index(): JsonResponse
     {
-        $nguoiDungId = request()->user()?->id;
+        $nguoiDungId = auth()->id();
 
         $kyNangs = NguoiDungKyNang::with('kyNang:id,ten_ky_nang,icon')
             ->where('nguoi_dung_id', $nguoiDungId)
@@ -65,7 +65,7 @@ class NguoiDungKyNangController extends Controller
      */
     public function store(ThemKyNangRequest $request): JsonResponse
     {
-        $nguoiDungId = $request->user()?->id;
+        $nguoiDungId = auth()->id();
         $data = $request->validated();
 
         // Kiểm tra đã có kỹ năng này chưa
@@ -111,7 +111,7 @@ class NguoiDungKyNangController extends Controller
      */
     public function update(CapNhatKyNangCaNhanRequest $request, int $id): JsonResponse
     {
-        $nguoiDungId = $request->user()?->id;
+        $nguoiDungId = auth()->id();
 
         $record = NguoiDungKyNang::where('nguoi_dung_id', $nguoiDungId)
             ->findOrFail($id);
@@ -152,7 +152,7 @@ class NguoiDungKyNangController extends Controller
      */
     public function destroy(int $id): JsonResponse
     {
-        $nguoiDungId = request()->user()?->id;
+        $nguoiDungId = auth()->id();
 
         $record = NguoiDungKyNang::where('nguoi_dung_id', $nguoiDungId)
             ->findOrFail($id);

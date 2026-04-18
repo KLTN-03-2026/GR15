@@ -122,7 +122,25 @@ const openApplyModal = async () => {
     return
   }
 
-  notify.info('Luồng ứng tuyển và cover letter AI chưa được bật trong bản HoangLong. Bạn vẫn có thể quản lý Profile và CV như project chính.')
+  if (isJobInactive.value) {
+    notify.warning('Tin tuyển dụng này hiện đã tạm ngưng, bạn không thể ứng tuyển thêm.')
+    return
+  }
+
+  if (isQuotaFull.value) {
+    notify.warning('Tin tuyển dụng này đã đủ chỉ tiêu tuyển dụng.')
+    return
+  }
+
+  await loadProfiles()
+
+  if (!profiles.value.length) {
+    notify.warning('Bạn cần tạo ít nhất một hồ sơ/CV trước khi ứng tuyển.')
+    return
+  }
+
+  resetCoverLetterDraft()
+  applyModalOpen.value = true
 }
 
 const closeApplyModal = () => {
@@ -416,7 +434,7 @@ watch(selectedProfileId, (nextValue, previousValue) => {
               <p class="text-xs font-semibold uppercase tracking-[0.3em] text-blue-100/80">Ứng tuyển nhanh</p>
               <h2 class="mt-2 text-2xl font-bold">Sẵn sàng cho vị trí này?</h2>
               <p class="mt-3 text-sm leading-7 text-blue-50/85">
-                Bạn có thể xem chi tiết, lưu tin và chuẩn bị CV. Luồng ứng tuyển sâu sẽ được nối thêm sau.
+                Bạn có thể xem chi tiết, lưu tin hoặc chuẩn bị CV trước khi nối luồng ứng tuyển chính thức.
               </p>
             </div>
 
@@ -459,7 +477,7 @@ watch(selectedProfileId, (nextValue, previousValue) => {
                   type="button"
                   @click="openApplyModal"
                 >
-                  {{ isQuotaFull ? 'Đã tuyển đủ chỉ tiêu' : 'Chuẩn bị ứng tuyển' }}
+                  {{ isQuotaFull ? 'Đã tuyển đủ chỉ tiêu' : 'Ứng tuyển ngay' }}
                 </button>
                 <button
                   class="rounded-2xl border px-5 py-3 text-sm font-semibold transition"

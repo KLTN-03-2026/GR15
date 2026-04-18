@@ -13,7 +13,7 @@ class CapNhatHoSoRequest extends FormRequest
 
     public function rules(): array
     {
-        $userId = $this->user()?->id;
+        $userId = auth()->id();
 
         return [
             'ho_ten' => ['sometimes', 'string', 'max:150'],

@@ -7,6 +7,11 @@ use App\Models\TinTuyenDung;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
+/**
+ * UngVienLuuTinController - Ứng viên (vai_tro = 0)
+ * 
+ * Lưu tin và xem danh sách tin đã lưu.
+ */
 class UngVienLuuTinController extends Controller
 {
     private function unauthorizedResponse(): JsonResponse
@@ -17,33 +22,28 @@ class UngVienLuuTinController extends Controller
         ], 401);
     }
 
-    private function forbiddenResponse(): JsonResponse
-    {
-        return response()->json([
-            'success' => false,
-            'message' => 'Chỉ ứng viên mới có thể lưu tin tuyển dụng.',
-        ], 403);
-    }
-
+    /**
+     * Danh sách các tin tuyển dụng đã lưu
+     */
     public function index(Request $request): JsonResponse
     {
-        $user = $request->user();
+        $user = auth()->user();
 
         if (!$user) {
             return $this->unauthorizedResponse();
         }
-
-        if (!$user->isUngVien()) {
-            return $this->forbiddenResponse();
-        }
-
-        $data = $user->tinDaLuus()
+        
+        // Lấy tin đã lưu kèm thông tin hiển thị cơ bản
+        $query = clone $user->tinDaLuus()
             ->with([
                 'congTy:id,ten_cong_ty,ma_so_thue,logo,dia_chi',
-                'nganhNghes:id,ten_nganh',
-            ])
-            ->orderBy('luu_tins.created_at', 'desc')
-            ->paginate((int) $request->get('per_page', 15));
+                'nganhNghes:id,ten_nganh'
+            ]);
+
+        // Có thể sort theo thời gian LƯU tin (created_at của bảng pivot luu_tins)
+        $query->orderBy('luu_tins.created_at', 'desc');
+
+        $data = $query->paginate((int) $request->get('per_page', 15));
 
         return response()->json([
             'success' => true,
@@ -51,30 +51,33 @@ class UngVienLuuTinController extends Controller
         ]);
     }
 
-    public function toggle(Request $request, int $tinId): JsonResponse
+    /**
+     * Bật / Tắt lưu 1 tin tuyển dụng (Toggle Action)
+     * POST /api/v1/ung-vien/tin-da-luu/{tin_id}/toggle
+     */
+    public function toggle(int $tin_id): JsonResponse
     {
-        $user = $request->user();
+        // Kiểm tra xem tin có tồn tại không
+        $tin = TinTuyenDung::findOrFail($tin_id);
+        
+        $user = auth()->user();
 
         if (!$user) {
             return $this->unauthorizedResponse();
         }
 
-        if (!$user->isUngVien()) {
-            return $this->forbiddenResponse();
-        }
+        // Hàm toggle() trả về array chứa 'attached' và 'detached' IDS
+        $changes = $user->tinDaLuus()->toggle($tin_id);
 
-        TinTuyenDung::query()->findOrFail($tinId);
-
-        $changes = $user->tinDaLuus()->toggle($tinId);
         $daLuu = count($changes['attached']) > 0;
 
         return response()->json([
             'success' => true,
-            'message' => $daLuu ? 'Đã lưu tin tuyển dụng.' : 'Đã bỏ lưu tin tuyển dụng.',
+            'message' => $daLuu ? 'Đã lưu tin tuyển dụng' : 'Đã bỏ lưu tin tuyển dụng',
             'data' => [
-                'tin_id' => $tinId,
-                'trang_thai_luu' => $daLuu,
-            ],
+                'tin_id' => $tin_id,
+                'trang_thai_luu' => $daLuu
+            ]
         ], $daLuu ? 201 : 200);
     }
 }

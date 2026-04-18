@@ -5,7 +5,6 @@ import { authService } from '@/services/api'
 const isLoading = ref(false)
 const errorMessage = ref('')
 const successMessage = ref('')
-const resetUrl = ref('')
 
 const forgotForm = reactive({
   email: '',
@@ -37,7 +36,6 @@ const handleForgotPassword = async () => {
   try {
     const response = await authService.forgotPassword(forgotForm.email)
     successMessage.value = response?.message || 'Nếu email tồn tại trong hệ thống, chúng tôi đã gửi liên kết đặt lại mật khẩu.'
-    resetUrl.value = response?.data?.reset_url || ''
   } catch (error) {
     errorMessage.value = error.message || 'Không thể xử lý yêu cầu quên mật khẩu.'
   } finally {
@@ -116,14 +114,6 @@ const handleForgotPassword = async () => {
             <span>{{ isLoading ? 'Đang gửi email...' : 'Gửi liên kết đặt lại mật khẩu' }}</span>
           </button>
         </form>
-
-        <div v-if="resetUrl" class="auth-note">
-          <span class="material-symbols-outlined">link</span>
-          <div>
-            <p>Luồng email đang chạy ở chế độ local. Bạn có thể mở trực tiếp trang đặt lại mật khẩu:</p>
-            <a :href="resetUrl">Mở trang đặt lại mật khẩu</a>
-          </div>
-        </div>
 
         <p class="auth-switch">
           Đã nhớ mật khẩu?
@@ -313,12 +303,6 @@ const handleForgotPassword = async () => {
 .auth-note .material-symbols-outlined {
   font-size: 1.2rem;
   color: #295fe6;
-}
-
-.auth-note a {
-  color: #295fe6;
-  font-weight: 700;
-  text-decoration: none;
 }
 
 .auth-form {

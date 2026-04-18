@@ -1,35 +1,51 @@
-const dispatchNotification = (type, message) => {
-  if (typeof window === 'undefined' || !message) return
-
-  window.dispatchEvent(new CustomEvent('app-notify', {
-    detail: {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      type,
-      message,
-    },
-  }))
-}
+import { useToast } from 'vue-toastification'
 
 export const useNotify = () => {
-  const success = (message) => dispatchNotification('success', message)
-  const error = (message) => dispatchNotification('error', message)
-  const info = (message) => dispatchNotification('info', message)
-  const warning = (message) => dispatchNotification('warning', message)
+  const toast = useToast()
+
+  const success = (message, options = {}) =>
+    toast.success(message, options)
+
+  const error = (message, options = {}) =>
+    toast.error(message, options)
+
+  const info = (message, options = {}) =>
+    toast.info(message, options)
+
+  const warning = (message, options = {}) =>
+    toast.warning(message, options)
 
   const apiError = (err, fallback = 'Đã xảy ra lỗi, vui lòng thử lại.') => {
-    error(
+    const message =
       err?.message ||
       err?.data?.message ||
       err?.response?.data?.message ||
       fallback
-    )
+
+    toast.error(message)
+  }
+
+  const saved = (entity = 'Dữ liệu') => {
+    toast.success(`${entity} đã được lưu thành công.`)
+  }
+
+  const deleted = (entity = 'Dữ liệu') => {
+    toast.success(`${entity} đã được xóa thành công.`)
+  }
+
+  const created = (entity = 'Mục mới') => {
+    toast.success(`${entity} đã được tạo thành công.`)
   }
 
   return {
+    toast,
     success,
     error,
     info,
     warning,
     apiError,
+    saved,
+    deleted,
+    created,
   }
 }

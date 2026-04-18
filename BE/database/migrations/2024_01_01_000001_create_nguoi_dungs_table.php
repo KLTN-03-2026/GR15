@@ -16,7 +16,6 @@ return new class extends Migration {
             $table->string('email', 150)->unique();
             $table->string('mat_khau', 255);
             $table->string('so_dien_thoai', 20)->nullable();
-            $table->timestamp('email_verified_at')->nullable();
             $table->date('ngay_sinh')->nullable();
             $table->enum('gioi_tinh', ['nam', 'nu', 'khac'])->nullable();
             $table->string('dia_chi', 255)->nullable();

@@ -3,20 +3,27 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\NguoiDung\CapNhatHoSoRequest;
 use App\Http\Requests\NguoiDung\DangKyRequest;
 use App\Http\Requests\NguoiDung\DangNhapRequest;
 use App\Http\Requests\NguoiDung\DoiMatKhauRequest;
-use App\Models\ApiAccessToken;
+use App\Http\Requests\NguoiDung\CapNhatHoSoRequest;
 use App\Models\NguoiDung;
+use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Laravel\Socialite\Facades\Socialite;
 
+/**
+ * AuthController - Xác thực & quản lý hồ sơ cá nhân
+ *
+ * Áp dụng cho: Admin, Nhà tuyển dụng, Ứng viên
+ */
 class AuthController extends Controller
 {
     private function frontendUrl(): string
@@ -24,41 +31,127 @@ class AuthController extends Controller
         return rtrim((string) env('FRONTEND_URL', 'http://localhost:5173'), '/');
     }
 
+    private function googleLoginPath(int $roleHint): string
+    {
+        return '/login';
+    }
+
+    private function normalizeFrontendRedirect(mixed $redirect): ?string
+    {
+        if (!is_string($redirect)) {
+            return null;
+        }
+
+        $redirect = trim($redirect);
+
+        if ($redirect === '' || !str_starts_with($redirect, '/') || str_starts_with($redirect, '//')) {
+            return null;
+        }
+
+        return $redirect;
+    }
+
+    private function buildGoogleState(int $roleHint, ?string $redirect): string
+    {
+        return Crypt::encryptString(json_encode([
+            'role_hint' => $roleHint,
+            'redirect' => $this->normalizeFrontendRedirect($redirect),
+        ], JSON_UNESCAPED_UNICODE));
+    }
+
+    private function parseGoogleState(?string $state): array
+    {
+        $fallback = [
+            'role_hint' => NguoiDung::VAI_TRO_UNG_VIEN,
+            'redirect' => null,
+        ];
+
+        if (!$state) {
+            return $fallback;
+        }
+
+        try {
+            $payload = json_decode(Crypt::decryptString($state), true, 512, JSON_THROW_ON_ERROR);
+        } catch (\Throwable $exception) {
+            return $fallback;
+        }
+
+        $roleHint = (int) ($payload['role_hint'] ?? NguoiDung::VAI_TRO_UNG_VIEN);
+
+        return [
+            'role_hint' => in_array($roleHint, [NguoiDung::VAI_TRO_UNG_VIEN, NguoiDung::VAI_TRO_NHA_TUYEN_DUNG], true)
+                ? $roleHint
+                : NguoiDung::VAI_TRO_UNG_VIEN,
+            'redirect' => $this->normalizeFrontendRedirect($payload['redirect'] ?? null),
+        ];
+    }
+
+    private function redirectGoogleError(string $message, int $roleHint, ?string $email = null): RedirectResponse
+    {
+        $query = ['google_error' => $message];
+
+        if ($email) {
+            $query['email'] = $email;
+        }
+
+        return redirect($this->frontendUrl() . $this->googleLoginPath($roleHint) . '?' . http_build_query($query));
+    }
+
+    private function redirectGoogleSuccess(NguoiDung $nguoiDung, ?string $redirect = null): RedirectResponse
+    {
+        $nguoiDung->tokens()->delete();
+        $token = $nguoiDung->createToken('auth_token')->plainTextToken;
+
+        $query = ['token' => $token];
+
+        if ($redirect) {
+            $query['redirect'] = $redirect;
+        }
+
+        return redirect($this->frontendUrl() . '/oauth/google/callback?' . http_build_query($query));
+    }
+
     private function mapUserData(NguoiDung $nguoiDung): array
     {
         $data = $nguoiDung->toArray();
-        $data['ten_vai_tro'] = $nguoiDung->ten_vai_tro;
-        $data['da_xac_thuc_email'] = !is_null($nguoiDung->email_verified_at);
         $data['avatar_url'] = $nguoiDung->anh_dai_dien
             ? url('/api/v1/anh-dai-dien?path=' . urlencode($nguoiDung->anh_dai_dien))
             : null;
+        $data['da_xac_thuc_email'] = !is_null($nguoiDung->email_verified_at);
 
         return $data;
     }
 
+    /**
+     * POST /api/dang-ky
+     * Đăng ký tài khoản mới (ứng viên hoặc nhà tuyển dụng).
+     */
     public function dangKy(DangKyRequest $request): JsonResponse
     {
         $data = $request->validated();
-        $data['vai_tro'] = (int) ($data['vai_tro'] ?? NguoiDung::VAI_TRO_UNG_VIEN);
-        $data['trang_thai'] = 1;
-        $data['email_verified_at'] = now();
+        $data['vai_tro'] = $data['vai_tro'] ?? NguoiDung::VAI_TRO_UNG_VIEN;
 
         $nguoiDung = NguoiDung::create($data);
+        dispatch(function () use ($nguoiDung): void {
+            $nguoiDung->fresh()?->sendEmailVerificationNotification();
+        })->afterResponse();
 
         return response()->json([
             'success' => true,
-            'message' => 'Đăng ký tài khoản thành công.',
+            'message' => 'Đăng ký tài khoản thành công. Vui lòng kiểm tra email để xác thực tài khoản trước khi đăng nhập.',
             'data' => $this->mapUserData($nguoiDung),
         ], 201);
     }
 
+    /**
+     * POST /api/dang-nhap
+     * Đăng nhập - áp dụng cho tất cả vai trò.
+     */
     public function dangNhap(DangNhapRequest $request): JsonResponse
     {
-        $nguoiDung = NguoiDung::query()
-            ->where('email', $request->input('email'))
-            ->first();
+        $nguoiDung = NguoiDung::where('email', $request->email)->first();
 
-        if (!$nguoiDung || !Hash::check($request->input('mat_khau'), $nguoiDung->mat_khau)) {
+        if (!$nguoiDung || !Hash::check($request->mat_khau, $nguoiDung->mat_khau)) {
             return response()->json([
                 'success' => false,
                 'message' => 'Email hoặc mật khẩu không đúng.',
@@ -68,37 +161,141 @@ class AuthController extends Controller
         if (!$nguoiDung->isActive()) {
             return response()->json([
                 'success' => false,
-                'message' => 'Tài khoản đã bị khóa.',
+                'message' => 'Tài khoản đã bị khoá. Vui lòng liên hệ quản trị viên.',
             ], 403);
         }
 
-        $plainTextToken = Str::random(64);
+        if (!$nguoiDung->isAdmin() && !$nguoiDung->hasVerifiedEmail()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Tài khoản chưa xác thực email. Vui lòng kiểm tra hộp thư và xác nhận trước khi đăng nhập.',
+                'data' => [
+                    'requires_email_verification' => true,
+                    'email' => $nguoiDung->email,
+                ],
+            ], 403);
+        }
 
-        $nguoiDung->apiTokens()->delete();
-        $nguoiDung->apiTokens()->create([
-            'token_hash' => hash('sha256', $plainTextToken),
-            'last_used_at' => now(),
-        ]);
+        // Xoá token cũ, tạo token mới
+        $nguoiDung->tokens()->delete();
+        $token = $nguoiDung->createToken('auth_token')->plainTextToken;
 
         return response()->json([
             'success' => true,
             'message' => 'Đăng nhập thành công.',
             'data' => [
                 'nguoi_dung' => $this->mapUserData($nguoiDung),
-                'access_token' => $plainTextToken,
+                'access_token' => $token,
                 'token_type' => 'Bearer',
                 'vai_tro' => $nguoiDung->ten_vai_tro,
             ],
         ]);
     }
 
+    public function redirectGoogle(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'role_hint' => ['nullable', 'integer', 'in:0,1'],
+            'redirect' => ['nullable', 'string', 'max:2048'],
+        ]);
+
+        if (!config('services.google.client_id') || !config('services.google.client_secret') || !config('services.google.redirect')) {
+            return $this->redirectGoogleError(
+                'Hệ thống chưa cấu hình đăng nhập Google.',
+                (int) ($validated['role_hint'] ?? NguoiDung::VAI_TRO_UNG_VIEN)
+            );
+        }
+
+        $roleHint = (int) ($validated['role_hint'] ?? NguoiDung::VAI_TRO_UNG_VIEN);
+        $redirect = $this->normalizeFrontendRedirect($validated['redirect'] ?? null);
+
+        return Socialite::driver('google')
+            ->stateless()
+            ->with([
+                'prompt' => 'select_account',
+                'state' => $this->buildGoogleState($roleHint, $redirect),
+            ])
+            ->redirect();
+    }
+
+    public function callbackGoogle(Request $request): RedirectResponse
+    {
+        $state = $this->parseGoogleState($request->query('state'));
+        $roleHint = (int) $state['role_hint'];
+        $redirect = $state['redirect'];
+
+        try {
+            $googleUser = Socialite::driver('google')->stateless()->user();
+        } catch (\Throwable $exception) {
+            return $this->redirectGoogleError('Không thể xác thực tài khoản Google. Vui lòng thử lại.', $roleHint);
+        }
+
+        $email = mb_strtolower(trim((string) $googleUser->getEmail()));
+        $name = trim((string) ($googleUser->getName() ?: $googleUser->getNickname() ?: ''));
+
+        if ($email === '') {
+            return $this->redirectGoogleError('Tài khoản Google chưa cung cấp email hợp lệ.', $roleHint);
+        }
+
+        $nguoiDung = NguoiDung::where('email', $email)->first();
+
+        if (!$nguoiDung) {
+            if ($roleHint === NguoiDung::VAI_TRO_NHA_TUYEN_DUNG) {
+                return $this->redirectGoogleError(
+                    'Tài khoản Google này chưa được đăng ký dưới vai trò nhà tuyển dụng. Vui lòng đăng ký doanh nghiệp trước.',
+                    $roleHint,
+                    $email
+                );
+            }
+
+            $nguoiDung = NguoiDung::create([
+                'ho_ten' => $name !== '' ? $name : 'Người dùng Google',
+                'email' => $email,
+                'mat_khau' => Str::random(40),
+                'vai_tro' => NguoiDung::VAI_TRO_UNG_VIEN,
+                'trang_thai' => 1,
+                'email_verified_at' => now(),
+            ]);
+        }
+
+        if (!$nguoiDung->isActive()) {
+            return $this->redirectGoogleError('Tài khoản đã bị khoá. Vui lòng liên hệ quản trị viên.', $roleHint, $email);
+        }
+
+        if ($roleHint === NguoiDung::VAI_TRO_NHA_TUYEN_DUNG && !$nguoiDung->isNhaTuyenDung()) {
+            return $this->redirectGoogleError(
+                'Email Google này không thuộc tài khoản nhà tuyển dụng.',
+                $roleHint,
+                $email
+            );
+        }
+
+        if (!$nguoiDung->hasVerifiedEmail()) {
+            $nguoiDung->forceFill([
+                'email_verified_at' => now(),
+            ])->save();
+        }
+
+        if (!$nguoiDung->ho_ten && $name !== '') {
+            $nguoiDung->forceFill([
+                'ho_ten' => $name,
+            ])->save();
+        }
+
+        return $this->redirectGoogleSuccess($nguoiDung->fresh(), $redirect);
+    }
+
+    /**
+     * POST /api/quen-mat-khau
+     * Tạo token đặt lại mật khẩu cho môi trường web/app hiện tại.
+     */
     public function quenMatKhau(Request $request): JsonResponse
     {
         $data = $request->validate([
             'email' => ['required', 'email'],
         ]);
 
-        $nguoiDung = NguoiDung::query()->where('email', $data['email'])->first();
+        $nguoiDung = NguoiDung::where('email', $data['email'])->first();
 
         if (!$nguoiDung) {
             return response()->json([
@@ -110,87 +307,82 @@ class AuthController extends Controller
         if (!$nguoiDung->isActive()) {
             return response()->json([
                 'success' => false,
-                'message' => 'Tài khoản đã bị khóa. Vui lòng liên hệ quản trị viên.',
+                'message' => 'Tài khoản đã bị khoá. Vui lòng liên hệ quản trị viên.',
             ], 403);
         }
 
-        $plainToken = Str::random(64);
+        try {
+            $token = Password::broker()->createToken($nguoiDung);
 
-        DB::table('password_reset_tokens')->updateOrInsert(
-            ['email' => $nguoiDung->email],
-            [
-                'token' => Hash::make($plainToken),
-                'created_at' => now(),
-            ]
-        );
-
-        $resetUrl = $this->frontendUrl() . '/reset-password?email=' . urlencode((string) $nguoiDung->email)
-            . '&token=' . urlencode($plainToken);
+            dispatch(function () use ($nguoiDung, $token): void {
+                $nguoiDung->fresh()?->sendPasswordResetNotification($token);
+            })->afterResponse();
+        } catch (\Throwable $exception) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Không thể gửi email đặt lại mật khẩu vào lúc này.',
+            ], 500);
+        }
 
         return response()->json([
             'success' => true,
             'message' => 'Nếu email tồn tại trong hệ thống, chúng tôi đã gửi liên kết đặt lại mật khẩu.',
-            'data' => [
-                'email' => $nguoiDung->email,
-                'reset_url' => $resetUrl,
-            ],
         ]);
     }
 
-    public function datLaiMatKhau(Request $request): JsonResponse
+    public function guiLaiEmailXacThuc(Request $request): JsonResponse
     {
         $data = $request->validate([
             'email' => ['required', 'email'],
-            'token' => ['required', 'string'],
-            'mat_khau' => ['required', 'string', 'min:6', 'confirmed'],
-        ], [
-            'mat_khau.confirmed' => 'Mật khẩu xác nhận không khớp.',
         ]);
 
-        $resetRow = DB::table('password_reset_tokens')
-            ->where('email', $data['email'])
-            ->first();
+        $nguoiDung = NguoiDung::where('email', $data['email'])->first();
 
-        if (
-            !$resetRow
-            || !Hash::check($data['token'], $resetRow->token)
-            || Carbon::parse($resetRow->created_at)->addMinutes(60)->isPast()
-        ) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Token đặt lại mật khẩu không hợp lệ hoặc đã hết hạn.',
-            ], 422);
+        if ($nguoiDung && $nguoiDung->isActive() && !$nguoiDung->hasVerifiedEmail()) {
+            dispatch(function () use ($nguoiDung): void {
+                $nguoiDung->fresh()?->sendEmailVerificationNotification();
+            })->afterResponse();
         }
 
-        $nguoiDung = NguoiDung::query()->where('email', $data['email'])->first();
+        return response()->json([
+            'success' => true,
+            'message' => 'Nếu email tồn tại và chưa xác thực, chúng tôi đã gửi lại email xác thực.',
+        ]);
+    }
+
+    public function xacThucEmail(Request $request, int $id, string $hash): RedirectResponse
+    {
+        $nguoiDung = NguoiDung::findOrFail($id);
+        $frontendUrl = rtrim((string) env('FRONTEND_URL', 'http://127.0.0.1:5173'), '/');
+        $loginPath = '/login';
+
+        if (!hash_equals((string) $hash, sha1((string) $nguoiDung->getEmailForVerification()))) {
+            return redirect($frontendUrl . $loginPath . '?verified=0');
+        }
+
+        if (!$nguoiDung->hasVerifiedEmail()) {
+            $nguoiDung->markEmailAsVerified();
+        }
+
+        return redirect($frontendUrl . $loginPath . '?verified=1&email=' . urlencode((string) $nguoiDung->email));
+    }
+
+    /**
+     * POST /api/dang-xuat
+     * Đăng xuất - thu hồi token hiện tại.
+     */
+    public function dangXuat(Request $request): JsonResponse
+    {
+        $nguoiDung = $request->user();
 
         if (!$nguoiDung) {
             return response()->json([
                 'success' => false,
-                'message' => 'Tài khoản không tồn tại.',
-            ], 404);
+                'message' => 'Phiên đăng nhập không còn hợp lệ.',
+            ], 401);
         }
 
-        $nguoiDung->update([
-            'mat_khau' => $data['mat_khau'],
-        ]);
-
-        $nguoiDung->apiTokens()->delete();
-        DB::table('password_reset_tokens')->where('email', $data['email'])->delete();
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Đặt lại mật khẩu thành công. Vui lòng đăng nhập lại.',
-        ]);
-    }
-
-    public function dangXuat(Request $request): JsonResponse
-    {
-        $tokenId = $request->attributes->get('api_access_token_id');
-
-        if ($tokenId) {
-            ApiAccessToken::query()->whereKey($tokenId)->delete();
-        }
+        $nguoiDung->currentAccessToken()?->delete();
 
         return response()->json([
             'success' => true,
@@ -198,6 +390,10 @@ class AuthController extends Controller
         ]);
     }
 
+    /**
+     * GET /api/ho-so
+     * Xem thông tin hồ sơ của người dùng đang đăng nhập.
+     */
     public function hoSo(Request $request): JsonResponse
     {
         $nguoiDung = $request->user();
@@ -215,6 +411,10 @@ class AuthController extends Controller
         ]);
     }
 
+    /**
+     * PUT /api/ho-so
+     * Cập nhật hồ sơ cá nhân.
+     */
     public function capNhatHoSo(CapNhatHoSoRequest $request): JsonResponse
     {
         $nguoiDung = $request->user();
@@ -232,8 +432,8 @@ class AuthController extends Controller
             if ($nguoiDung->anh_dai_dien) {
                 Storage::disk('public')->delete($nguoiDung->anh_dai_dien);
             }
-
-            $data['anh_dai_dien'] = $request->file('anh_dai_dien')->store('anh_dai_dien', 'public');
+            $data['anh_dai_dien'] = $request->file('anh_dai_dien')
+                ->store('anh_dai_dien', 'public');
         }
 
         $nguoiDung->update($data);
@@ -245,6 +445,69 @@ class AuthController extends Controller
         ]);
     }
 
+    public function avatar(Request $request)
+    {
+        $path = (string) $request->query('path', '');
+
+        abort_unless(
+            $path !== '' && str_starts_with($path, 'anh_dai_dien/'),
+            404
+        );
+
+        abort_unless(Storage::disk('public')->exists($path), 404);
+
+        return response()->file(Storage::disk('public')->path($path));
+    }
+
+    /**
+     * POST /api/dat-lai-mat-khau
+     * Đặt lại mật khẩu bằng token đã cấp.
+     */
+    public function datLaiMatKhau(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'email' => ['required', 'email'],
+            'token' => ['required', 'string'],
+            'mat_khau' => ['required', 'string', 'min:6', 'confirmed'],
+        ], [
+            'mat_khau.confirmed' => 'Mật khẩu xác nhận không khớp.',
+        ]);
+
+        $status = Password::broker()->reset(
+            [
+                'email' => $data['email'],
+                'token' => $data['token'],
+                'password' => $data['mat_khau'],
+                'password_confirmation' => $request->input('mat_khau_confirmation'),
+            ],
+            function (NguoiDung $nguoiDung, string $password): void {
+                $nguoiDung->forceFill([
+                    'mat_khau' => $password,
+                ])->save();
+
+                $nguoiDung->tokens()->delete();
+
+                event(new PasswordReset($nguoiDung));
+            }
+        );
+
+        if ($status !== Password::PASSWORD_RESET) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Token đặt lại mật khẩu không hợp lệ hoặc đã hết hạn.',
+            ], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Đặt lại mật khẩu thành công. Vui lòng đăng nhập lại.',
+        ]);
+    }
+
+    /**
+     * POST /api/doi-mat-khau
+     * Đổi mật khẩu - thu hồi tất cả token, bắt đăng nhập lại.
+     */
     public function doiMatKhau(DoiMatKhauRequest $request): JsonResponse
     {
         $nguoiDung = $request->user();
@@ -256,32 +519,19 @@ class AuthController extends Controller
             ], 401);
         }
 
-        if (!Hash::check($request->input('mat_khau_cu'), $nguoiDung->mat_khau)) {
+        if (!Hash::check($request->mat_khau_cu, $nguoiDung->mat_khau)) {
             return response()->json([
                 'success' => false,
                 'message' => 'Mật khẩu cũ không đúng.',
             ], 422);
         }
 
-        $nguoiDung->update([
-            'mat_khau' => $request->input('mat_khau_moi'),
-        ]);
-
-        $nguoiDung->apiTokens()->delete();
+        $nguoiDung->update(['mat_khau' => $request->mat_khau_moi]);
+        $nguoiDung->tokens()->delete();
 
         return response()->json([
             'success' => true,
             'message' => 'Đổi mật khẩu thành công. Vui lòng đăng nhập lại.',
         ]);
-    }
-
-    public function avatar(Request $request)
-    {
-        $path = (string) $request->query('path', '');
-
-        abort_unless($path !== '' && str_starts_with($path, 'anh_dai_dien/'), 404);
-        abort_unless(Storage::disk('public')->exists($path), 404);
-
-        return response()->file(Storage::disk('public')->path($path));
     }
 }

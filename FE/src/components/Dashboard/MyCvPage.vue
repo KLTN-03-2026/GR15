@@ -4,6 +4,7 @@ import { authService, profileService } from '@/services/api'
 import { useNotify } from '@/composables/useNotify'
 import { getStoredCandidate, updateStoredCandidate } from '@/utils/authStorage'
 import { formatDateVN } from '@/utils/dateTime'
+import { hasBuilderCv } from '@/utils/profileCvBuilder'
 
 const notify = useNotify()
 
@@ -83,9 +84,9 @@ const degreeLabel = (value) => {
 const parseStatusMeta = (profile) => {
   const parsing = profile?.parsing
 
-  if (!profile?.file_cv) {
+  if (!profile?.file_cv && !hasBuilderCv(profile)) {
     return {
-      label: 'Chưa có file CV',
+      label: 'Chưa có dữ liệu CV',
       classes: 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400',
       icon: 'upload_file',
     }
@@ -421,8 +422,8 @@ const applyPersonalInfoFromCv = async () => {
 const parseProfile = async (profile) => {
   if (parsingId.value) return
 
-  if (!profile.file_cv) {
-    notify.warning('Hồ sơ này chưa có file CV để phân tích.')
+  if (!profile.file_cv && !hasBuilderCv(profile)) {
+    notify.warning('Hồ sơ này chưa có đủ dữ liệu để phân tích.')
     return
   }
 
@@ -451,7 +452,7 @@ const parseProfile = async (profile) => {
     notify.success(
       summaryParts.length
         ? `Đã phân tích CV thành công, ${summaryParts.join(' và ')}.`
-        : 'Đã phân tích CV thành công.'
+        : `Đã phân tích ${profile.file_cv ? 'CV file' : 'CV web'} thành công.`
     )
     await fetchProfiles()
   } catch (error) {

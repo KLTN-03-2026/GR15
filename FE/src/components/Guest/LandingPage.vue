@@ -289,11 +289,11 @@ onMounted(() => {
 
         <div class="mt-8 flex flex-wrap justify-center gap-4">
           <RouterLink
-            to="/my-cv"
+            to="/cv-builder"
             class="flex h-12 items-center justify-center gap-2 rounded-xl border-2 border-[#2463eb] bg-[#2463eb] px-8 font-bold text-white transition-all hover:bg-blue-700"
           >
-            <span class="material-symbols-outlined">upload_file</span>
-            Tải CV của bạn
+            <span class="material-symbols-outlined">edit_square</span>
+            Tạo CV trên hệ thống
           </RouterLink>
           <RouterLink
             to="/jobs"

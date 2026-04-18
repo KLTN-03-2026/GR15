@@ -20,7 +20,6 @@ const getPublicBaseUrls = () => {
     }
   }
 
-
   return [...new Set(bases.filter(Boolean))]
 }
 
@@ -44,6 +43,8 @@ export const buildStorageAssetCandidates = (value) => {
   const candidates = []
 
   baseUrls.forEach((baseUrl) => {
+    candidates.push(`${baseUrl}/api/v1/anh-dai-dien?path=${encodeURIComponent(normalizedPath)}`)
+    candidates.push(`${baseUrl}/api/v1/chung-chi-ky-nang?path=${encodeURIComponent(normalizedPath)}`)
     candidates.push(`${baseUrl}/storage/${normalizedPath}`)
   })
 

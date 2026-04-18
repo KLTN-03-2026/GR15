@@ -231,7 +231,7 @@ onMounted(loadSkillDetail)
                   Tìm việc theo kỹ năng
                 </RouterLink>
                 <RouterLink
-                  to="/career-report"
+                  to="/ai-career"
                   class="rounded-xl border border-white/30 px-4 py-3 text-sm font-bold text-white transition hover:bg-white/10"
                 >
                   Xem AI tư vấn

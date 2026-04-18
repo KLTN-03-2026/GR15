@@ -9,32 +9,31 @@ use Illuminate\Http\Request;
 
 class UngVienTuVanNgheNghiepController extends Controller
 {
+    /**
+     * Ứng viên xem danh sách các báo cáo Tư vấn định hướng do AI phân tích.
+     */
     public function index(Request $request): JsonResponse
     {
-        $user = $request->user();
+        $userId = auth()->id();
 
-        if (!$user) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Phiên đăng nhập không còn hợp lệ.',
-            ], 401);
+        $query = TuVanNgheNghiep::where('nguoi_dung_id', $userId)
+            ->with(['hoSo:id,tieu_de_ho_so']); // Lấy thêm tiêu đề hồ sơ (nếu có)
+
+        // Nếu ứng viên muốn xem lời khuyên dành riêng cho 1 CV nào đó
+        if ($request->has('ho_so_id') && $request->ho_so_id !== '') {
+            $query->where('ho_so_id', $request->ho_so_id);
         }
 
-        $query = TuVanNgheNghiep::query()
-            ->where('nguoi_dung_id', $user->id)
-            ->with(['hoSo:id,tieu_de_ho_so']);
+        // Ưu tiên xem các báo cáo có độ phù hợp cao nhất trước
+        $query->orderBy('muc_do_phu_hop', 'desc');
+        $query->orderBy('created_at', 'desc');
 
-        if ($request->filled('ho_so_id')) {
-            $query->where('ho_so_id', (int) $request->input('ho_so_id'));
-        }
-
-        $query->orderByDesc('muc_do_phu_hop')
-            ->orderByDesc('created_at');
+        $tuVans = $query->paginate((int) $request->get('per_page', 10));
 
         return response()->json([
             'success' => true,
-            'message' => 'Lấy Báo cáo định hướng nghề nghiệp thành công.',
-            'data' => $query->paginate((int) $request->get('per_page', 10)),
+            'message' => 'Lấy Báo cáo Tư Vấn Nghề Nghiệp (AI) thành công.',
+            'data' => $tuVans
         ]);
     }
 }

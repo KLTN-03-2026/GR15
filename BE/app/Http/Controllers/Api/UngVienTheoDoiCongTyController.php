@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Events\CompanyFollowerCountUpdated;
 use App\Http\Controllers\Controller;
 use App\Models\CongTy;
 use App\Models\TinTuyenDung;
@@ -10,6 +11,18 @@ use Illuminate\Http\Request;
 
 class UngVienTheoDoiCongTyController extends Controller
 {
+    private function dispatchFollowerCountUpdate(CongTy $congTy): void
+    {
+        try {
+            broadcast(new CompanyFollowerCountUpdated(
+                (int) $congTy->id,
+                (int) $congTy->nguoiDungTheoDois()->count(),
+            ));
+        } catch (\Throwable $exception) {
+            report($exception);
+        }
+    }
+
     private function unauthorizedResponse(): JsonResponse
     {
         return response()->json([
@@ -20,7 +33,7 @@ class UngVienTheoDoiCongTyController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $user = $request->user();
+        $user = auth()->user();
 
         if (!$user) {
             return $this->unauthorizedResponse();
@@ -32,10 +45,10 @@ class UngVienTheoDoiCongTyController extends Controller
             ->with('nganhNghe:id,ten_nganh')
             ->withCount([
                 'nguoiDungTheoDois as so_nguoi_theo_doi',
-                'tinTuyenDungs as so_tin_dang_hoat_dong' => function ($subQuery) {
-                    $subQuery->where('trang_thai', TinTuyenDung::TRANG_THAI_HOAT_DONG)
-                        ->where(function ($nestedQuery) {
-                            $nestedQuery->whereNull('ngay_het_han')
+                'tinTuyenDungs as so_tin_dang_hoat_dong' => function ($q) {
+                    $q->where('trang_thai', TinTuyenDung::TRANG_THAI_HOAT_DONG)
+                        ->where(function ($subQ) {
+                            $subQ->whereNull('ngay_het_han')
                                 ->orWhere('ngay_het_han', '>=', now());
                         });
                 },
@@ -68,8 +81,8 @@ class UngVienTheoDoiCongTyController extends Controller
                     'reactivated_at',
                 ])
                 ->where('trang_thai', TinTuyenDung::TRANG_THAI_HOAT_DONG)
-                ->where(function ($subQuery) {
-                    $subQuery->whereNull('ngay_het_han')
+                ->where(function ($subQ) {
+                    $subQ->whereNull('ngay_het_han')
                         ->orWhere('ngay_het_han', '>=', now());
                 })
                 ->orderByRaw('COALESCE(reactivated_at, published_at, created_at) DESC')
@@ -86,21 +99,21 @@ class UngVienTheoDoiCongTyController extends Controller
         ]);
     }
 
-    public function toggle(Request $request, int $congTyId): JsonResponse
+    public function toggle(int $congTyId): JsonResponse
     {
-        $user = $request->user();
+        $congTy = CongTy::where('trang_thai', CongTy::TRANG_THAI_HOAT_DONG)->findOrFail($congTyId);
+
+        $user = auth()->user();
 
         if (!$user) {
             return $this->unauthorizedResponse();
         }
 
-        $congTy = CongTy::query()
-            ->where('trang_thai', CongTy::TRANG_THAI_HOAT_DONG)
-            ->findOrFail($congTyId);
-
         $changes = $user->congTyTheoDois()->toggle($congTy->id);
         $daTheoDoi = count($changes['attached']) > 0;
         $soNguoiTheoDoi = (int) $congTy->nguoiDungTheoDois()->count();
+
+        $this->dispatchFollowerCountUpdate($congTy);
 
         return response()->json([
             'success' => true,

@@ -13,8 +13,6 @@ class NopHoSoRequest extends FormRequest
 
     public function rules(): array
     {
-        $userId = $this->user()?->id ?? 0;
-
         return [
             'tin_tuyen_dung_id' => [
                 'required',
@@ -24,7 +22,9 @@ class NopHoSoRequest extends FormRequest
             'ho_so_id' => [
                 'required',
                 'integer',
-                'exists:ho_sos,id,deleted_at,NULL,nguoi_dung_id,' . $userId
+                // Phải là hồ sơ chưa bị xóa mềm, và thuộc về người dùng hiện tại
+                // Chúng ta sẽ kiểm tra thuộc sở hữu ứng viên ở Controller, hoặc thêm rule ở đây
+                'exists:ho_sos,id,deleted_at,NULL,nguoi_dung_id,' . auth()->id()
             ],
             'thu_xin_viec' => [
                 'nullable',

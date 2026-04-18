@@ -1,8 +1,9 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { followCompanyService, jobService } from '@/services/api'
 import { useNotify } from '@/composables/useNotify'
+import { connectPublicChannel, leaveRealtimeChannel } from '@/services/realtime'
 import { getAuthToken, getStoredCandidate } from '@/utils/authStorage'
 
 const route = useRoute()
@@ -11,6 +12,7 @@ const notify = useNotify()
 const loading = ref(false)
 const followSubmitting = ref(false)
 const company = ref(null)
+let followerChannelName = null
 
 const hasAuthToken = computed(() => Boolean(getAuthToken()))
 const currentUser = computed(() => getStoredCandidate())
@@ -81,8 +83,46 @@ const toggleFollowCompany = async () => {
   }
 }
 
+const subscribeFollowerChannel = (companyId) => {
+  if (!companyId) return
+
+  followerChannelName = `company.public.${companyId}`
+
+  connectPublicChannel(followerChannelName)?.listen('.company.followers.updated', (payload) => {
+    const followerCount = Number(payload?.follower_count)
+
+    if (!Number.isFinite(followerCount) || !company.value) return
+
+    company.value = {
+      ...company.value,
+      so_nguoi_theo_doi: followerCount,
+    }
+  })
+}
+
 watch(() => route.params.id, loadCompany)
 onMounted(loadCompany)
+
+watch(
+  () => company.value?.id,
+  (nextCompanyId, previousCompanyId) => {
+    if (previousCompanyId) {
+      leaveRealtimeChannel(`company.public.${previousCompanyId}`)
+    }
+
+    followerChannelName = null
+
+    if (nextCompanyId) {
+      subscribeFollowerChannel(nextCompanyId)
+    }
+  },
+)
+
+onUnmounted(() => {
+  if (followerChannelName) {
+    leaveRealtimeChannel(followerChannelName)
+  }
+})
 </script>
 
 <template>

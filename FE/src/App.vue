@@ -4,7 +4,9 @@ import { useRoute, useRouter } from 'vue-router'
 import GuestWrapper from '@/layouts/wrapper/GuestLayout.vue'
 import AuthWrapper from '@/layouts/wrapper/AuthLayout.vue'
 import DashboardWrapper from '@/layouts/wrapper/DashboardLayout.vue'
-import AppNotificationHost from '@/components/AppNotificationHost.vue'
+import CvBuilderWrapper from '@/layouts/wrapper/CvBuilderLayout.vue'
+import AdminWrapper from '@/layouts/wrapper/AdminLayout.vue'
+import EmployerWrapper from '@/layouts/wrapper/EmployerLayout.vue'
 import { authService } from '@/services/api'
 import { clearAuthStorage, getAuthToken } from '@/utils/authStorage'
 
@@ -18,6 +20,9 @@ const layoutComponent = computed(() => {
   switch (layout) {
     case 'auth': return AuthWrapper
     case 'dashboard': return DashboardWrapper
+    case 'cv-builder': return CvBuilderWrapper
+    case 'admin': return AdminWrapper
+    case 'employer': return EmployerWrapper
     default: return GuestWrapper
   }
 })
@@ -34,7 +39,7 @@ const forceLogoutIfSessionExpired = async () => {
       clearAuthStorage()
 
       if (route.meta?.requiresAuth) {
-        await router.replace('/login')
+        await router.replace('/')
       }
     }
   } finally {
@@ -42,24 +47,34 @@ const forceLogoutIfSessionExpired = async () => {
   }
 }
 
+const handleVisibilityChange = async () => {
+  if (!document.hidden) {
+    await forceLogoutIfSessionExpired()
+  }
+}
+
 const handleAuthInvalidated = async () => {
   if (route.meta?.requiresAuth) {
-    await router.replace('/login')
+    await router.replace('/')
   }
 }
 
 onMounted(() => {
   window.addEventListener('focus', forceLogoutIfSessionExpired)
   window.addEventListener('auth-invalidated', handleAuthInvalidated)
+  document.addEventListener('visibilitychange', handleVisibilityChange)
 
   sessionCheckInterval = window.setInterval(() => {
     void forceLogoutIfSessionExpired()
-  }, 20000)
+  }, 15000)
+
+  void forceLogoutIfSessionExpired()
 })
 
 onUnmounted(() => {
   window.removeEventListener('focus', forceLogoutIfSessionExpired)
   window.removeEventListener('auth-invalidated', handleAuthInvalidated)
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
 
   if (sessionCheckInterval) {
     window.clearInterval(sessionCheckInterval)
@@ -68,8 +83,9 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <AppNotificationHost />
   <component :is="layoutComponent">
     <RouterView />
   </component>
 </template>
+
+<style scoped></style>

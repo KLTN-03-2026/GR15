@@ -3,58 +3,104 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\CongTy;
+use App\Models\NguoiDung;
 use App\Models\TinTuyenDung;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
+/**
+ * TinTuyenDungController - Public / Ứng viên
+ *
+ * Routes:
+ *   GET /api/v1/tin-tuyen-dungs
+ *   GET /api/v1/tin-tuyen-dungs/{id}
+ */
 class TinTuyenDungController extends Controller
 {
-    private function publicQuery()
+    private function buildBaseDetailQuery()
     {
-        return TinTuyenDung::query()
-            ->with([
+        return TinTuyenDung::with([
                 'congTy:id,ten_cong_ty,ma_so_thue,logo,dia_chi,website,mo_ta,quy_mo,trang_thai',
-                'nganhNghes:id,ten_nganh',
+                'nganhNghes:id,ten_nganh'
+            ])
+            ->withCount([
+                'acceptedApplications as so_luong_da_nhan',
+            ]);
+    }
+
+    private function candidateCanViewRestrictedJob(?NguoiDung $nguoiDung, int $jobId): bool
+    {
+        if (!$nguoiDung || !$nguoiDung->isUngVien()) {
+            return false;
+        }
+
+        $hasSavedJob = $nguoiDung->tinDaLuus()
+            ->where('tin_tuyen_dung_id', $jobId)
+            ->exists();
+
+        if ($hasSavedJob) {
+            return true;
+        }
+
+        return $nguoiDung->hoSos()
+            ->whereHas('ungTuyens', function ($query) use ($jobId) {
+                $query->where('tin_tuyen_dung_id', $jobId)
+                    ->whereNotNull('thoi_gian_ung_tuyen');
+            })
+            ->exists();
+    }
+
+    /**
+     * Danh sách tin tuyển dụng đang hoạt động, công ty hoạt động, còn hạn.
+     */
+    public function index(Request $request): JsonResponse
+    {
+        // Lọc các tin có trạng thái = 1, ngay_het_han >= hiện tại, và công ty hoạt động
+        $query = TinTuyenDung::with([
+                'congTy:id,ten_cong_ty,ma_so_thue,logo,dia_chi',
+                'nganhNghes:id,ten_nganh'
             ])
             ->withCount([
                 'acceptedApplications as so_luong_da_nhan',
             ])
             ->where('trang_thai', TinTuyenDung::TRANG_THAI_HOAT_DONG)
-            ->where(function ($query) {
-                $query->whereNull('ngay_het_han')
-                    ->orWhere('ngay_het_han', '>=', now());
+            ->where(function ($q) {
+                $q->whereNull('ngay_het_han')
+                  ->orWhere('ngay_het_han', '>=', now());
             })
-            ->whereHas('congTy', fn ($query) => $query->where('trang_thai', CongTy::TRANG_THAI_HOAT_DONG));
-    }
+            ->whereHas('congTy', function ($q) {
+                $q->where('trang_thai', \App\Models\CongTy::TRANG_THAI_HOAT_DONG);
+            });
 
-    public function index(Request $request): JsonResponse
-    {
-        $query = $this->publicQuery();
-
+        // Tìm kiếm chung (tiêu đề, công ty, địa điểm, kỹ năng/mô tả)
         if ($request->filled('search')) {
-            $search = trim((string) $request->input('search'));
-            $query->where(function ($subQuery) use ($search) {
-                $subQuery->where('tieu_de', 'like', "%{$search}%")
-                    ->orWhere('dia_diem_lam_viec', 'like', "%{$search}%")
-                    ->orWhere('mo_ta_cong_viec', 'like', "%{$search}%")
-                    ->orWhereHas('congTy', fn ($companyQuery) => $companyQuery->where('ten_cong_ty', 'like', "%{$search}%"));
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->where('tieu_de', 'like', "%{$search}%")
+                  ->orWhere('dia_diem_lam_viec', 'like', "%{$search}%")
+                  ->orWhere('mo_ta_cong_viec', 'like', "%{$search}%")
+                  ->orWhereHas('congTy', function ($q2) use ($search) {
+                      $q2->where('ten_cong_ty', 'like', "%{$search}%");
+                  });
             });
         }
 
+        // Lọc theo ngành nghề
         if ($request->filled('nganh_nghe_id')) {
-            $nganhNgheId = (int) $request->input('nganh_nghe_id');
-            $query->whereHas('nganhNghes', fn ($subQuery) => $subQuery->where('nganh_nghes.id', $nganhNgheId));
+            $query->whereHas('nganhNghes', function ($q) use ($request) {
+                $q->where('nganh_nghes.id', $request->nganh_nghe_id);
+            });
         }
 
+        // Lọc theo tỉnh/thành phố hoặc địa điểm
         if ($request->filled('dia_diem')) {
-            $query->where('dia_diem_lam_viec', 'like', '%' . $request->input('dia_diem') . '%');
+            $query->where('dia_diem_lam_viec', 'like', '%' . $request->dia_diem . '%');
         }
 
-        $query->orderByDesc('created_at');
+        $query->orderBy('created_at', 'desc');
 
         $perPage = (int) $request->get('per_page', 15);
-        $data = $query->paginate(max(1, min($perPage, 50)));
+        $data = $query->paginate($perPage);
 
         return response()->json([
             'success' => true,
@@ -62,11 +108,33 @@ class TinTuyenDungController extends Controller
         ]);
     }
 
-    public function show(int $id): JsonResponse
+    /**
+     * Chi tiết tin tuyển dụng.
+     */
+    public function show(Request $request, int $id): JsonResponse
     {
-        $tinTuyenDung = $this->publicQuery()->findOrFail($id);
+        $tinTuyenDung = $this->buildBaseDetailQuery()
+            ->where('trang_thai', TinTuyenDung::TRANG_THAI_HOAT_DONG)
+            ->whereHas('congTy', function ($q) {
+                $q->where('trang_thai', \App\Models\CongTy::TRANG_THAI_HOAT_DONG);
+            })
+            ->find($id);
+
+        if (!$tinTuyenDung) {
+            $nguoiDung = auth('sanctum')->user();
+
+            if (!$this->candidateCanViewRestrictedJob($nguoiDung, $id)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Không tìm thấy tin tuyển dụng.',
+                ], 404);
+            }
+
+            $tinTuyenDung = $this->buildBaseDetailQuery()->findOrFail($id);
+        }
+
+        // Tăng lượt xem
         $tinTuyenDung->increment('luot_xem');
-        $tinTuyenDung = $this->publicQuery()->findOrFail($id);
 
         return response()->json([
             'success' => true,

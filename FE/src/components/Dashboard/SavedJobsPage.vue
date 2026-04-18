@@ -185,11 +185,17 @@ const submitApplication = async () => {
 
   applyingJobId.value = selectedJob.value.id
   try {
-    await applicationService.apply({
-      tin_tuyen_dung_id: selectedJob.value.id,
-      ho_so_id: Number(selectedProfileId.value),
-      thu_xin_viec: coverLetter.value.trim() || null,
-    })
+    const finalCoverLetter = coverLetter.value.trim() || null
+
+    if (generatedCoverLetterId.value) {
+      await applicationService.confirmCoverLetter(generatedCoverLetterId.value, finalCoverLetter)
+    } else {
+      await applicationService.apply({
+        tin_tuyen_dung_id: selectedJob.value.id,
+        ho_so_id: Number(selectedProfileId.value),
+        thu_xin_viec: finalCoverLetter,
+      })
+    }
 
     notify.success('Ứng tuyển thành công. Bạn có thể theo dõi tại mục Việc đã ứng tuyển.')
     applyModalOpen.value = false
@@ -212,7 +218,30 @@ const resetCoverLetterDraft = () => {
 }
 
 const generateCoverLetter = async () => {
-  notify.info('Cover letter AI chưa được bật trong bản HoangLong. Bạn vẫn có thể nhập thư ứng tuyển thủ công.')
+  if (!selectedJob.value?.id || !selectedProfileId.value || generatingCoverLetter.value) return
+
+  generatingCoverLetter.value = true
+  try {
+    const response = await applicationService.generateCoverLetter({
+      tin_tuyen_dung_id: selectedJob.value.id,
+      ho_so_id: Number(selectedProfileId.value),
+    })
+    const payload = response?.data || {}
+    const draft = payload.thu_xin_viec_ai || ''
+
+    generatedCoverLetterId.value = payload.ung_tuyen_id || null
+    generatedCoverLetter.value = draft
+    coverLetter.value = draft
+
+    notify.success('Đã sinh thư ứng tuyển bằng AI. Bạn có thể chỉnh sửa trước khi nộp.')
+  } catch (error) {
+    if (await handleExistingApplicationError(error)) {
+      return
+    }
+    notify.apiError(error, 'Không thể sinh thư ứng tuyển AI cho tin này.')
+  } finally {
+    generatingCoverLetter.value = false
+  }
 }
 
 onMounted(() => {
