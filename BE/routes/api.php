@@ -26,6 +26,7 @@ use App\Http\Controllers\Api\UngVienKetQuaMatchingController;
 use App\Http\Controllers\Api\UngVienLuuTinController;
 use App\Http\Controllers\Api\UngVienTuVanNgheNghiepController;
 use App\Http\Controllers\Api\UngVienUngTuyenController;
+use App\Http\Controllers\Api\WalletController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -213,6 +214,16 @@ Route::get('v1/ung-vien/ket-qua-matchings', [UngVienKetQuaMatchingController::cl
 Route::get('v1/ung-vien/tu-van-nghe-nghieps', [UngVienTuVanNgheNghiepController::class, 'index'])
     ->middleware(['auth:sanctum', 'role:ung_vien'])
     ->name('ung-vien.tu-van-nghe-nghieps.index');
+
+// Danh sách lịch sử thanh toán của ứng viên
+Route::get('v1/ung-vien/payments', [WalletController::class, 'payments'])
+    ->middleware(['auth:sanctum', 'role:ung_vien'])
+    ->name('ung-vien.payments.index');
+
+// Chi tiết một giao dịch thanh toán
+Route::get('v1/ung-vien/payments/{maGiaoDichNoiBo}', [WalletController::class, 'paymentDetail'])
+    ->middleware(['auth:sanctum', 'role:ung_vien'])
+    ->name('ung-vien.payments.show');
 
 
 // ============================================================

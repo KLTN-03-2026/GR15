@@ -592,6 +592,23 @@ export const jobService = {
   },
 }
 
+// === Candidate Payment APIs ===
+export const paymentService = {
+  // Lấy danh sách lịch sử thanh toán của ứng viên
+  getPayments: (options = {}) => {
+    const params = new URLSearchParams()
+    if (options.page)            params.append('page', options.page)
+    if (options.per_page)        params.append('per_page', options.per_page)
+    if (options.loai_giao_dich) params.append('loai_giao_dich', options.loai_giao_dich)
+    if (options.trang_thai)     params.append('trang_thai', options.trang_thai)
+    return apiCall(`/ung-vien/payments?${params}`, { method: 'GET' })
+  },
+
+  // Lấy chi tiết 1 giao dịch theo mã nội bộ
+  getPaymentDetail: (maGiaoDichNoiBo) =>
+    apiCall(`/ung-vien/payments/${maGiaoDichNoiBo}`, { method: 'GET' }),
+}
+
 export default {
   authService,
   userService,
@@ -601,4 +618,5 @@ export default {
   jobPostingService,
   statsService,
   jobService,
+  paymentService,
 }

@@ -130,6 +130,20 @@ const routes = [
     meta: { layout: 'dashboard' },
     beforeEnter: requireCandidateAuth
   },
+  {
+    path: '/payments',
+    name: 'PaymentHistory',
+    component: () => import('@/components/Dashboard/PaymentHistoryPage.vue'),
+    meta: { layout: 'dashboard' },
+    beforeEnter: requireCandidateAuth
+  },
+  {
+    path: '/payments/:maGiaoDichNoiBo',
+    name: 'PaymentDetail',
+    component: () => import('@/components/Dashboard/PaymentDetailPage.vue'),
+    meta: { layout: 'dashboard' },
+    beforeEnter: requireCandidateAuth
+  },
     // Employer pages
   {
     path: '/employer',
