@@ -1,78 +1,765 @@
 <script setup>
-import { reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { authService } from '@/services/api'
-import { extractApiErrorMessage } from '@/utils/apiErrors'
+import { extractApiErrorMessage, extractApiFieldErrors } from '@/utils/apiErrors'
 
 const router = useRouter()
-const loading = ref(false)
-const errorMessage = ref('')
+const route = useRoute()
+const ALERT_AUTO_DISMISS_MS = 5000
+const accountType = ref('candidate')
+const isLoading = ref(false)
+const showPassword = ref(false)
+const showConfirmPassword = ref(false)
 const successMessage = ref('')
+const errorMessage = ref('')
+const alertTimeoutId = ref(null)
 
-const form = reactive({
+const registerForm = reactive({
   fullName: '',
+  companyName: '',
+  contactPerson: '',
   email: '',
   phone: '',
   password: '',
   confirmPassword: '',
 })
 
-const handleSubmit = async () => {
-  loading.value = true
+const registerErrors = reactive({
+  fullName: '',
+  companyName: '',
+  contactPerson: '',
+  email: '',
+  phone: '',
+  password: '',
+  confirmPassword: '',
+})
+
+const isEmployer = computed(() => accountType.value === 'employer')
+
+const pageCopy = computed(() => {
+  if (isEmployer.value) {
+    return {
+      showcaseTitle: 'Tăng tốc tuyển dụng cùng AI.',
+      showcaseDescription:
+        'Thiết lập hồ sơ doanh nghiệp, đăng tin nhanh hơn và tiếp cận đúng ứng viên với hệ thống tuyển dụng thông minh.',
+      headTitle: 'Đăng ký nhà tuyển dụng',
+      headDescription: 'Tạo tài khoản doanh nghiệp để đăng tuyển và quản lý hồ sơ công ty trên hệ thống.',
+      submitLabel: 'Tạo tài khoản',
+      loginHint: 'Đã có tài khoản doanh nghiệp?',
+      fullNameLabel: 'Người phụ trách',
+      fullNamePlaceholder: 'Nhập họ tên người phụ trách công ty',
+    }
+  }
+
+  return {
+    showcaseTitle: 'Nâng tầm sự nghiệp cùng AI.',
+    showcaseDescription:
+      'Kết nối đúng người, đúng việc với công nghệ trí tuệ nhân tạo hàng đầu. Khởi đầu hành trình mới của bạn ngay hôm nay.',
+    headTitle: 'Đăng ký ứng viên',
+    headDescription: 'Tham gia mạng lưới tuyển dụng thông minh ngay hôm nay.',
+    submitLabel: 'Tạo tài khoản',
+    loginHint: 'Bạn đã có tài khoản?',
+    fullNameLabel: 'Họ và tên',
+    fullNamePlaceholder: 'Nhập họ và tên của bạn',
+  }
+})
+
+const resetMessages = () => {
+  if (alertTimeoutId.value) {
+    clearTimeout(alertTimeoutId.value)
+    alertTimeoutId.value = null
+  }
+
   errorMessage.value = ''
   successMessage.value = ''
+}
 
-  if (form.password !== form.confirmPassword) {
-    errorMessage.value = 'Xác nhận mật khẩu không khớp.'
-    loading.value = false
+const scheduleAlertDismiss = () => {
+  if (alertTimeoutId.value) {
+    clearTimeout(alertTimeoutId.value)
+  }
+
+  if (!errorMessage.value && !successMessage.value) {
+    alertTimeoutId.value = null
     return
   }
 
+  alertTimeoutId.value = window.setTimeout(() => {
+    resetMessages()
+  }, ALERT_AUTO_DISMISS_MS)
+}
+
+const clearValidationErrors = () => {
+  registerErrors.fullName = ''
+  registerErrors.companyName = ''
+  registerErrors.contactPerson = ''
+  registerErrors.email = ''
+  registerErrors.phone = ''
+  registerErrors.password = ''
+  registerErrors.confirmPassword = ''
+}
+
+const applyServerValidationErrors = (fieldErrors) => {
+  const firstMessage = (field) => fieldErrors[field]?.[0] || ''
+
+  registerErrors.fullName = firstMessage('ho_ten')
+  registerErrors.companyName = firstMessage('ten_cong_ty')
+  registerErrors.contactPerson = firstMessage('ho_ten')
+  registerErrors.email = firstMessage('email')
+  registerErrors.phone = firstMessage('so_dien_thoai') || firstMessage('dien_thoai')
+  registerErrors.password = firstMessage('mat_khau')
+  registerErrors.confirmPassword = firstMessage('mat_khau_confirmation')
+}
+
+watch(
+  () => route.query.role,
+  (role) => {
+    accountType.value = role === 'employer' ? 'employer' : 'candidate'
+  },
+  { immediate: true }
+)
+
+watch(accountType, (type) => {
+  clearValidationErrors()
+  resetMessages()
+
+  router.replace({
+    query: type === 'employer' ? { ...route.query, role: 'employer' } : {},
+  })
+})
+
+watch([errorMessage, successMessage], () => {
+  scheduleAlertDismiss()
+})
+
+onBeforeUnmount(() => {
+  if (alertTimeoutId.value) {
+    clearTimeout(alertTimeoutId.value)
+  }
+})
+
+const handleRegister = async () => {
+  isLoading.value = true
+  clearValidationErrors()
+  resetMessages()
+
   try {
-    await authService.registerCandidate(form.fullName, form.email, form.phone, form.password)
-    successMessage.value = 'Đăng ký thành công. Bạn có thể đăng nhập ngay.'
-    setTimeout(() => router.push('/login'), 800)
+    const registeredEmail = registerForm.email.trim()
+    const companyDraft = isEmployer.value
+      ? {
+        ten_cong_ty: registerForm.companyName.trim(),
+        email: registeredEmail,
+        dien_thoai: registerForm.phone.trim(),
+        nguoi_lien_he: registerForm.contactPerson.trim(),
+      }
+      : null
+
+    const response = isEmployer.value
+      ? await authService.registerEmployer(
+        registerForm.companyName.trim(),
+        registerForm.contactPerson.trim(),
+        registeredEmail,
+        registerForm.phone.trim(),
+        registerForm.password,
+        registerForm.confirmPassword
+      )
+      : await authService.registerCandidate(
+        registerForm.fullName.trim(),
+        registeredEmail,
+        registerForm.phone.trim(),
+        registerForm.password,
+        registerForm.confirmPassword
+      )
+
+    if (response.success || response.message) {
+      if (companyDraft) {
+        window.sessionStorage.setItem('employer_company_draft', JSON.stringify(companyDraft))
+      }
+
+      successMessage.value = 'Đăng ký thành công! Vui lòng đăng nhập.'
+      Object.assign(registerForm, {
+        fullName: '',
+        companyName: '',
+        contactPerson: '',
+        email: '',
+        phone: '',
+        password: '',
+        confirmPassword: '',
+      })
+
+      setTimeout(() => {
+        router.push({
+          path: '/login',
+          query: {
+            verify_pending: '1',
+            email: registeredEmail,
+          },
+        })
+      }, 1200)
+    }
   } catch (error) {
-    errorMessage.value = extractApiErrorMessage(error, 'Đăng ký thất bại.')
+    const fieldErrors = extractApiFieldErrors(error)
+
+    if (Object.keys(fieldErrors).length) {
+      applyServerValidationErrors(fieldErrors)
+    }
+
+    errorMessage.value = extractApiErrorMessage(error, 'Đăng ký thất bại')
   } finally {
-    loading.value = false
+    isLoading.value = false
   }
 }
 </script>
 
 <template>
-  <div class="mx-auto grid min-h-[calc(100vh-140px)] max-w-6xl items-center gap-10 px-6 py-10 lg:grid-cols-2">
-    <section class="rounded-[32px] bg-gradient-to-br from-blue-600 via-indigo-600 to-slate-900 px-8 py-10 text-white shadow-2xl">
-      <p class="text-xs uppercase tracking-[0.35em] text-blue-100">SmartJob AI</p>
-      <h1 class="mt-4 text-4xl font-bold">Tạo tài khoản để bắt đầu với AI tuyển dụng.</h1>
-      <p class="mt-4 text-base leading-7 text-blue-50/90">
-        Sau khi đăng ký, bạn có thể xây dựng hồ sơ, cập nhật kỹ năng, tạo matching với tin tuyển dụng và nhận báo cáo định hướng nghề nghiệp từ AI.
-      </p>
+  <div class="auth-page auth-page--register">
+    <section class="auth-showcase">
+      <div class="showcase-inner">
+        <RouterLink to="/" class="showcase-brand">
+          <span class="brand-mark">
+            <span class="material-symbols-outlined">rocket_launch</span>
+          </span>
+          <span>SmartJob AI</span>
+        </RouterLink>
+
+        <div class="showcase-copy">
+          <h1>{{ pageCopy.showcaseTitle }}</h1>
+          <p>{{ pageCopy.showcaseDescription }}</p>
+        </div>
+
+        <div class="showcase-stats">
+          <div class="stat-card">
+            <strong>10k+</strong>
+            <span>Việc làm mới</span>
+          </div>
+          <div class="stat-card">
+            <strong>500+</strong>
+            <span>Doanh nghiệp</span>
+          </div>
+        </div>
+      </div>
     </section>
 
-    <section class="rounded-[32px] border border-slate-200 bg-white p-8 shadow-lg">
-      <p class="text-xs uppercase tracking-[0.35em] text-blue-600">Candidate Register</p>
-      <h2 class="mt-3 text-3xl font-bold text-slate-900">Đăng ký ứng viên</h2>
+    <section class="auth-panel">
+      <div class="auth-shell">
+        <div v-if="errorMessage || successMessage" class="auth-alert-wrap">
+          <div v-if="errorMessage" class="auth-alert auth-alert--error">
+            <span class="material-symbols-outlined">error</span>
+            <span>{{ errorMessage }}</span>
+          </div>
+          <div v-if="successMessage" class="auth-alert auth-alert--success">
+            <span class="material-symbols-outlined">check_circle</span>
+            <span>{{ successMessage }}</span>
+          </div>
+        </div>
 
-      <div v-if="errorMessage" class="mt-5 rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{{ errorMessage }}</div>
-      <div v-if="successMessage" class="mt-5 rounded-2xl bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{{ successMessage }}</div>
+        <div class="auth-head">
+          <h2>{{ pageCopy.headTitle }}</h2>
+          <p>{{ pageCopy.headDescription }}</p>
+        </div>
 
-      <form class="mt-6 space-y-4" @submit.prevent="handleSubmit">
-        <input v-model="form.fullName" required placeholder="Họ và tên" class="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-blue-400" />
-        <input v-model="form.email" type="email" required placeholder="Email" class="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-blue-400" />
-        <input v-model="form.phone" placeholder="Số điện thoại" class="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-blue-400" />
-        <input v-model="form.password" type="password" required placeholder="Mật khẩu" class="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-blue-400" />
-        <input v-model="form.confirmPassword" type="password" required placeholder="Xác nhận mật khẩu" class="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-blue-400" />
+        <div class="auth-card">
+          <div class="role-switch" role="tablist" aria-label="Chọn vai trò">
+            <button
+              type="button"
+              class="role-button"
+              :class="{ active: accountType === 'candidate' }"
+              @click="accountType = 'candidate'"
+            >
+              Tôi muốn tìm việc
+            </button>
+            <button
+              type="button"
+              class="role-button"
+              :class="{ active: accountType === 'employer' }"
+              @click="accountType = 'employer'"
+            >
+              Tôi muốn tuyển dụng
+            </button>
+          </div>
 
-        <button type="submit" class="w-full rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60" :disabled="loading">
-          {{ loading ? 'Đang đăng ký...' : 'Tạo tài khoản' }}
-        </button>
-      </form>
+          <form class="auth-form" novalidate @submit.prevent="handleRegister">
+            <div v-if="isEmployer" class="field-group">
+              <label for="companyName">Tên công ty</label>
+              <div class="input-shell" :class="{ 'input-shell--error': registerErrors.companyName }">
+                <span class="material-symbols-outlined">business</span>
+                <input
+                  id="companyName"
+                  v-model="registerForm.companyName"
+                  type="text"
+                  placeholder="Nhập tên công ty"
+                  :disabled="isLoading"
+                >
+              </div>
+              <span v-if="registerErrors.companyName" class="field-error">{{ registerErrors.companyName }}</span>
+            </div>
 
-      <p class="mt-5 text-sm text-slate-600">
-        Đã có tài khoản?
-        <RouterLink to="/login" class="font-semibold text-blue-600 hover:text-blue-700">Đăng nhập</RouterLink>
-      </p>
+            <div class="field-group">
+              <label for="fullName">{{ pageCopy.fullNameLabel }}</label>
+              <div class="input-shell" :class="{ 'input-shell--error': isEmployer ? registerErrors.contactPerson : registerErrors.fullName }">
+                <span class="material-symbols-outlined">person</span>
+                <input
+                  v-if="isEmployer"
+                  id="fullName"
+                  v-model="registerForm.contactPerson"
+                  type="text"
+                  :placeholder="pageCopy.fullNamePlaceholder"
+                  :disabled="isLoading"
+                >
+                <input
+                  v-else
+                  id="fullName"
+                  v-model="registerForm.fullName"
+                  type="text"
+                  :placeholder="pageCopy.fullNamePlaceholder"
+                  :disabled="isLoading"
+                >
+              </div>
+              <span v-if="isEmployer && registerErrors.contactPerson" class="field-error">{{ registerErrors.contactPerson }}</span>
+              <span v-else-if="!isEmployer && registerErrors.fullName" class="field-error">{{ registerErrors.fullName }}</span>
+            </div>
+
+            <div class="field-group">
+              <label for="email">Email</label>
+              <div class="input-shell" :class="{ 'input-shell--error': registerErrors.email }">
+                <span class="material-symbols-outlined">mail</span>
+                <input
+                  id="email"
+                  v-model="registerForm.email"
+                  type="email"
+                  placeholder="example@email.com"
+                  :disabled="isLoading"
+                >
+              </div>
+              <span v-if="registerErrors.email" class="field-error">{{ registerErrors.email }}</span>
+            </div>
+
+            <div class="field-group">
+              <label for="phone">Số điện thoại</label>
+              <div class="input-shell" :class="{ 'input-shell--error': registerErrors.phone }">
+                <span class="material-symbols-outlined">call</span>
+                <input
+                  id="phone"
+                  v-model="registerForm.phone"
+                  type="tel"
+                  placeholder="Nhập số điện thoại"
+                  :disabled="isLoading"
+                >
+              </div>
+              <span v-if="registerErrors.phone" class="field-error">{{ registerErrors.phone }}</span>
+            </div>
+
+            <div class="field-group">
+              <label for="password">Mật khẩu</label>
+              <div class="input-shell" :class="{ 'input-shell--error': registerErrors.password }">
+                <span class="material-symbols-outlined">lock</span>
+                <input
+                  id="password"
+                  v-model="registerForm.password"
+                  :type="showPassword ? 'text' : 'password'"
+                  placeholder="••••••••"
+                  :disabled="isLoading"
+                >
+                <button
+                  type="button"
+                  class="toggle-visibility"
+                  :aria-label="showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'"
+                  @click="showPassword = !showPassword"
+                >
+                  <span class="material-symbols-outlined">{{ showPassword ? 'visibility_off' : 'visibility' }}</span>
+                </button>
+              </div>
+              <span v-if="registerErrors.password" class="field-error">{{ registerErrors.password }}</span>
+            </div>
+
+            <div class="field-group">
+              <label for="confirmPassword">Xác nhận mật khẩu</label>
+              <div class="input-shell" :class="{ 'input-shell--error': registerErrors.confirmPassword }">
+                <span class="material-symbols-outlined">verified_user</span>
+                <input
+                  id="confirmPassword"
+                  v-model="registerForm.confirmPassword"
+                  :type="showConfirmPassword ? 'text' : 'password'"
+                  placeholder="Nhập lại mật khẩu"
+                  :disabled="isLoading"
+                >
+                <button
+                  type="button"
+                  class="toggle-visibility"
+                  :aria-label="showConfirmPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'"
+                  @click="showConfirmPassword = !showConfirmPassword"
+                >
+                  <span class="material-symbols-outlined">{{ showConfirmPassword ? 'visibility_off' : 'visibility' }}</span>
+                </button>
+              </div>
+              <span v-if="registerErrors.confirmPassword" class="field-error">{{ registerErrors.confirmPassword }}</span>
+            </div>
+
+            <button type="submit" class="submit-button" :disabled="isLoading">
+              <span v-if="isLoading" class="spinner"></span>
+              <span>{{ isLoading ? 'Đang đăng ký...' : pageCopy.submitLabel }}</span>
+            </button>
+          </form>
+        </div>
+
+        <p class="auth-switch">
+          {{ pageCopy.loginHint }}
+          <RouterLink to="/login">Đăng nhập ngay</RouterLink>
+        </p>
+      </div>
     </section>
   </div>
 </template>
+
+<style scoped>
+.auth-page {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 1.02fr 1fr;
+  background: #f8fbff;
+}
+
+.auth-showcase {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at top left, rgba(103, 190, 255, 0.16), transparent 22%),
+    linear-gradient(180deg, #2f67ee 0%, #334fc6 46%, #2f3fa6 100%);
+  color: #fff;
+}
+
+.auth-showcase::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.24) 1px, transparent 1px);
+  background-size: 50px 50px;
+  opacity: 0.55;
+}
+
+.showcase-inner {
+  position: relative;
+  z-index: 1;
+  min-height: 100%;
+  padding: 4rem 7vw;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.showcase-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 1rem;
+  color: #fff;
+  text-decoration: none;
+  font-size: 1.7rem;
+  font-weight: 800;
+  margin-bottom: 3rem;
+}
+
+.brand-mark {
+  width: 3.6rem;
+  height: 3.6rem;
+  display: grid;
+  place-items: center;
+  border-radius: 1.15rem;
+  background: rgba(255, 255, 255, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+.brand-mark .material-symbols-outlined {
+  font-size: 1.8rem;
+}
+
+.showcase-copy h1 {
+  max-width: 34rem;
+  margin: 0 0 1.25rem;
+  font-size: clamp(3rem, 5vw, 4.7rem);
+  line-height: 1.05;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+}
+
+.showcase-copy p {
+  max-width: 34rem;
+  margin: 0;
+  color: rgba(236, 242, 255, 0.92);
+  font-size: 1.18rem;
+  line-height: 1.8;
+}
+
+.showcase-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.4rem;
+  max-width: 35rem;
+  margin-top: 3rem;
+}
+
+.stat-card {
+  padding: 1.6rem;
+  border-radius: 1.4rem;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(12px);
+}
+
+.stat-card strong {
+  display: block;
+  font-size: 2rem;
+  font-weight: 800;
+}
+
+.stat-card span {
+  display: block;
+  margin-top: 0.35rem;
+  color: rgba(236, 242, 255, 0.86);
+}
+
+.auth-panel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem;
+}
+
+.auth-shell {
+  width: 100%;
+  max-width: 37rem;
+}
+
+.auth-alert-wrap {
+  display: grid;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.auth-alert {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.9rem 1rem;
+  border-radius: 1rem;
+  font-size: 0.95rem;
+}
+
+.auth-alert--error {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #b91c1c;
+}
+
+.auth-alert--success {
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  color: #047857;
+}
+
+.auth-head h2 {
+  margin: 0;
+  font-size: 2rem;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.auth-head p {
+  margin: 0.65rem 0 0;
+  color: #64748b;
+  line-height: 1.7;
+}
+
+.auth-card {
+  margin-top: 1.6rem;
+  padding: 2.2rem;
+  border-radius: 2rem;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(199, 210, 254, 0.7);
+  box-shadow: 0 30px 80px rgba(30, 64, 175, 0.12);
+  backdrop-filter: blur(14px);
+}
+
+.role-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+  padding: 0.35rem;
+  border-radius: 1.25rem;
+  background: #eef4ff;
+}
+
+.role-button {
+  min-height: 3.2rem;
+  border: none;
+  border-radius: 1rem;
+  background: transparent;
+  color: #475569;
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.role-button.active {
+  background: #fff;
+  color: #1d4ed8;
+  box-shadow: 0 8px 20px rgba(41, 95, 230, 0.12);
+}
+
+.field-group + .field-group {
+  margin-top: 1rem;
+}
+
+.field-group label {
+  display: block;
+  margin-bottom: 0.55rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.input-shell {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0 1rem;
+  min-height: 3.7rem;
+  border-radius: 1rem;
+  border: 1px solid #dbe5f3;
+  background: #f8fbff;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.input-shell:focus-within {
+  border-color: #295fe6;
+  box-shadow: 0 0 0 4px rgba(41, 95, 230, 0.12);
+}
+
+.input-shell--error {
+  border-color: #ef4444;
+}
+
+.input-shell .material-symbols-outlined {
+  font-size: 1.25rem;
+  color: #6b7ca8;
+}
+
+.input-shell input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 1rem;
+  color: #0f172a;
+}
+
+.toggle-visibility {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+}
+
+.field-error {
+  display: block;
+  margin-top: 0.45rem;
+  color: #dc2626;
+  font-size: 0.82rem;
+}
+
+.field-hint {
+  display: block;
+  margin-top: 0.45rem;
+  color: #64748b;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.submit-button {
+  margin-top: 1.4rem;
+  width: 100%;
+  min-height: 3.7rem;
+  border: none;
+  border-radius: 1rem;
+  background: linear-gradient(135deg, #2f67ee 0%, #2f46bf 100%);
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.7rem;
+  cursor: pointer;
+  box-shadow: 0 18px 32px rgba(47, 103, 238, 0.24);
+}
+
+.submit-button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.spinner {
+  width: 1rem;
+  height: 1rem;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.45);
+  border-top-color: #fff;
+  animation: spin 0.8s linear infinite;
+}
+
+.auth-switch {
+  margin: 1.6rem 0 0;
+  color: #64748b;
+  text-align: center;
+}
+
+.auth-switch a {
+  margin-left: 0.35rem;
+  color: #295fe6;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 980px) {
+  .auth-page {
+    grid-template-columns: 1fr;
+  }
+
+  .auth-showcase {
+    min-height: 22rem;
+  }
+
+  .auth-panel {
+    padding: 1.5rem;
+  }
+
+  .showcase-inner {
+    padding: 3rem 1.5rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .auth-card {
+    padding: 1.25rem;
+    border-radius: 1.4rem;
+  }
+
+  .showcase-copy h1 {
+    font-size: 2.3rem;
+  }
+
+  .showcase-stats {
+    grid-template-columns: 1fr;
+  }
+}
+</style>

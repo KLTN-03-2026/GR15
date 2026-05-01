@@ -55,7 +55,7 @@ def generate_career_chat_reply(
     provider_name, provider = _resolve_provider()
     prefers_model = provider_name in {"ollama", "openai"}
 
-    if not prefers_model and intent in DETERMINISTIC_INTENTS and not (force_model and intent in MODEL_PREFERRED_INTENTS):
+    if intent in DETERMINISTIC_INTENTS and not (force_model and intent in MODEL_PREFERRED_INTENTS):
         answer = _normalize_answer(build_template_answer(message, context, history, intent))
         return {
             "success": True,
@@ -147,7 +147,7 @@ def stream_career_chat_reply(
     provider_name, provider = _resolve_provider()
     prefers_model = provider_name in {"ollama", "openai"}
 
-    if not prefers_model and intent in DETERMINISTIC_INTENTS and not (force_model and intent in MODEL_PREFERRED_INTENTS):
+    if intent in DETERMINISTIC_INTENTS and not (force_model and intent in MODEL_PREFERRED_INTENTS):
         answer = _normalize_answer(build_template_answer(message, context, history, intent))
         yield _sse_event(
             "meta",
@@ -330,6 +330,7 @@ def _normalize_answer(text: str) -> str:
         previous_blank = False
 
     cleaned = "\n".join(normalized_lines).strip()
+    cleaned = _normalize_vietnamese_terms(cleaned)
     cleaned = _trim_incomplete_tail(cleaned)
 
     if not cleaned:
@@ -343,6 +344,42 @@ def _normalize_answer(text: str) -> str:
         return cleaned[: last_stop + 1].strip()
 
     return f"{cleaned}."
+
+
+def _normalize_vietnamese_terms(text: str) -> str:
+    replacements = {
+        "Next 30 days": "30 ngày đầu",
+        "Next 60 days": "60 ngày",
+        "Next 90 days": "90 ngày",
+        "next 30 days": "30 ngày đầu",
+        "next 60 days": "60 ngày",
+        "next 90 days": "90 ngày",
+        "Career Path Simulator": "Mô phỏng lộ trình nghề nghiệp",
+        "career path simulator": "mô phỏng lộ trình nghề nghiệp",
+        "mini project": "dự án nhỏ",
+        "Mini project": "Dự án nhỏ",
+        "case study": "bài phân tích tình huống",
+        "Case study": "Bài phân tích tình huống",
+        "portfolio": "hồ sơ dự án",
+        "Portfolio": "Hồ sơ dự án",
+        "matching": "đối sánh",
+        "Matching": "Đối sánh",
+        "apply": "ứng tuyển",
+        "Apply": "Ứng tuyển",
+        "cover letter": "thư xin việc",
+        "Cover letter": "Thư xin việc",
+        "job mục tiêu": "vị trí mục tiêu",
+        "job phù hợp": "vị trí phù hợp",
+        "job gần nhất": "vị trí gần nhất",
+        "job ": "công việc ",
+        "Job ": "Công việc ",
+        "skill gap": "khoảng cách kỹ năng",
+        "Skill gap": "Khoảng cách kỹ năng",
+    }
+    output = text
+    for source, target in replacements.items():
+        output = output.replace(source, target)
+    return output
 
 
 def _looks_like_provider_guardrail(answer: str) -> bool:

@@ -5,7 +5,7 @@
 
 import { clearAuthStorage, getAuthToken } from '@/utils/authStorage'
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api/v1'
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL
 
 const buildHeaders = (options = {}) => {
   const isFormData = options.body instanceof FormData
@@ -68,6 +68,16 @@ const apiCall = async (endpoint, options = {}) => {
       throw {
         status: response.status,
         message: data.message || `Lỗi ${response.status}: ${response.statusText}`,
+        code: data.code || null,
+        errors: data.errors || null,
+        requiredRoles: data.required_roles || null,
+        requiredRoleLabels: data.required_role_labels || null,
+        currentRole: data.current_role || null,
+        currentRoleLabel: data.current_role_label || null,
+        requiredCompanyRoles: data.required_company_roles || null,
+        requiredCompanyRoleLabels: data.required_company_role_labels || null,
+        currentCompanyRole: data.current_company_role || null,
+        currentCompanyRoleLabel: data.current_company_role_label || null,
         data
       }
     }
@@ -80,6 +90,65 @@ const apiCall = async (endpoint, options = {}) => {
         status: 0,
         message: 'Không thể kết nối đến API. Kiểm tra:\n1. Backend đang chạy tại ' + API_BASE_URL + '\n2. CORS được bật\n3. Network connection',
         error: err.message
+      }
+    }
+    throw err
+  }
+}
+
+const parseFilename = (disposition) => {
+  if (!disposition) return ''
+  const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i)
+  if (utf8Match?.[1]) return decodeURIComponent(utf8Match[1].replace(/"/g, ''))
+  const match = disposition.match(/filename="?([^"]+)"?/i)
+  return match?.[1] || ''
+}
+
+const blobApiCall = async (endpoint, options = {}) => {
+  const url = `${API_BASE_URL}${endpoint}`
+  const headers = buildHeaders({
+    ...options,
+    headers: {
+      Accept: 'application/pdf',
+      ...(options.headers || {}),
+    },
+  })
+  delete headers['Content-Type']
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      headers,
+    })
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        handleUnauthorized()
+      }
+
+      const contentType = response.headers.get('content-type') || ''
+      let message = `Lỗi ${response.status}: ${response.statusText}`
+
+      if (contentType.includes('application/json')) {
+        const data = await response.json()
+        message = data?.message || message
+        throw { status: response.status, message, data }
+      }
+
+      const text = await response.text()
+      throw { status: response.status, message: text || message }
+    }
+
+    return {
+      blob: await response.blob(),
+      filename: parseFilename(response.headers.get('content-disposition')),
+    }
+  } catch (err) {
+    if (err instanceof TypeError) {
+      throw {
+        status: 0,
+        message: 'Không thể tải file từ API. Kiểm tra backend và kết nối mạng.',
+        error: err.message,
       }
     }
     throw err
@@ -107,6 +176,13 @@ const streamApiCall = async (endpoint, options = {}, handlers = {}) => {
       if (contentType.includes('application/json')) {
         const data = await response.json()
         message = data?.message || message
+        throw {
+          status: response.status,
+          message,
+          code: data?.code || null,
+          errors: data?.errors || null,
+          data,
+        }
       } else {
         const text = await response.text()
         message = text || message
@@ -199,10 +275,18 @@ const streamApiCall = async (endpoint, options = {}, handlers = {}) => {
   }
 }
 
+const createIdempotencyKey = (prefix = 'request') => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return `${prefix}-${crypto.randomUUID()}`
+  }
+
+  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
+
 // === Auth APIs ===
 export const authService = {
   // Guest/Candidate registration
-  registerCandidate: (fullName, email, phone, password) =>
+  registerCandidate: (fullName, email, phone, password, confirmPassword) =>
     apiCall('/dang-ky', {
       method: 'POST',
       body: JSON.stringify({
@@ -210,7 +294,7 @@ export const authService = {
         email,
         so_dien_thoai: phone,
         mat_khau: password,
-        mat_khau_confirmation: password,
+        mat_khau_confirmation: confirmPassword,
         vai_tro: 0,
       })
     }),
@@ -226,15 +310,16 @@ export const authService = {
     }),
 
   // Employer registration
-  registerEmployer: (companyName, contactPerson, email, phone, password) =>
+  registerEmployer: (companyName, contactPerson, email, phone, password, confirmPassword) =>
     apiCall('/dang-ky', {
       method: 'POST',
       body: JSON.stringify({
-        ho_ten: contactPerson || companyName,
+        ho_ten: contactPerson,
+        ten_cong_ty: companyName,
         email,
         so_dien_thoai: phone,
         mat_khau: password,
-        mat_khau_confirmation: password,
+        mat_khau_confirmation: confirmPassword,
         vai_tro: 1,
       })
     }),
@@ -386,6 +471,75 @@ export const userService = {
     })
 }
 
+export const adminAccountService = {
+  getAdmins: (options = {}) => {
+    const params = new URLSearchParams()
+    if (options.page) params.append('page', options.page)
+    if (options.per_page) params.append('per_page', options.per_page)
+    if (options.search) params.append('search', options.search)
+    if (options.trang_thai !== undefined && options.trang_thai !== null && options.trang_thai !== '') {
+      params.append('trang_thai', options.trang_thai)
+    }
+    if (options.cap_admin) params.append('cap_admin', options.cap_admin)
+    params.append('sort_by', options.sort_by || 'created_at')
+    params.append('sort_dir', options.sort_dir || 'desc')
+
+    const query = params.toString()
+    return apiCall(`/admin/admins${query ? `?${query}` : ''}`, {
+      method: 'GET',
+    })
+  },
+
+  getAdminStats: () =>
+    apiCall('/admin/admins/thong-ke', {
+      method: 'GET',
+    }),
+
+  getAdminById: (id) =>
+    apiCall(`/admin/admins/${id}`, {
+      method: 'GET',
+    }),
+
+  getAdminPermissions: (id) =>
+    apiCall(`/admin/admins/${id}/permissions`, {
+      method: 'GET',
+    }),
+
+  createAdmin: (payload) =>
+    apiCall('/admin/admins', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  updateAdmin: (id, payload) =>
+    apiCall(`/admin/admins/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+
+  updateAdminPermissions: (id, permissions) =>
+    apiCall(`/admin/admins/${id}/permissions`, {
+      method: 'PUT',
+      body: JSON.stringify({ quyen_admin: permissions }),
+    }),
+
+  createAdminPermissionDefinition: (payload) =>
+    apiCall('/admin/admins/permissions/definitions', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  toggleAdminLock: (id) =>
+    apiCall(`/admin/admins/${id}/khoa`, {
+      method: 'PATCH',
+    }),
+
+  deleteAdmin: (id) =>
+    apiCall(`/admin/admins/${id}`, {
+      method: 'DELETE',
+    }),
+}
+
 // === Admin Company APIs ===
 export const companyService = {
   // Lấy danh sách công ty
@@ -452,6 +606,182 @@ export const adminMarketService = {
   getDashboard: () =>
     apiCall('/admin/thi-truong/dashboard', {
       method: 'GET',
+    }),
+}
+
+export const adminBillingService = {
+  getOverview: () =>
+    apiCall('/admin/billing/overview', {
+      method: 'GET',
+    }),
+
+  getPayments: (options = {}) => {
+    const params = new URLSearchParams()
+    ;['page', 'per_page', 'loai_giao_dich', 'trang_thai', 'gateway', 'q'].forEach((key) => {
+      const value = options[key]
+      if (value !== undefined && value !== null && value !== '') params.append(key, value)
+    })
+    const query = params.toString()
+    return apiCall(`/admin/billing/payments${query ? `?${query}` : ''}`, {
+      method: 'GET',
+    })
+  },
+
+  getPaymentDetail: (maGiaoDichNoiBo) =>
+    apiCall(`/admin/billing/payments/${maGiaoDichNoiBo}`, {
+      method: 'GET',
+    }),
+
+  reconcilePayment: (maGiaoDichNoiBo) =>
+    apiCall(`/admin/billing/payments/${maGiaoDichNoiBo}/reconcile`, {
+      method: 'POST',
+    }),
+
+  getPlans: () =>
+    apiCall('/admin/billing/plans', {
+      method: 'GET',
+    }),
+
+  createPlan: (payload) =>
+    apiCall('/admin/billing/plans', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  updatePlan: (id, payload) =>
+    apiCall(`/admin/billing/plans/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+
+  getPrices: () =>
+    apiCall('/admin/billing/prices', {
+      method: 'GET',
+    }),
+
+  createPrice: (payload) =>
+    apiCall('/admin/billing/prices', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  updatePrice: (id, payload) =>
+    apiCall(`/admin/billing/prices/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+
+  getSubscriptions: (options = {}) => {
+    const params = new URLSearchParams()
+    ;['page', 'per_page', 'trang_thai', 'q'].forEach((key) => {
+      const value = options[key]
+      if (value !== undefined && value !== null && value !== '') params.append(key, value)
+    })
+    const query = params.toString()
+    return apiCall(`/admin/billing/subscriptions${query ? `?${query}` : ''}`, {
+      method: 'GET',
+    })
+  },
+}
+
+const buildAuditLogQuery = (options = {}) => {
+  const params = new URLSearchParams()
+  const keys = ['page', 'per_page', 'actor_id', 'actor_query', 'actor_role', 'company_id', 'action', 'scope', 'target_type', 'from', 'to']
+
+  keys.forEach((key) => {
+    const value = options[key]
+    if (value !== undefined && value !== null && value !== '') {
+      params.append(key, value)
+    }
+  })
+
+  return params.toString()
+}
+
+export const adminAuditLogService = {
+  getLogs: (options = {}) => {
+    const query = buildAuditLogQuery(options)
+    return apiCall(`/admin/audit-logs${query ? `?${query}` : ''}`, {
+      method: 'GET',
+    })
+  },
+}
+
+const buildAiUsageQuery = (options = {}) => {
+  const params = new URLSearchParams()
+  const keys = [
+    'page',
+    'per_page',
+    'days',
+    'feature',
+    'status',
+    'used_fallback',
+    'user_id',
+    'company_id',
+    'request_ref_type',
+    'request_ref_id',
+    'from',
+    'to',
+  ]
+
+  keys.forEach((key) => {
+    const value = options[key]
+    if (value !== undefined && value !== null && value !== '') {
+      params.append(key, value)
+    }
+  })
+
+  return params.toString()
+}
+
+export const adminAiUsageService = {
+  getOverview: (options = {}) => {
+    const query = buildAiUsageQuery(options)
+    return apiCall(`/admin/ai-usage/overview${query ? `?${query}` : ''}`, {
+      method: 'GET',
+    })
+  },
+
+  getLogs: (options = {}) => {
+    const query = buildAiUsageQuery(options)
+    return apiCall(`/admin/ai-usage/logs${query ? `?${query}` : ''}`, {
+      method: 'GET',
+    })
+  },
+
+  getFeatures: () =>
+    apiCall('/admin/ai-usage/features', {
+      method: 'GET',
+    }),
+}
+
+export const notificationService = {
+  getNotifications: (options = {}) => {
+    const params = new URLSearchParams()
+    if (options.page) params.append('page', options.page)
+    if (options.per_page) params.append('per_page', options.per_page)
+    if (options.type) params.append('type', options.type)
+    if (options.unread_only) params.append('unread_only', '1')
+
+    const query = params.toString()
+    return apiCall(`/notifications${query ? `?${query}` : ''}`, {
+      method: 'GET',
+    })
+  },
+
+  getUnreadCount: () =>
+    apiCall('/notifications/unread-count', {
+      method: 'GET',
+    }),
+
+  markAsRead: (id) =>
+    apiCall(`/notifications/${id}/read`, {
+      method: 'PATCH',
+    }),
+
+  markAllAsRead: () =>
+    apiCall('/notifications/read-all', {
+      method: 'PATCH',
     }),
 }
 
@@ -762,10 +1092,58 @@ export const adminCareerAdvisingService = {
   },
 }
 
+export const cvTemplateService = {
+  getActiveTemplates: () =>
+    apiCall('/cv-templates', {
+      method: 'GET',
+    }),
+}
+
+export const adminCvTemplateService = {
+  getTemplates: (options = {}) => {
+    const params = new URLSearchParams()
+    if (options.page) params.append('page', options.page)
+    if (options.per_page) params.append('per_page', options.per_page)
+    if (options.search) params.append('search', options.search)
+
+    const query = params.toString()
+    return apiCall(`/admin/cv-templates${query ? `?${query}` : ''}`, {
+      method: 'GET',
+    })
+  },
+
+  createTemplate: (data) =>
+    apiCall('/admin/cv-templates', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  updateTemplate: (id, data) =>
+    apiCall(`/admin/cv-templates/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  toggleTemplateStatus: (id) =>
+    apiCall(`/admin/cv-templates/${id}/trang-thai`, {
+      method: 'PATCH',
+    }),
+
+  deleteTemplate: (id) =>
+    apiCall(`/admin/cv-templates/${id}`, {
+      method: 'DELETE',
+    }),
+}
+
 // === Employer APIs ===
 export const employerCompanyService = {
   getCompany: () =>
     apiCall('/nha-tuyen-dung/cong-ty', {
+      method: 'GET'
+    }),
+
+  getMembers: () =>
+    apiCall('/nha-tuyen-dung/cong-ty/thanh-viens', {
       method: 'GET'
     }),
 
@@ -797,6 +1175,142 @@ export const employerCompanyService = {
         body: JSON.stringify(data)
       })
     })(),
+
+  addMember: (payload) =>
+    apiCall('/nha-tuyen-dung/cong-ty/thanh-viens', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  updateMemberRole: (memberId, vaiTroNoiBo) =>
+    apiCall(`/nha-tuyen-dung/cong-ty/thanh-viens/${memberId}/vai-tro`, {
+      method: 'PATCH',
+      body: JSON.stringify({ vai_tro_noi_bo: vaiTroNoiBo }),
+    }),
+
+  updateMember: (memberId, payload) =>
+    apiCall(`/nha-tuyen-dung/cong-ty/thanh-viens/${memberId}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+
+  toggleMemberStatus: (memberId) =>
+    apiCall(`/nha-tuyen-dung/cong-ty/thanh-viens/${memberId}/khoa`, {
+      method: 'PATCH',
+    }),
+
+  getMemberPermissions: (memberId) =>
+    apiCall(`/nha-tuyen-dung/cong-ty/thanh-viens/${memberId}/permissions`, {
+      method: 'GET',
+    }),
+
+  updateMemberPermissions: (memberId, permissions) =>
+    apiCall(`/nha-tuyen-dung/cong-ty/thanh-viens/${memberId}/permissions`, {
+      method: 'PUT',
+      body: JSON.stringify({ quyen_noi_bo: permissions }),
+    }),
+
+  createHrPermissionDefinition: (payload) =>
+    apiCall('/nha-tuyen-dung/cong-ty/thanh-viens/permissions/definitions', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  removeMember: (memberId) =>
+    apiCall(`/nha-tuyen-dung/cong-ty/thanh-viens/${memberId}`, {
+      method: 'DELETE',
+    }),
+
+  getInternalRoles: () =>
+    apiCall('/nha-tuyen-dung/cong-ty/vai-tro-noi-bo', {
+      method: 'GET',
+    }),
+
+  createInternalRole: (payload) =>
+    apiCall('/nha-tuyen-dung/cong-ty/vai-tro-noi-bo', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  updateInternalRole: (roleId, payload) =>
+    apiCall(`/nha-tuyen-dung/cong-ty/vai-tro-noi-bo/${roleId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+
+  deleteInternalRole: (roleId) =>
+    apiCall(`/nha-tuyen-dung/cong-ty/vai-tro-noi-bo/${roleId}`, {
+      method: 'DELETE',
+    }),
+
+  getHrAuditLogs: (options = {}) => {
+    const params = new URLSearchParams()
+    if (options.page) params.append('page', options.page)
+    if (options.per_page) params.append('per_page', options.per_page)
+
+    const query = params.toString()
+    return apiCall(`/nha-tuyen-dung/cong-ty/hr-audit-logs${query ? `?${query}` : ''}`, {
+      method: 'GET',
+    })
+  },
+}
+
+export const employerAuditLogService = {
+  getLogs: (options = {}) => {
+    const query = buildAuditLogQuery(options)
+    return apiCall(`/nha-tuyen-dung/audit-logs${query ? `?${query}` : ''}`, {
+      method: 'GET',
+    })
+  },
+}
+
+export const employerBillingService = {
+  getWallet: () =>
+    apiCall('/nha-tuyen-dung/vi', {
+      method: 'GET',
+    }),
+
+  getEntitlements: () =>
+    apiCall('/nha-tuyen-dung/billing/entitlements', {
+      method: 'GET',
+    }),
+
+  getTransactions: (options = {}) => {
+    const params = new URLSearchParams()
+
+    if (options.page) params.append('page', options.page)
+    if (options.per_page) params.append('per_page', options.per_page)
+
+    const query = params.toString()
+    return apiCall(`/nha-tuyen-dung/vi/bien-dong${query ? `?${query}` : ''}`, {
+      method: 'GET',
+    })
+  },
+
+  getPricing: () =>
+    apiCall('/nha-tuyen-dung/ai-pricing', {
+      method: 'GET',
+    }),
+
+  createMomoTopUp: (so_tien) =>
+    apiCall('/nha-tuyen-dung/vi/nap-tien/momo', {
+      method: 'POST',
+      body: JSON.stringify({ so_tien }),
+    }),
+
+  createVnpayTopUp: (so_tien, bank_code) =>
+    apiCall('/nha-tuyen-dung/vi/nap-tien/vnpay', {
+      method: 'POST',
+      body: JSON.stringify({
+        so_tien,
+        ...(bank_code ? { bank_code } : {}),
+      }),
+    }),
+
+  getTopUp: (maGiaoDichNoiBo) =>
+    apiCall(`/nha-tuyen-dung/vi/nap-tien/${maGiaoDichNoiBo}`, {
+      method: 'GET',
+    }),
 }
 
 export const employerJobService = {
@@ -806,6 +1320,9 @@ export const employerJobService = {
     if (options.page) params.append('page', options.page)
     if (options.per_page) params.append('per_page', options.per_page)
     if (options.search) params.append('search', options.search)
+    if (options.hr_phu_trach_id !== undefined && options.hr_phu_trach_id !== null && options.hr_phu_trach_id !== '') {
+      params.append('hr_phu_trach_id', options.hr_phu_trach_id)
+    }
     if (options.trang_thai !== undefined && options.trang_thai !== null && options.trang_thai !== '' && options.trang_thai !== 'all') {
       params.append('trang_thai', options.trang_thai)
     }
@@ -819,6 +1336,17 @@ export const employerJobService = {
   getJobById: (id) =>
     apiCall(`/nha-tuyen-dung/tin-tuyen-dungs/${id}`, {
       method: 'GET'
+    }),
+
+  sponsorJob: (id, featureCode, options = {}) =>
+    apiCall(`/nha-tuyen-dung/tin-tuyen-dungs/${id}/sponsor`, {
+      method: 'POST',
+      headers: {
+        'X-Idempotency-Key': options.idempotencyKey || createIdempotencyKey('featured-job'),
+      },
+      body: JSON.stringify({
+        feature_code: featureCode,
+      })
     }),
 
   createJob: (data) =>
@@ -847,6 +1375,39 @@ export const employerJobService = {
     apiCall(`/nha-tuyen-dung/tin-tuyen-dungs/${id}/parse`, {
       method: 'POST'
     }),
+
+  getShortlist: (id, options = {}) => {
+    const params = new URLSearchParams()
+    if (options.limit) params.append('limit', options.limit)
+    if (options.ai_explain !== undefined) params.append('ai_explain', options.ai_explain ? '1' : '0')
+    if (options.scope) params.append('scope', options.scope)
+
+    const query = params.toString()
+    return apiCall(`/nha-tuyen-dung/tin-tuyen-dungs/${id}/shortlist${query ? `?${query}` : ''}`, {
+      method: 'GET',
+      headers: options.ai_explain
+        ? {
+            'X-Idempotency-Key': options.idempotencyKey || createIdempotencyKey('employer-shortlist'),
+          }
+        : undefined,
+    })
+  },
+
+  compareShortlistCandidates: (id, hoSoIds, options = {}) => {
+    const params = new URLSearchParams()
+    if (options.ai_explain !== undefined) params.append('ai_explain', options.ai_explain ? '1' : '0')
+
+    const query = params.toString()
+    return apiCall(`/nha-tuyen-dung/tin-tuyen-dungs/${id}/shortlist/compare${query ? `?${query}` : ''}`, {
+      method: 'POST',
+      headers: options.ai_explain
+        ? {
+            'X-Idempotency-Key': options.idempotencyKey || createIdempotencyKey('employer-compare'),
+          }
+        : undefined,
+      body: JSON.stringify({ ho_so_ids: hoSoIds })
+    })
+  },
 }
 
 export const employerCandidateService = {
@@ -881,6 +1442,9 @@ export const employerApplicationService = {
     if (options.page) params.append('page', options.page)
     if (options.per_page) params.append('per_page', options.per_page)
     if (options.tin_tuyen_dung_id) params.append('tin_tuyen_dung_id', options.tin_tuyen_dung_id)
+    if (options.hr_phu_trach_id !== undefined && options.hr_phu_trach_id !== null && options.hr_phu_trach_id !== '') {
+      params.append('hr_phu_trach_id', options.hr_phu_trach_id)
+    }
     if (options.trang_thai !== undefined && options.trang_thai !== null && options.trang_thai !== '') {
       params.append('trang_thai', options.trang_thai)
     }
@@ -897,20 +1461,99 @@ export const employerApplicationService = {
       body: JSON.stringify(data)
     }),
 
+  getNotificationTemplates: () =>
+    apiCall('/nha-tuyen-dung/ung-tuyens/notification-templates', {
+      method: 'GET',
+    }),
+
+  getInterviewRounds: (id) =>
+    apiCall(`/nha-tuyen-dung/ung-tuyens/${id}/interview-rounds`, {
+      method: 'GET',
+    }),
+
+  createInterviewRound: (id, data) =>
+    apiCall(`/nha-tuyen-dung/ung-tuyens/${id}/interview-rounds`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  updateInterviewRound: (id, roundId, data) =>
+    apiCall(`/nha-tuyen-dung/ung-tuyens/${id}/interview-rounds/${roundId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  deleteInterviewRound: (id, roundId) =>
+    apiCall(`/nha-tuyen-dung/ung-tuyens/${id}/interview-rounds/${roundId}`, {
+      method: 'DELETE',
+    }),
+
+  generateInterviewCopilot: (id, data = {}) => {
+    const { idempotencyKey, ...payload } = data || {}
+
+    return apiCall(`/nha-tuyen-dung/ung-tuyens/${id}/interview-copilot/generate`, {
+      method: 'POST',
+      headers: {
+        'X-Idempotency-Key': idempotencyKey || createIdempotencyKey('interview-copilot-generate'),
+      },
+      body: JSON.stringify(payload),
+    })
+  },
+
+  evaluateInterviewCopilot: (id, data = {}) => {
+    const { idempotencyKey, ...payload } = data || {}
+
+    return apiCall(`/nha-tuyen-dung/ung-tuyens/${id}/interview-copilot/evaluate`, {
+      method: 'POST',
+      headers: {
+        'X-Idempotency-Key': idempotencyKey || createIdempotencyKey('interview-copilot-evaluate'),
+      },
+      body: JSON.stringify(payload),
+    })
+  },
+
+  sendOffer: (id, data) =>
+    apiCall(`/nha-tuyen-dung/ung-tuyens/${id}/gui-offer`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  getOnboarding: (id) =>
+    apiCall(`/nha-tuyen-dung/ung-tuyens/${id}/onboarding`, {
+      method: 'GET',
+    }),
+
+  updateOnboarding: (id, data) =>
+    apiCall(`/nha-tuyen-dung/ung-tuyens/${id}/onboarding`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  createOnboardingTask: (id, data) =>
+    apiCall(`/nha-tuyen-dung/ung-tuyens/${id}/onboarding/tasks`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  updateOnboardingTask: (id, taskId, data) =>
+    apiCall(`/nha-tuyen-dung/ung-tuyens/${id}/onboarding/tasks/${taskId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  deleteOnboardingTask: (id, taskId) =>
+    apiCall(`/nha-tuyen-dung/ung-tuyens/${id}/onboarding/tasks/${taskId}`, {
+      method: 'DELETE',
+    }),
+
   resendInterviewEmail: (id) =>
     apiCall(`/nha-tuyen-dung/ung-tuyens/${id}/gui-lai-email-phong-van`, {
       method: 'POST',
     }),
 
-  sendInterviewReminder: (id) =>
-    apiCall(`/nha-tuyen-dung/ung-tuyens/${id}/gui-nhac-lich-phong-van`, {
-      method: 'POST',
-    }),
-
-  sendOffer: (id, data) =>
-    apiCall(`/nha-tuyen-dung/ung-tuyens/${id}/gui-offer`, {
-      method: 'POST',
-      body: JSON.stringify(data || {}),
+  downloadExport: (id, document = 'full') =>
+    blobApiCall(`/nha-tuyen-dung/ung-tuyens/${id}/export/${document}`, {
+      method: 'GET',
     }),
 }
 
@@ -934,11 +1577,6 @@ export const jobService = {
   getJobById: (id) =>
     apiCall(`/tin-tuyen-dungs/${id}`, {
       method: 'GET'
-    }),
-
-  semanticSearch: (q, top_k = 8) =>
-    apiCall(`/tin-tuyen-dungs/semantic-search?q=${encodeURIComponent(q)}&top_k=${top_k}`, {
-      method: 'GET',
     }),
 
   getIndustries: (options = {}) => {
@@ -971,6 +1609,7 @@ export const jobService = {
     const params = new URLSearchParams()
 
     if (options.search) params.append('search', options.search)
+    if (options.page) params.append('page', options.page)
     if (options.per_page !== undefined) params.append('per_page', options.per_page)
 
     const query = params.toString()
@@ -1015,6 +1654,41 @@ export const savedJobService = {
     })
 }
 
+// === Candidate Re-engagement APIs ===
+export const reEngagementService = {
+  getInsights: (options = {}) => {
+    const params = new URLSearchParams()
+
+    if (options.similar_limit) params.append('similar_limit', options.similar_limit)
+
+    const query = params.toString()
+    return apiCall(`/ung-vien/re-engagement/insights${query ? `?${query}` : ''}`, {
+      method: 'GET',
+    })
+  },
+}
+
+// === Candidate Follow Company APIs ===
+export const followCompanyService = {
+  getFollowedCompanies: (options = {}) => {
+    const params = new URLSearchParams()
+
+    if (options.page) params.append('page', options.page)
+    if (options.per_page) params.append('per_page', options.per_page)
+    if (options.recent_jobs_limit) params.append('recent_jobs_limit', options.recent_jobs_limit)
+
+    const query = params.toString()
+    return apiCall(`/ung-vien/cong-ty-theo-doi${query ? `?${query}` : ''}`, {
+      method: 'GET',
+    })
+  },
+
+  toggleFollowCompany: (companyId) =>
+    apiCall(`/ung-vien/cong-ty-theo-doi/${companyId}/toggle`, {
+      method: 'POST',
+    }),
+}
+
 // === Candidate Profile APIs ===
 export const profileService = {
   getProfiles: (options = {}) => {
@@ -1047,7 +1721,10 @@ export const profileService = {
 
   updateProfile: (id, data) =>
     apiCall(`/ung-vien/ho-sos/${id}`, {
-      method: 'PUT',
+      method: 'POST',
+      headers: {
+        'X-HTTP-Method-Override': 'PUT',
+      },
       body: data,
     }),
 
@@ -1064,6 +1741,128 @@ export const profileService = {
   parseProfileCv: (id) =>
     apiCall(`/ung-vien/ho-sos/${id}/parse`, {
       method: 'POST'
+    }),
+
+  tailorProfileForJob: (id, jobId, data = {}) =>
+    apiCall(`/ung-vien/ho-sos/${id}/tailor/${jobId}`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+}
+
+export const walletService = {
+  getWallet: () =>
+    apiCall('/ung-vien/vi', {
+      method: 'GET',
+    }),
+
+  getEntitlements: () =>
+    apiCall('/ung-vien/billing/entitlements', {
+      method: 'GET',
+    }),
+
+  getTransactions: (options = {}) => {
+    const params = new URLSearchParams()
+
+    if (options.page) params.append('page', options.page)
+    if (options.per_page) params.append('per_page', options.per_page)
+
+    const query = params.toString()
+    return apiCall(`/ung-vien/vi/bien-dong${query ? `?${query}` : ''}`, {
+      method: 'GET',
+    })
+  },
+
+  getPricing: () =>
+    apiCall('/ung-vien/ai-pricing', {
+      method: 'GET',
+    }),
+
+  createMomoTopUp: (so_tien) =>
+    apiCall('/ung-vien/vi/nap-tien/momo', {
+      method: 'POST',
+      body: JSON.stringify({ so_tien }),
+    }),
+
+  createVnpayTopUp: (so_tien, bank_code) =>
+    apiCall('/ung-vien/vi/nap-tien/vnpay', {
+      method: 'POST',
+      body: JSON.stringify({
+        so_tien,
+        ...(bank_code ? { bank_code } : {}),
+      }),
+    }),
+
+  getTopUp: (maGiaoDichNoiBo) =>
+    apiCall(`/ung-vien/vi/nap-tien/${maGiaoDichNoiBo}`, {
+      method: 'GET',
+    }),
+}
+
+export const paymentService = {
+  getPayments: (options = {}) => {
+    const params = new URLSearchParams()
+
+    if (options.page) params.append('page', options.page)
+    if (options.per_page) params.append('per_page', options.per_page)
+    if (options.loai_giao_dich) params.append('loai_giao_dich', options.loai_giao_dich)
+    if (options.trang_thai) params.append('trang_thai', options.trang_thai)
+
+    const query = params.toString()
+    return apiCall(`/ung-vien/payments${query ? `?${query}` : ''}`, {
+      method: 'GET',
+    })
+  },
+
+  getPaymentDetail: (maGiaoDichNoiBo) =>
+    apiCall(`/ung-vien/payments/${maGiaoDichNoiBo}`, {
+      method: 'GET',
+    }),
+}
+
+export const subscriptionService = {
+  getPlans: () =>
+    apiCall('/ung-vien/goi-dich-vus', {
+      method: 'GET',
+    }),
+
+  getEntitlements: () =>
+    apiCall('/ung-vien/billing/entitlements', {
+      method: 'GET',
+    }),
+
+  getCurrent: () =>
+    apiCall('/ung-vien/goi-dich-vu-hien-tai', {
+      method: 'GET',
+    }),
+
+  createMomoPurchase: (ma_goi) =>
+    apiCall('/ung-vien/goi-dich-vus/mua/momo', {
+      method: 'POST',
+      body: JSON.stringify({ ma_goi }),
+    }),
+
+  createWalletPurchase: (ma_goi) =>
+    apiCall('/ung-vien/goi-dich-vus/mua/vi', {
+      method: 'POST',
+      body: JSON.stringify({ ma_goi }),
+    }),
+
+  createVnpayPurchase: (ma_goi, bank_code) =>
+    apiCall('/ung-vien/goi-dich-vus/mua/vnpay', {
+      method: 'POST',
+      body: JSON.stringify({
+        ma_goi,
+        ...(bank_code ? { bank_code } : {}),
+      }),
+    }),
+}
+
+export const cvBuilderAiService = {
+  generateWriting: (payload) =>
+    apiCall('/ung-vien/cv-builder/ai-writing', {
+      method: 'POST',
+      body: JSON.stringify(payload),
     }),
 }
 
@@ -1160,10 +1959,29 @@ export const applicationService = {
       })
     }),
 
+  confirmInterviewRoundAttendance: (id, roundId, trang_thai_tham_gia_phong_van) =>
+    apiCall(`/ung-vien/ung-tuyens/${id}/interview-rounds/${roundId}/xac-nhan`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        trang_thai_tham_gia_phong_van,
+      })
+    }),
+
   respondOffer: (id, action) =>
     apiCall(`/ung-vien/ung-tuyens/${id}/phan-hoi-offer`, {
       method: 'PATCH',
       body: JSON.stringify({ action }),
+    }),
+
+  getOnboarding: (id) =>
+    apiCall(`/ung-vien/ung-tuyens/${id}/onboarding`, {
+      method: 'GET',
+    }),
+
+  updateOnboardingTask: (id, taskId, trang_thai) =>
+    apiCall(`/ung-vien/ung-tuyens/${id}/onboarding/tasks/${taskId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ trang_thai }),
     }),
 
   withdrawApplication: (id) =>
@@ -1171,9 +1989,17 @@ export const applicationService = {
       method: 'PATCH',
     }),
 
-  generateCoverLetter: ({ tin_tuyen_dung_id, ho_so_id }) =>
+  downloadExport: (id, document = 'full') =>
+    blobApiCall(`/ung-vien/ung-tuyens/${id}/export/${document}`, {
+      method: 'GET',
+    }),
+
+  generateCoverLetter: ({ tin_tuyen_dung_id, ho_so_id, idempotencyKey = null }) =>
     apiCall('/ung-vien/ung-tuyens/generate-cover-letter', {
       method: 'POST',
+      headers: {
+        'X-Idempotency-Key': idempotencyKey || createIdempotencyKey('cover-letter'),
+      },
       body: JSON.stringify({
         tin_tuyen_dung_id,
         ho_so_id,
@@ -1228,9 +2054,17 @@ export const careerReportService = {
     })
   },
 
-  generateReport: (hoSoId) =>
+  generateReport: (hoSoId, options = {}) =>
     apiCall(`/ung-vien/ho-sos/${hoSoId}/career-report`, {
       method: 'POST',
+      headers: {
+        'X-Idempotency-Key': options.idempotencyKey || createIdempotencyKey('career-report'),
+      },
+    }),
+
+  deleteReport: (reportId) =>
+    apiCall(`/ung-vien/tu-van-nghe-nghieps/${reportId}`, {
+      method: 'DELETE',
     }),
 }
 
@@ -1361,14 +2195,23 @@ export const mockInterviewService = {
 export default {
   authService,
   userService,
+  adminAccountService,
   companyService,
   jobService,
   savedJobService,
+  reEngagementService,
+  followCompanyService,
   profileService,
+  walletService,
+  paymentService,
+  subscriptionService,
+  cvBuilderAiService,
   applicationService,
   matchingService,
   adminProfileService,
   adminUserSkillService,
+  adminBillingService,
+  adminAiUsageService,
   aiChatService,
   mockInterviewService,
   adminMatchingService,

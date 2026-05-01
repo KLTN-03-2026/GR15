@@ -13,7 +13,7 @@ class AiClientService
     private string $baseUrl;
     private int $timeout;
 
-    public function __construct()
+    public function __construct(private readonly AiUsageLogger $usageLogger)
     {
         $this->baseUrl = rtrim((string) config('services.ai_service.base_url', env('AI_SERVICE_URL', 'http://127.0.0.1:8001')), '/');
         $this->timeout = (int) config('services.ai_service.timeout', env('AI_SERVICE_TIMEOUT', 120));
@@ -24,7 +24,15 @@ class AiClientService
         return $this->post('/parse/cv', [
             'ho_so_id' => $hoSoId,
             'file_path' => $filePath,
-        ]);
+        ], 'cv_parse');
+    }
+
+    public function parseCvFromRawText(int $hoSoId, string $rawText): array
+    {
+        return $this->post('/parse/cv', [
+            'ho_so_id' => $hoSoId,
+            'raw_text' => $rawText,
+        ], 'cv_parse_raw_text');
     }
 
     public function parseJd(int $tinTuyenDungId, string $jobText): array
@@ -32,7 +40,7 @@ class AiClientService
         return $this->post('/parse/jd', [
             'tin_tuyen_dung_id' => $tinTuyenDungId,
             'job_text' => $jobText,
-        ]);
+        ], 'jd_parse');
     }
 
     public function matchCvJd(int $hoSoId, int $tinTuyenDungId, array $cvProfile = [], array $jdProfile = []): array
@@ -42,7 +50,7 @@ class AiClientService
             'tin_tuyen_dung_id' => $tinTuyenDungId,
             'cv_profile' => $cvProfile,
             'jd_profile' => $jdProfile,
-        ]);
+        ], 'cv_jd_matching');
     }
 
     public function generateCoverLetter(
@@ -59,7 +67,7 @@ class AiClientService
             'cv_profile' => $cvProfile,
             'jd_profile' => $jdProfile,
             'matching_profile' => $matchingProfile,
-        ]);
+        ], 'cover_letter');
     }
 
     public function generateCareerReport(int $hoSoId, array $cvProfile = [], array $matchingProfiles = []): array
@@ -68,16 +76,26 @@ class AiClientService
             'ho_so_id' => $hoSoId,
             'cv_profile' => $cvProfile,
             'matching_profiles' => $matchingProfiles,
-        ]);
+        ], 'career_report');
     }
 
-    public function semanticSearchJobs(string $query, array $documents, int $topK = 10): array
+    public function tailorCvForJob(int $hoSoId, int $tinTuyenDungId, array $cvProfile = [], array $jdProfile = []): array
     {
-        return $this->post('/search/semantic/jobs', [
-            'query' => $query,
-            'top_k' => $topK,
-            'documents' => $documents,
-        ]);
+        return $this->post('/generate/cv-tailoring', [
+            'ho_so_id' => $hoSoId,
+            'tin_tuyen_dung_id' => $tinTuyenDungId,
+            'cv_profile' => $cvProfile,
+            'jd_profile' => $jdProfile,
+        ], 'cv_tailoring');
+    }
+
+    public function generateCvBuilderWriting(array $cvProfile = [], string $section = 'summary', array $options = []): array
+    {
+        return $this->post('/generate/cv-builder-writing', [
+            'cv_profile' => $cvProfile,
+            'section' => $section,
+            'options' => $options,
+        ], 'cv_builder_ai_writing');
     }
 
     public function careerChat(int $sessionId, string $message, array $history = [], array $context = [], bool $forceModel = false): array
@@ -88,7 +106,7 @@ class AiClientService
             'history' => $history,
             'context' => $context,
             'force_model' => $forceModel,
-        ]);
+        ], 'career_chat');
     }
 
     public function careerChatStream(int $sessionId, string $message, array $history = [], array $context = [], bool $forceModel = false, ?callable $onEvent = null): void
@@ -99,7 +117,7 @@ class AiClientService
             'history' => $history,
             'context' => $context,
             'force_model' => $forceModel,
-        ], $onEvent);
+        ], 'career_chat_stream', $onEvent);
     }
 
     public function generateMockInterviewQuestion(
@@ -116,7 +134,7 @@ class AiClientService
             'transcript' => $transcript,
             'question_index' => $questionIndex,
             'max_questions' => $maxQuestions,
-        ]);
+        ], 'mock_interview_question');
     }
 
     public function evaluateMockInterviewAnswer(
@@ -134,7 +152,7 @@ class AiClientService
             'interview_context' => $interviewContext,
             'transcript' => $transcript,
             'max_questions' => $maxQuestions,
-        ]);
+        ], 'mock_interview_answer_evaluation');
     }
 
     public function generateMockInterviewReport(int $sessionId, array $interviewContext = [], array $transcript = []): array
@@ -143,11 +161,35 @@ class AiClientService
             'session_id' => $sessionId,
             'interview_context' => $interviewContext,
             'transcript' => $transcript,
-        ]);
+        ], 'mock_interview_report');
     }
 
-    private function post(string $uri, array $payload): array
+    public function generateInterviewCopilot(int $ungTuyenId, array $applicationContext = []): array
     {
+        return $this->post('/interview/copilot/generate', [
+            'ung_tuyen_id' => $ungTuyenId,
+            'application_context' => $applicationContext,
+        ], 'interview_copilot_generate');
+    }
+
+    public function evaluateInterviewCopilot(int $ungTuyenId, array $applicationContext = [], array $interviewNotes = []): array
+    {
+        return $this->post('/interview/copilot/evaluate', [
+            'ung_tuyen_id' => $ungTuyenId,
+            'application_context' => $applicationContext,
+            'interview_notes' => $interviewNotes,
+        ], 'interview_copilot_evaluate');
+    }
+
+    public function recordFallback(string $feature, ?string $reason = null, array $payload = [], array $metadata = []): void
+    {
+        $this->usageLogger->logFallback($feature, $reason, $payload, $metadata);
+    }
+
+    private function post(string $uri, array $payload, string $feature): array
+    {
+        $startedAt = microtime(true);
+
         try {
             $response = Http::timeout($this->timeout)
                 ->acceptJson()
@@ -155,25 +197,34 @@ class AiClientService
                 ->post($this->baseUrl . $uri, $payload)
                 ->throw();
         } catch (ConnectionException $e) {
-            throw new RuntimeException('Không thể kết nối tới AI service.', 0, $e);
+            $exception = new RuntimeException('Không thể kết nối tới AI service.', 0, $e);
+            $this->usageLogger->logError($feature, $uri, $payload, $exception, $startedAt);
+            throw $exception;
         } catch (RequestException $e) {
             $message = $e->response?->json('message')
                 ?? $e->response?->body()
                 ?? 'AI service trả về lỗi.';
 
-            throw new RuntimeException((string) $message, 0, $e);
+            $exception = new RuntimeException((string) $message, 0, $e);
+            $this->usageLogger->logError($feature, $uri, $payload, $exception, $startedAt, $e->response?->status());
+            throw $exception;
         }
 
-        return $response->json();
+        $json = $response->json();
+        $this->usageLogger->logSuccess($feature, $uri, $payload, $json, $startedAt, $response);
+
+        return $json;
     }
 
-    private function stream(string $uri, array $payload, ?callable $onEvent = null): void
+    private function stream(string $uri, array $payload, string $feature, ?callable $onEvent = null): void
     {
+        $startedAt = microtime(true);
         $url = $this->baseUrl . $uri;
         $buffer = '';
         $currentEvent = 'message';
         $dataLines = [];
-        $dispatchEvent = function () use (&$currentEvent, &$dataLines, $onEvent): void {
+        $lastPayload = [];
+        $dispatchEvent = function () use (&$currentEvent, &$dataLines, &$lastPayload, $onEvent): void {
             if ($dataLines === []) {
                 return;
             }
@@ -181,9 +232,11 @@ class AiClientService
             $json = implode("\n", $dataLines);
             try {
                 $payload = json_decode($json, true, 512, JSON_THROW_ON_ERROR);
-            } catch (Throwable $e) {
+            } catch (Throwable) {
                 $payload = ['raw' => $json];
             }
+
+            $lastPayload = $payload;
 
             if ($onEvent) {
                 $onEvent($currentEvent ?: 'message', $payload);
@@ -193,24 +246,25 @@ class AiClientService
             $dataLines = [];
         };
 
-        $curl = curl_init($url);
+        try {
+            $curl = curl_init($url);
 
-        if ($curl === false) {
-            throw new RuntimeException('Không thể khởi tạo kết nối stream tới AI service.');
-        }
+            if ($curl === false) {
+                throw new RuntimeException('Không thể khởi tạo kết nối stream tới AI service.');
+            }
 
-        curl_setopt_array($curl, [
-            CURLOPT_POST => true,
-            CURLOPT_HTTPHEADER => [
-                'Content-Type: application/json',
-                'Accept: text/event-stream',
-            ],
-            CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-            CURLOPT_TIMEOUT => $this->timeout,
-            CURLOPT_RETURNTRANSFER => false,
-            CURLOPT_HEADER => false,
-            CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_WRITEFUNCTION => function ($ch, string $chunk) use (&$buffer, &$currentEvent, &$dataLines, $dispatchEvent) {
+            curl_setopt_array($curl, [
+                CURLOPT_POST => true,
+                CURLOPT_HTTPHEADER => [
+                    'Content-Type: application/json',
+                    'Accept: text/event-stream',
+                ],
+                CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                CURLOPT_TIMEOUT => $this->timeout,
+                CURLOPT_RETURNTRANSFER => false,
+                CURLOPT_HEADER => false,
+                CURLOPT_FOLLOWLOCATION => true,
+                CURLOPT_WRITEFUNCTION => function ($ch, string $chunk) use (&$buffer, &$currentEvent, &$dataLines, $dispatchEvent) {
                 $buffer .= $chunk;
 
                 while (($position = strpos($buffer, "\n")) !== false) {
@@ -235,37 +289,43 @@ class AiClientService
 
                 return strlen($chunk);
             },
-        ]);
+            ]);
 
-        $result = curl_exec($curl);
+            $result = curl_exec($curl);
 
-        if ($result === false) {
-            $error = curl_error($curl) ?: 'Không thể stream dữ liệu từ AI service.';
-            curl_close($curl);
-            throw new RuntimeException($error);
-        }
+            if ($result === false) {
+                $error = curl_error($curl) ?: 'Không thể stream dữ liệu từ AI service.';
+                curl_close($curl);
+                throw new RuntimeException($error);
+            }
 
-        $remaining = trim(str_replace("\r", '', $buffer));
-        if ($remaining !== '') {
-            foreach (explode("\n", $remaining) as $line) {
-                if (str_starts_with($line, 'event:')) {
-                    $currentEvent = trim(substr($line, 6));
-                    continue;
-                }
+            $remaining = trim(str_replace("\r", '', $buffer));
+            if ($remaining !== '') {
+                foreach (explode("\n", $remaining) as $line) {
+                    if (str_starts_with($line, 'event:')) {
+                        $currentEvent = trim(substr($line, 6));
+                        continue;
+                    }
 
-                if (str_starts_with($line, 'data:')) {
-                    $dataLines[] = trim(substr($line, 5));
+                    if (str_starts_with($line, 'data:')) {
+                        $dataLines[] = trim(substr($line, 5));
+                    }
                 }
             }
-        }
 
-        $dispatchEvent();
+            $dispatchEvent();
 
-        $statusCode = (int) curl_getinfo($curl, CURLINFO_RESPONSE_CODE);
-        curl_close($curl);
+            $statusCode = (int) curl_getinfo($curl, CURLINFO_RESPONSE_CODE);
+            curl_close($curl);
 
-        if ($statusCode >= 400) {
-            throw new RuntimeException('AI service trả về lỗi khi stream hội thoại.');
+            if ($statusCode >= 400) {
+                throw new RuntimeException('AI service trả về lỗi khi stream hội thoại.');
+            }
+
+            $this->usageLogger->logSuccess($feature, $uri, $payload, $lastPayload, $startedAt);
+        } catch (Throwable $exception) {
+            $this->usageLogger->logError($feature, $uri, $payload, $exception, $startedAt);
+            throw $exception;
         }
     }
 }

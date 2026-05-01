@@ -2,64 +2,106 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Exceptions\BillingException;
 use App\Http\Controllers\Controller;
 use App\Models\AiChatMessage;
 use App\Models\AiChatSession;
 use App\Models\HoSo;
 use App\Models\KetQuaMatching;
+use App\Models\SuDungTinhNangAi;
 use App\Models\TinTuyenDung;
 use App\Models\TuVanNgheNghiep;
 use App\Services\Ai\AiClientService;
+use App\Services\Billing\FeatureAccessService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class AiChatMessageController extends Controller
 {
-    public function store(Request $request, AiClientService $aiClient): JsonResponse
+    public function store(
+        Request $request,
+        AiClientService $aiClient,
+        FeatureAccessService $featureAccessService
+    ): JsonResponse
     {
+        /** @var SuDungTinhNangAi|null $billingUsage */
+        $billingUsage = null;
+
         $validated = $this->validateMessagePayload($request);
         $session = $this->resolveActiveSession($request->user()->id, (int) $validated['session_id']);
 
-        $userMessage = AiChatMessage::create([
-            'session_id' => $session->id,
-            'role' => 'user',
-            'content' => $validated['message'],
-            'metadata' => null,
-            'created_at' => now(),
-        ]);
+        try {
+            $billingUsage = $featureAccessService->beginUsage(
+                $request->user(),
+                'chatbot_message',
+                'ai_chat_session',
+                $session->id,
+                [
+                    'session_id' => $session->id,
+                    'mode' => 'sync',
+                    'message_length' => mb_strlen((string) $validated['message']),
+                ],
+                $this->resolveIdempotencyKey($request, $session->id),
+            );
 
-        $history = $this->buildHistory($session->id);
-        $context = $this->buildContext($request->user()->id, $session, (string) $validated['message']);
-        $response = $aiClient->careerChat(
-            $session->id,
-            $validated['message'],
-            $history,
-            $context,
-            (bool) ($validated['force_model'] ?? false)
-        );
+            $userMessage = AiChatMessage::create([
+                'session_id' => $session->id,
+                'role' => 'user',
+                'content' => $validated['message'],
+                'metadata' => null,
+                'created_at' => now(),
+            ]);
 
-        $assistantData = $response['data'] ?? [];
-        $assistantMessage = AiChatMessage::create([
-            'session_id' => $session->id,
-            'role' => 'assistant',
-            'content' => (string) ($assistantData['answer'] ?? ''),
-            'metadata' => [
-                'provider' => $assistantData['provider'] ?? null,
-                'guardrail_triggered' => $assistantData['guardrail_triggered'] ?? false,
-                'model_version' => $response['model_version'] ?? null,
-                'intent' => $assistantData['intent'] ?? null,
-            ],
-            'created_at' => now(),
-        ]);
-        $this->refreshSessionSummary(
-            $session,
-            $context,
-            (string) $validated['message'],
-            $assistantMessage->content,
-            $assistantData['intent'] ?? null
-        );
+            $history = $this->buildHistory($session->id);
+            $context = $this->buildContext($request->user()->id, $session, (string) $validated['message']);
+            $response = $aiClient->careerChat(
+                $session->id,
+                $validated['message'],
+                $history,
+                $context,
+                (bool) ($validated['force_model'] ?? false)
+            );
+
+            $assistantData = $response['data'] ?? [];
+            $assistantMessage = AiChatMessage::create([
+                'session_id' => $session->id,
+                'role' => 'assistant',
+                'content' => (string) ($assistantData['answer'] ?? ''),
+                'metadata' => [
+                    'provider' => $assistantData['provider'] ?? null,
+                    'guardrail_triggered' => $assistantData['guardrail_triggered'] ?? false,
+                    'model_version' => $response['model_version'] ?? null,
+                    'intent' => $assistantData['intent'] ?? null,
+                ],
+                'created_at' => now(),
+            ]);
+            $this->refreshSessionSummary(
+                $session,
+                $context,
+                (string) $validated['message'],
+                $assistantMessage->content,
+                $assistantData['intent'] ?? null
+            );
+            $billingUsage = $featureAccessService->commitUsage($billingUsage, [
+                'assistant_message_id' => $assistantMessage->id,
+            ]);
+        } catch (BillingException $exception) {
+            return response()->json([
+                'success' => false,
+                'code' => $exception->errorCode,
+                'message' => $exception->getMessage(),
+                ...$exception->context,
+            ], $exception->status);
+        } catch (\Throwable $exception) {
+            if ($billingUsage) {
+                $this->safeFailUsage($featureAccessService, $billingUsage, $exception->getMessage());
+            }
+
+            throw $exception;
+        }
 
         return response()->json([
             'success' => true,
@@ -71,18 +113,52 @@ class AiChatMessageController extends Controller
         ], 201);
     }
 
-    public function stream(Request $request, AiClientService $aiClient): StreamedResponse
+    public function stream(
+        Request $request,
+        AiClientService $aiClient,
+        FeatureAccessService $featureAccessService
+    ): StreamedResponse|JsonResponse
     {
+        /** @var SuDungTinhNangAi|null $billingUsage */
+        $billingUsage = null;
+
         $validated = $this->validateMessagePayload($request);
         $session = $this->resolveActiveSession($request->user()->id, (int) $validated['session_id']);
 
-        $userMessage = AiChatMessage::create([
-            'session_id' => $session->id,
-            'role' => 'user',
-            'content' => $validated['message'],
-            'metadata' => null,
-            'created_at' => now(),
-        ]);
+        try {
+            $billingUsage = $featureAccessService->beginUsage(
+                $request->user(),
+                'chatbot_message',
+                'ai_chat_session',
+                $session->id,
+                [
+                    'session_id' => $session->id,
+                    'mode' => 'stream',
+                    'message_length' => mb_strlen((string) $validated['message']),
+                ],
+                $this->resolveIdempotencyKey($request, $session->id),
+            );
+        } catch (BillingException $exception) {
+            return response()->json([
+                'success' => false,
+                'code' => $exception->errorCode,
+                'message' => $exception->getMessage(),
+                ...$exception->context,
+            ], $exception->status);
+        }
+
+        try {
+            $userMessage = AiChatMessage::create([
+                'session_id' => $session->id,
+                'role' => 'user',
+                'content' => $validated['message'],
+                'metadata' => null,
+                'created_at' => now(),
+            ]);
+        } catch (\Throwable $exception) {
+            $this->safeFailUsage($featureAccessService, $billingUsage, $exception->getMessage());
+            throw $exception;
+        }
 
         $history = $this->buildHistory($session->id);
         $context = $this->buildContext($request->user()->id, $session, (string) $validated['message']);
@@ -94,61 +170,49 @@ class AiChatMessageController extends Controller
             $validated,
             $history,
             $context,
-            $aiClient
+            $aiClient,
+            $featureAccessService,
+            $billingUsage
         ): void {
             $donePayload = null;
             $partialAnswer = '';
             $streamMeta = [];
 
             try {
-                $aiClient->careerChatStream(
-                    $session->id,
-                    $validated['message'],
-                    $history,
-                    $context,
-                    (bool) ($validated['force_model'] ?? false),
-                    function (string $event, array $payload) use (&$donePayload, &$partialAnswer, &$streamMeta, $userMessagePayload): void {
-                        if ($event === 'done') {
-                            $donePayload = $payload;
-                            return;
+                try {
+                    $aiClient->careerChatStream(
+                        $session->id,
+                        $validated['message'],
+                        $history,
+                        $context,
+                        (bool) ($validated['force_model'] ?? false),
+                        function (string $event, array $payload) use (&$donePayload, &$partialAnswer, &$streamMeta, $userMessagePayload): void {
+                            if ($event === 'done') {
+                                $donePayload = $payload;
+                                return;
+                            }
+
+                            if ($event === 'meta') {
+                                $streamMeta = $payload;
+                                $payload['user_message'] = $userMessagePayload;
+                            }
+
+                            if ($event === 'chunk' && !empty($payload['content'])) {
+                                $partialAnswer .= (string) $payload['content'];
+                            }
+
+                            echo $this->sseEvent($event, $payload);
+                            @ob_flush();
+                            @flush();
                         }
-
-                        if ($event === 'meta') {
-                            $streamMeta = $payload;
-                            $payload['user_message'] = $userMessagePayload;
-                        }
-
-                        if ($event === 'chunk' && !empty($payload['content'])) {
-                            $partialAnswer .= (string) $payload['content'];
-                        }
-
-                        echo $this->sseEvent($event, $payload);
-                        @ob_flush();
-                        @flush();
-                    }
-                );
-            } catch (\Throwable $e) {
-                $donePayload = $this->fallbackToNonStream(
-                    $aiClient,
-                    $session->id,
-                    $validated['message'],
-                    $history,
-                    $context,
-                    (bool) ($validated['force_model'] ?? false)
-                );
-            }
-
-            if (!is_array($donePayload) || empty($donePayload['answer'])) {
-                $fallbackAnswer = $this->normalizeAssistantAnswer($partialAnswer);
-                if ($fallbackAnswer !== '') {
-                    $donePayload = [
-                        'answer' => $fallbackAnswer,
-                        'model_version' => $streamMeta['model_version'] ?? null,
-                        'provider' => $streamMeta['provider'] ?? null,
-                        'guardrail_triggered' => $streamMeta['guardrail_triggered'] ?? false,
-                        'intent' => $streamMeta['intent'] ?? null,
-                    ];
-                } else {
+                    );
+                } catch (\Throwable $e) {
+                    $aiClient->recordFallback(
+                        'career_chat_stream',
+                        $e->getMessage(),
+                        ['session_id' => $session->id],
+                        ['fallback_mode' => 'non_stream']
+                    );
                     $donePayload = $this->fallbackToNonStream(
                         $aiClient,
                         $session->id,
@@ -157,46 +221,80 @@ class AiChatMessageController extends Controller
                         $context,
                         (bool) ($validated['force_model'] ?? false)
                     );
-                    if (!is_array($donePayload) || empty($donePayload['answer'])) {
-                        $donePayload = $this->buildGracefulStreamFallbackPayload(
-                            (string) $validated['message'],
-                            $streamMeta
+                }
+
+                if (!is_array($donePayload) || empty($donePayload['answer'])) {
+                    $fallbackAnswer = $this->normalizeAssistantAnswer($partialAnswer);
+                    if ($fallbackAnswer !== '') {
+                        $donePayload = [
+                            'answer' => $fallbackAnswer,
+                            'model_version' => $streamMeta['model_version'] ?? null,
+                            'provider' => $streamMeta['provider'] ?? null,
+                            'guardrail_triggered' => $streamMeta['guardrail_triggered'] ?? false,
+                            'intent' => $streamMeta['intent'] ?? null,
+                        ];
+                    } else {
+                        $donePayload = $this->fallbackToNonStream(
+                            $aiClient,
+                            $session->id,
+                            $validated['message'],
+                            $history,
+                            $context,
+                            (bool) ($validated['force_model'] ?? false)
                         );
+                        if (!is_array($donePayload) || empty($donePayload['answer'])) {
+                            $donePayload = $this->buildGracefulStreamFallbackPayload(
+                                (string) $validated['message'],
+                                $streamMeta
+                            );
+                        }
                     }
                 }
-            }
 
-            $assistantMessage = AiChatMessage::create([
-                'session_id' => $session->id,
-                'role' => 'assistant',
-                'content' => (string) ($donePayload['answer'] ?? ''),
-                'metadata' => [
+                $assistantMessage = AiChatMessage::create([
+                    'session_id' => $session->id,
+                    'role' => 'assistant',
+                    'content' => (string) ($donePayload['answer'] ?? ''),
+                    'metadata' => [
+                        'provider' => $donePayload['provider'] ?? null,
+                        'guardrail_triggered' => $donePayload['guardrail_triggered'] ?? false,
+                        'model_version' => $donePayload['model_version'] ?? null,
+                        'intent' => $donePayload['intent'] ?? null,
+                        'stream_mode' => 'provider_sse',
+                    ],
+                    'created_at' => now(),
+                ]);
+                $this->refreshSessionSummary(
+                    $session,
+                    $context,
+                    (string) $validated['message'],
+                    $assistantMessage->content,
+                    $donePayload['intent'] ?? null
+                );
+                $featureAccessService->commitUsage($billingUsage, [
+                    'assistant_message_id' => $assistantMessage->id,
+                    'stream_fallback_used' => (($donePayload['provider'] ?? null) === 'graceful_stream_fallback'),
+                ]);
+
+                echo $this->sseEvent('done', [
+                    'assistant_message' => $assistantMessage->toArray(),
+                    'model_version' => $donePayload['model_version'] ?? null,
                     'provider' => $donePayload['provider'] ?? null,
                     'guardrail_triggered' => $donePayload['guardrail_triggered'] ?? false,
-                    'model_version' => $donePayload['model_version'] ?? null,
                     'intent' => $donePayload['intent'] ?? null,
-                    'stream_mode' => 'provider_sse',
-                ],
-                'created_at' => now(),
-            ]);
-            $this->refreshSessionSummary(
-                $session,
-                $context,
-                (string) $validated['message'],
-                $assistantMessage->content,
-                $donePayload['intent'] ?? null
-            );
+                    'answer' => $assistantMessage->content,
+                ]);
+                @ob_flush();
+                @flush();
+            } catch (\Throwable $exception) {
+                $this->safeFailUsage($featureAccessService, $billingUsage, $exception->getMessage());
 
-            echo $this->sseEvent('done', [
-                'assistant_message' => $assistantMessage->toArray(),
-                'model_version' => $donePayload['model_version'] ?? null,
-                'provider' => $donePayload['provider'] ?? null,
-                'guardrail_triggered' => $donePayload['guardrail_triggered'] ?? false,
-                'intent' => $donePayload['intent'] ?? null,
-                'answer' => $assistantMessage->content,
-            ]);
-            @ob_flush();
-            @flush();
+                echo $this->sseEvent('error', [
+                    'message' => $exception->getMessage(),
+                ]);
+                @ob_flush();
+                @flush();
+            }
         }, 200, [
             'Content-Type' => 'text/event-stream',
             'Cache-Control' => 'no-cache',
@@ -228,8 +326,16 @@ class AiChatMessageController extends Controller
                             'ho_ten' => $hoSo->nguoiDung?->ho_ten,
                             'parsed_name' => $hoSo->parsing?->parsed_name,
                             'tieu_de_ho_so' => $hoSo->tieu_de_ho_so,
+                            'vi_tri_ung_tuyen_muc_tieu' => $hoSo->vi_tri_ung_tuyen_muc_tieu,
+                            'ten_nganh_nghe_muc_tieu' => $hoSo->ten_nganh_nghe_muc_tieu,
                             'kinh_nghiem_nam' => $hoSo->kinh_nghiem_nam,
                             'trinh_do' => $hoSo->trinh_do,
+                            'muc_tieu_nghe_nghiep' => $hoSo->muc_tieu_nghe_nghiep,
+                            'builder_skills' => collect($hoSo->ky_nang_json ?? [])
+                                ->map(fn ($item) => is_array($item) ? ($item['ten'] ?? $item['name'] ?? $item['skill_name'] ?? null) : $item)
+                                ->filter()
+                                ->values()
+                                ->all(),
                             'parsed_skills' => collect($hoSo->parsing?->parsed_skills_json ?? [])
                                 ->map(fn ($item) => is_array($item) ? ($item['skill_name'] ?? null) : $item)
                                 ->filter()
@@ -303,18 +409,12 @@ class AiChatMessageController extends Controller
         $careerReport = $baseContext['career_report'] ?? null;
         $topMatches = $baseContext['top_matching_jobs'] ?? [];
         $relatedJob = $baseContext['related_job'] ?? null;
-        $semanticJobs = [];
-        $semanticQuery = $this->buildSemanticQuery($candidateProfile, $careerReport, $relatedJob, $message);
-        if ($semanticQuery !== null) {
-            $semanticJobs = $this->safeSemanticSearch($semanticQuery);
-        }
 
         return [
             'candidate_profile' => $candidateProfile,
             'career_report' => $careerReport,
             'top_matching_jobs' => $topMatches,
             'related_job' => $relatedJob,
-            'semantic_jobs' => $semanticJobs,
             'conversation_summary' => $session->summary,
         ];
     }
@@ -355,6 +455,16 @@ class AiChatMessageController extends Controller
             ->all();
     }
 
+    private function resolveIdempotencyKey(Request $request, int $sessionId): string
+    {
+        $headerKey = trim((string) $request->header('X-Idempotency-Key', ''));
+        if ($headerKey !== '') {
+            return $headerKey;
+        }
+
+        return 'chatbot:' . $request->user()->id . ':' . $sessionId . ':' . Str::uuid();
+    }
+
     public function index(Request $request, int $sessionId): JsonResponse
     {
         $session = $this->resolveActiveSession($request->user()->id, $sessionId);
@@ -369,197 +479,6 @@ class AiChatMessageController extends Controller
             'success' => true,
             'data' => $messages,
         ]);
-    }
-
-    private function buildSemanticQuery(array $candidateProfile, ?array $careerReport, ?array $relatedJob, string $message): ?string
-    {
-        if (!$this->shouldUseSemanticSearch($message)) {
-            return null;
-        }
-
-        $parts = [];
-
-        foreach ($this->extractSemanticTerms($message) as $term) {
-            $parts[] = $term;
-        }
-
-        if (!empty($candidateProfile['parsed_skills'])) {
-            $parts = array_merge($parts, array_slice($candidateProfile['parsed_skills'], 0, 4));
-        }
-
-        if (!empty($careerReport['nghe_de_xuat'])) {
-            $parts[] = (string) $careerReport['nghe_de_xuat'];
-        }
-
-        if (!empty($relatedJob['title'])) {
-            $parts[] = (string) $relatedJob['title'];
-        }
-
-        $parts = array_values(array_unique(array_filter(array_map(function ($item) {
-            return is_string($item) ? trim($item) : null;
-        }, $parts))));
-
-        if (count($parts) < 2) {
-            return null;
-        }
-
-        return implode(' ', array_slice($parts, 0, 6));
-    }
-
-    private function extractSemanticTerms(string $message): array
-    {
-        $normalized = mb_strtolower($message);
-        $normalized = preg_replace('/[^\p{L}\p{N}\s]+/u', ' ', $normalized) ?? '';
-        $tokens = preg_split('/\s+/u', trim($normalized)) ?: [];
-
-        $stopWords = [
-            'toi', 'tôi', 'la', 'là', 'co', 'có', 'gi', 'gì', 'nao', 'nào', 'trong',
-            'he', 'hệ', 'thong', 'thống', 'hien', 'hiện', 'tai', 'tại', 'cho', 'de',
-            'để', 'voi', 'với', 'nhat', 'nhất', 'ngay', 'tu', 'từ', 'ho', 'so', 'hồ',
-            'cua', 'của', 'ban', 'bạn', 'toi', 'tôi', 'nen', 'nên', 'lam', 'làm',
-            'truoc', 'trước', 'tuan', 'tuần', 'nay', 'này',
-        ];
-
-        return array_values(array_unique(array_filter($tokens, function ($token) use ($stopWords) {
-            return mb_strlen($token) >= 3 && !in_array($token, $stopWords, true);
-        })));
-    }
-
-    private function shouldUseSemanticSearch(string $message): bool
-    {
-        $normalized = mb_strtolower($message);
-        foreach ([
-            'job nào',
-            'job nao',
-            'công việc',
-            'cong viec',
-            'ứng tuyển',
-            'ung tuyen',
-            'vị trí',
-            'vi tri',
-            'gợi ý job',
-            'goi y job',
-        ] as $keyword) {
-            if (str_contains($normalized, $keyword)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private function safeSemanticSearch(string $query): array
-    {
-        try {
-            return Cache::store('file')->remember(
-                'ai-chat-semantic:' . md5($query),
-                now()->addMinutes(5),
-                function () use ($query): array {
-                    $jobs = TinTuyenDung::query()
-                        ->with([
-                            'congTy:id,ten_cong_ty,trang_thai',
-                            'nganhNghes:id,ten_nganh',
-                            'parsing:id,tin_tuyen_dung_id,parsed_skills_json,parsed_requirements_json,parsed_benefits_json',
-                            'kyNangYeuCaus.kyNang:id,ten_ky_nang',
-                        ])
-                        ->where('trang_thai', TinTuyenDung::TRANG_THAI_HOAT_DONG)
-                        ->where(function ($q) {
-                            $q->whereNull('ngay_het_han')
-                                ->orWhere('ngay_het_han', '>=', now());
-                        })
-                        ->limit(6)
-                        ->get();
-
-                    if ($jobs->isEmpty()) {
-                        return [];
-                    }
-
-                    $documents = $jobs->map(function (TinTuyenDung $job): array {
-                        return [
-                            'entity_id' => $job->id,
-                            'title' => $job->tieu_de,
-                            'text_content' => $this->buildSemanticText($job),
-                            'company_name' => $job->congTy?->ten_cong_ty,
-                            'location' => $job->dia_diem_lam_viec,
-                            'level' => $job->cap_bac,
-                            'metadata' => [
-                                'nganh_nghes' => $job->nganhNghes->pluck('ten_nganh')->values()->all(),
-                                'skills' => $job->kyNangYeuCaus->pluck('kyNang.ten_ky_nang')->filter()->values()->all(),
-                            ],
-                        ];
-                    })->values()->all();
-
-                    $response = app(AiClientService::class)->semanticSearchJobs($query, $documents, 2);
-                    $results = $response['data']['results'] ?? [];
-
-                    return collect($results)->map(function (array $item): array {
-                        $job = $item['job'] ?? [];
-
-                        return [
-                            'title' => $job['tieu_de'] ?? null,
-                            'company_name' => $job['cong_ty']['ten_cong_ty'] ?? null,
-                            'final_score' => $item['final_score'] ?? null,
-                            'semantic_reason' => $item['semantic_reason'] ?? null,
-                        ];
-                    })->filter(fn (array $item) => !empty($item['title']))->values()->all();
-                }
-            );
-        } catch (\Throwable $e) {
-            return [];
-        }
-    }
-
-    private function buildSemanticText(TinTuyenDung $job): string
-    {
-        $parts = [
-            $job->tieu_de,
-            $job->mo_ta_cong_viec,
-            $job->dia_diem_lam_viec,
-            $job->hinh_thuc_lam_viec,
-            $job->cap_bac,
-            $job->kinh_nghiem_yeu_cau,
-            $job->trinh_do_yeu_cau,
-            $job->congTy?->ten_cong_ty,
-        ];
-
-        $parts = array_merge(
-            $parts,
-            $job->nganhNghes->pluck('ten_nganh')->filter()->values()->all(),
-            $job->kyNangYeuCaus->pluck('kyNang.ten_ky_nang')->filter()->values()->all(),
-            $this->flattenParsedBlock($job->parsing?->parsed_skills_json),
-            $this->flattenParsedBlock($job->parsing?->parsed_requirements_json),
-            $this->flattenParsedBlock($job->parsing?->parsed_benefits_json)
-        );
-
-        return trim(implode('. ', array_filter(array_map(function ($item) {
-            return is_string($item) ? trim($item) : null;
-        }, $parts))));
-    }
-
-    private function flattenParsedBlock($value): array
-    {
-        if (!is_array($value)) {
-            return [];
-        }
-
-        $flat = [];
-        foreach ($value as $item) {
-            if (is_string($item)) {
-                $flat[] = $item;
-                continue;
-            }
-
-            if (is_array($item)) {
-                foreach (['skill_name', 'ten_ky_nang', 'requirement', 'benefit', 'name', 'value'] as $key) {
-                    if (!empty($item[$key]) && is_string($item[$key])) {
-                        $flat[] = $item[$key];
-                        break;
-                    }
-                }
-            }
-        }
-
-        return $flat;
     }
 
     private function sseEvent(string $event, array $payload): string
@@ -741,6 +660,18 @@ class AiChatMessageController extends Controller
         }
 
         return trim(implode(' ', $parts));
+    }
+
+    private function safeFailUsage(
+        FeatureAccessService $featureAccessService,
+        SuDungTinhNangAi $usage,
+        string $reason
+    ): void {
+        try {
+            $featureAccessService->failUsage($usage, $reason);
+        } catch (\Throwable) {
+            // Không làm hỏng response chính nếu rollback billing gặp lỗi.
+        }
     }
 
     private function summarizeIntentLabel(string $message): ?string

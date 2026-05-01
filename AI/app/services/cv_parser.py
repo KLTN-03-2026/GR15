@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import re
+import xml.etree.ElementTree as ET
+import zipfile
 from pathlib import Path
 
 import pdfplumber
@@ -69,13 +71,20 @@ CERTIFICATION_SECTION_PATTERNS = (
 )
 
 
-def parse_cv(ho_so_id: int, file_path: str) -> dict:
-    logger.info("Parse CV for ho_so_id=%s file_path=%s", ho_so_id, file_path)
+def parse_cv(ho_so_id: int, file_path: str | None = None, raw_text: str | None = None) -> dict:
+    logger.info("Parse CV for ho_so_id=%s file_path=%s has_raw_text=%s", ho_so_id, file_path, bool(raw_text))
 
     try:
-        resolved_path = _resolve_cv_path(file_path)
-        raw_text = _extract_text(resolved_path)
-        normalized_text = _normalize_text(raw_text)
+        source_text = raw_text
+
+        if source_text:
+            normalized_text = _normalize_text(source_text)
+        else:
+            if not file_path:
+                raise ValueError("Thiếu dữ liệu CV để phân tích.")
+            resolved_path = _resolve_cv_path(file_path)
+            source_text = _extract_text(resolved_path)
+            normalized_text = _normalize_text(source_text)
 
         if not normalized_text:
             raise ValueError("Không thể trích xuất nội dung từ CV.")
@@ -169,10 +178,65 @@ def _extract_text(path: Path) -> str:
                     pages.append(page_text)
         return "\n".join(pages)
 
+    if suffix == ".docx":
+        return _extract_docx_text(path)
+
+    if suffix == ".doc":
+        return _extract_legacy_doc_text(path)
+
     if suffix in {".txt", ".md"}:
         return path.read_text(encoding="utf-8", errors="ignore")
 
     raise ValueError(f"Định dạng file chưa được hỗ trợ: {suffix}")
+
+
+def _extract_docx_text(path: Path) -> str:
+    try:
+        with zipfile.ZipFile(path) as docx:
+            document_xml = docx.read("word/document.xml")
+    except (KeyError, zipfile.BadZipFile) as exc:
+        raise ValueError("File DOCX không hợp lệ hoặc không đọc được nội dung.") from exc
+
+    root = ET.fromstring(document_xml)
+    namespace = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+    paragraphs: list[str] = []
+
+    for paragraph in root.findall(".//w:p", namespace):
+        texts = [node.text or "" for node in paragraph.findall(".//w:t", namespace)]
+        line = "".join(texts).strip()
+        if line:
+            paragraphs.append(line)
+
+    return "\n".join(paragraphs)
+
+
+def _extract_legacy_doc_text(path: Path) -> str:
+    raw = path.read_bytes()
+    decoded_candidates = [
+        raw.decode("utf-8", errors="ignore"),
+        raw.decode("utf-16le", errors="ignore"),
+        raw.decode("latin-1", errors="ignore"),
+    ]
+
+    best_text = ""
+    best_score = 0
+
+    for decoded in decoded_candidates:
+        cleaned = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]+", "\n", decoded)
+        chunks = re.findall(r"[A-Za-zÀ-ỹ0-9@._%+\-/(),:; ]{3,}", cleaned)
+        text = "\n".join(chunk.strip() for chunk in chunks if chunk.strip())
+        score = len(text)
+
+        if "@" in text:
+            score += 500
+        if re.search(r"(?i)\b(cv|resume|experience|education|skills|kinh nghiem|hoc van|ky nang)\b", text):
+            score += 500
+
+        if score > best_score:
+            best_score = score
+            best_text = text
+
+    return best_text
 
 
 def _normalize_text(text: str) -> str:

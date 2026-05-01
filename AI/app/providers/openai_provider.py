@@ -25,7 +25,10 @@ class OpenAICoverLetterProvider:
                                 "Bạn là trợ lý viết thư xin việc chuyên nghiệp. "
                                 "Luôn trả lời hoàn toàn bằng tiếng Việt. "
                                 "Chỉ trả về đúng nội dung thư xin việc hoàn chỉnh, không markdown, không giải thích thêm. "
-                                "Xưng hô thống nhất là 'Tôi', dùng tiếng Việt có dấu đầy đủ, bố cục rõ ràng và có thể dùng gạch đầu dòng ngắn nếu phù hợp."
+                                "Thư phải được sinh bằng LLM dựa trên bằng chứng CV-JD, không dùng mẫu cố định. "
+                                "Trong thư xin việc, ứng viên được phép tự xưng 'Tôi' vì đây là văn bản gửi nhà tuyển dụng dưới góc nhìn ứng viên. "
+                                "Không dùng 'Tôi' để nói về AI/hệ thống. Dùng tiếng Việt có dấu đầy đủ, bố cục rõ ràng và có thể dùng gạch đầu dòng ngắn nếu phù hợp. "
+                                "Không dùng cụm tiếng Anh phổ thông; chỉ giữ tên riêng công nghệ, tên vị trí gốc, viết tắt kỹ thuật hoặc framework."
                             ),
                         }
                     ],
@@ -40,6 +43,8 @@ class OpenAICoverLetterProvider:
                     ],
                 },
             ],
+            "temperature": 0,
+            "max_output_tokens": settings.cover_letter_max_tokens,
         }
 
         request = Request(
@@ -68,30 +73,50 @@ class OpenAICoverLetterProvider:
 
 def _build_user_prompt(context: CoverLetterContext) -> str:
     return f"""
-Hãy viết một thư xin việc hoàn chỉnh bằng tiếng Việt, văn phong chuyên nghiệp và tự nhiên, dựa trên dữ liệu sau.
+Hãy viết một thư xin việc hoàn chỉnh bằng tiếng Việt, văn phong chuyên nghiệp, có lập luận chặt chẽ và bám sát dữ liệu sau.
+
+Định hướng chất lượng:
+- Viết như một thư ứng tuyển thật, không phải báo cáo phân tích.
+- Tính học thuật thể hiện qua cách lập luận: luận điểm rõ, bằng chứng từ CV/JD, giải thích mức phù hợp, xử lý khoảng trống kỹ năng hợp lý.
+- Không dùng văn mẫu chung chung như "tôi là người chăm chỉ" nếu không có bằng chứng.
+- Không bịa dự án, công ty, chứng chỉ, số liệu hoặc kinh nghiệm ngoài dữ liệu.
+- Nếu dữ liệu hạn chế, viết thận trọng và tập trung vào năng lực có căn cứ.
 
 Ứng viên:
 - Họ tên: {context.candidate_name}
+- Tiêu đề hồ sơ: {context.candidate_title or "Không nêu rõ"}
+- Mục tiêu nghề nghiệp: {context.career_goal or "Không nêu rõ"}
+- Trình độ: {context.education_level or "Không nêu rõ"}
+- Số năm kinh nghiệm: {context.years_experience if context.years_experience is not None else "Không nêu rõ"}
 - Kinh nghiệm: {context.experience_summary}
 - Kỹ năng nổi bật: {", ".join(context.featured_skills) if context.featured_skills else "Không nêu rõ"}
+- Bằng chứng từ CV/dự án/kinh nghiệm: {json.dumps(context.candidate_evidence, ensure_ascii=False)}
 
 Vị trí ứng tuyển:
 - Chức danh: {context.job_title}
 - Công ty: {context.company_name}
+- Cấp bậc: {context.job_level or "Không nêu rõ"}
+- Kinh nghiệm yêu cầu: {context.required_experience or "Không nêu rõ"}
+- Trình độ yêu cầu: {context.required_education or "Không nêu rõ"}
 - Kỹ năng JD trọng tâm: {", ".join(context.job_focus_skills) if context.job_focus_skills else "Không nêu rõ"}
+- Bằng chứng/yêu cầu từ JD: {json.dumps(context.job_evidence, ensure_ascii=False)}
 
-Kết quả matching:
+Kết quả đối sánh:
 - Điểm phù hợp: {context.matching_score if context.matching_score is not None else "Chưa có"}
+- Điểm thành phần: {json.dumps(context.score_breakdown, ensure_ascii=False)}
 - Giải thích: {context.matching_explanation or "Chưa có"}
 - Kỹ năng còn thiếu: {", ".join(context.missing_skills) if context.missing_skills else "Không đáng kể"}
 
 Yêu cầu:
 - Chỉ trả về nội dung thư xin việc.
 - Không markdown.
-- Xưng hô thống nhất là "Tôi".
+- Xưng hô "Tôi" chỉ đại diện cho ứng viên trong thư, không đại diện cho AI/hệ thống.
 - Dùng tiếng Việt có dấu đầy đủ.
-- Có thể dùng gạch đầu dòng ngắn nếu giúp thư rõ ràng hơn.
+- Bố cục nên có: lời chào, đoạn mở nêu vị trí, đoạn lập luận phù hợp dựa trên bằng chứng, đoạn xử lý kỹ năng còn thiếu/định hướng đóng góp, lời kết.
+- Độ dài khoảng 350-550 từ.
+- Hạn chế gạch đầu dòng; chỉ dùng khi thực sự cần làm rõ bằng chứng.
 - Nếu có kỹ năng thiếu, đề cập khéo léo theo hướng sẵn sàng học hỏi.
+- Không dùng cụm tiếng Anh phổ thông như matching, job, apply, cover letter, portfolio; hãy viết là đối sánh, công việc/vị trí, ứng tuyển, thư xin việc, hồ sơ dự án. Chỉ giữ tên riêng công nghệ hoặc tên vị trí gốc.
 """.strip()
 
 

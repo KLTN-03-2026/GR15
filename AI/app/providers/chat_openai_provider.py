@@ -16,6 +16,7 @@ class OpenAIChatProvider:
 
         payload = {
             "model": settings.openai_model,
+            "temperature": 0,
             "input": [
                 {
                     "role": "system",
@@ -27,6 +28,10 @@ class OpenAIChatProvider:
                                 "Chỉ trả lời bằng tiếng Việt có dấu. "
                                 "Không bịa dữ liệu ngoài context. "
                                 "Không dùng markdown đậm/nghiêng. "
+                                "Không tự xưng 'tôi'; khi cần gọi vai trò, dùng 'hệ thống' hoặc 'trợ lý này'. "
+                                "Không dùng cụm tiếng Anh phổ thông trong nội dung tư vấn; chỉ giữ tên riêng công nghệ, tên vị trí gốc, viết tắt kỹ thuật hoặc framework. "
+                                "Việt hóa các cụm như Next 30 days, mini project, case study, portfolio, matching, job, apply, cover letter. "
+                                "Ưu tiên câu ngắn, đúng trọng tâm, không lan man. "
                                 "Nếu thiếu dữ liệu, hãy nói rõ là chưa đủ dữ liệu. "
                                 f"Nếu câu hỏi ngoài phạm vi, trả đúng câu sau: {OUT_OF_SCOPE_MESSAGE}"
                             ),
@@ -74,6 +79,7 @@ class OpenAIChatProvider:
         payload = {
             "model": settings.openai_model,
             "stream": True,
+            "temperature": 0,
             "input": [
                 {
                     "role": "system",
@@ -85,6 +91,10 @@ class OpenAIChatProvider:
                                 "Chỉ trả lời bằng tiếng Việt có dấu. "
                                 "Không bịa dữ liệu ngoài context. "
                                 "Không dùng markdown đậm/nghiêng. "
+                                "Không tự xưng 'tôi'; khi cần gọi vai trò, dùng 'hệ thống' hoặc 'trợ lý này'. "
+                                "Không dùng cụm tiếng Anh phổ thông trong nội dung tư vấn; chỉ giữ tên riêng công nghệ, tên vị trí gốc, viết tắt kỹ thuật hoặc framework. "
+                                "Việt hóa các cụm như Next 30 days, mini project, case study, portfolio, matching, job, apply, cover letter. "
+                                "Ưu tiên câu ngắn, đúng trọng tâm, không lan man. "
                                 "Nếu thiếu dữ liệu, hãy nói rõ là chưa đủ dữ liệu. "
                                 f"Nếu câu hỏi ngoài phạm vi, trả đúng câu sau: {OUT_OF_SCOPE_MESSAGE}"
                             ),
@@ -151,6 +161,9 @@ def _build_user_prompt(question: str, context: dict, history: list[dict]) -> str
         + question
         + f"\n\nÝ định câu hỏi đã được hệ thống phân loại là: {resolved_intent}."
         + "\nHãy bám sát đúng ý định này và trả lời theo dạng ngắn gọn, có xuống dòng rõ ràng nếu cần."
+        + "\nKhông tự xưng 'tôi' trong câu trả lời; dùng 'bạn', 'hồ sơ', 'ứng viên' hoặc 'hệ thống' tùy ngữ cảnh."
+        + "\nKhông dùng cụm tiếng Anh phổ thông trong nội dung tư vấn; chỉ giữ tên riêng công nghệ, tên vị trí gốc, viết tắt kỹ thuật hoặc framework."
+        + "\nNếu ý định là career_path_simulator, hãy sinh lộ trình 30/60/90 ngày dựa trên hồ sơ, khoảng cách kỹ năng, vị trí gần nhất và mốc kiểm tra rõ ràng."
     )
 
 
@@ -188,7 +201,6 @@ def _compact_context(context: dict) -> dict:
     report = context.get("career_report") or {}
     matches = context.get("top_matching_jobs") or []
     related_job = context.get("related_job") or {}
-    semantic_jobs = context.get("semantic_jobs") or []
     conversation_summary = context.get("conversation_summary")
 
     return {
@@ -196,9 +208,12 @@ def _compact_context(context: dict) -> dict:
         "candidate_profile": {
             "ho_ten": candidate.get("ho_ten"),
             "tieu_de_ho_so": candidate.get("tieu_de_ho_so"),
+            "vi_tri_ung_tuyen_muc_tieu": candidate.get("vi_tri_ung_tuyen_muc_tieu"),
+            "ten_nganh_nghe_muc_tieu": candidate.get("ten_nganh_nghe_muc_tieu"),
             "kinh_nghiem_nam": candidate.get("kinh_nghiem_nam"),
             "trinh_do": candidate.get("trinh_do"),
             "parsed_skills": (candidate.get("parsed_skills") or [])[:8],
+            "builder_skills": (candidate.get("builder_skills") or [])[:8],
         },
         "career_report": {
             "nghe_de_xuat": report.get("nghe_de_xuat"),
@@ -224,5 +239,4 @@ def _compact_context(context: dict) -> dict:
             "level": related_job.get("level"),
             "skills": (related_job.get("skills") or [])[:5],
         } if related_job else None,
-        "semantic_jobs": semantic_jobs[:2],
     }

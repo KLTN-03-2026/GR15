@@ -17,9 +17,9 @@ const parseJson = (raw) => {
   }
 }
 
-export const emitAuthChanged = () => {
+export const emitAuthChanged = (detail = {}) => {
   if (typeof window === 'undefined') return
-  window.dispatchEvent(new Event('auth-changed'))
+  window.dispatchEvent(new CustomEvent('auth-changed', { detail }))
 }
 
 export const getAuthToken = () => {
@@ -55,7 +55,7 @@ export const clearAuthStorage = () => {
   window.localStorage.removeItem(USER_KEY)
   window.localStorage.removeItem(EMPLOYER_KEY)
 
-  emitAuthChanged()
+  emitAuthChanged({ type: 'cleared' })
 }
 
 export const persistAuthSession = (token, user) => {
@@ -77,7 +77,7 @@ export const persistAuthSession = (token, user) => {
     }
   }
 
-  emitAuthChanged()
+  emitAuthChanged({ type: 'session-persisted', user_id: user?.id ?? null, role: user?.vai_tro ?? null })
 }
 
 export const updateStoredCandidate = (user) => {
@@ -85,5 +85,13 @@ export const updateStoredCandidate = (user) => {
   if (!storage || !user) return
 
   storage.setItem(USER_KEY, JSON.stringify(user))
-  emitAuthChanged()
+  emitAuthChanged({ type: 'profile-updated', user_id: user?.id ?? null, role: user?.vai_tro ?? null })
+}
+
+export const updateStoredEmployer = (user) => {
+  const storage = getStorage()
+  if (!storage || !user) return
+
+  storage.setItem(EMPLOYER_KEY, JSON.stringify(user))
+  emitAuthChanged({ type: 'profile-updated', user_id: user?.id ?? null, role: user?.vai_tro ?? null })
 }

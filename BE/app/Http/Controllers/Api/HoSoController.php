@@ -6,9 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\HoSo\TaoHoSoRequest;
 use App\Http\Requests\HoSo\CapNhatHoSoUngVienRequest;
 use App\Models\HoSo;
+use App\Services\CvUploadValidationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 
 /**
  * HoSoController - Quản lý hồ sơ dành cho Ứng viên
@@ -25,10 +27,62 @@ use Illuminate\Support\Facades\Storage;
  */
 class HoSoController extends Controller
 {
-    private function hasBuilderPayload(array $data): bool
+    public function __construct(private readonly CvUploadValidationService $cvUploadValidationService)
     {
-        foreach (['ky_nang_json', 'kinh_nghiem_json', 'hoc_van_json', 'du_an_json', 'chung_chi_json'] as $field) {
-            if (!empty($data[$field]) && is_array($data[$field])) {
+    }
+
+    private function syncCvPhoto(Request $request, HoSo $hoSo, array &$data): void
+    {
+        $photoMode = (string) ($data['che_do_anh_cv'] ?? $hoSo->che_do_anh_cv ?? 'profile');
+        $data['che_do_anh_cv'] = in_array($photoMode, ['profile', 'upload'], true) ? $photoMode : 'profile';
+
+        if ($data['che_do_anh_cv'] === 'profile') {
+            if ($hoSo->anh_cv) {
+                Storage::disk('public')->delete($hoSo->anh_cv);
+            }
+
+            $data['anh_cv'] = null;
+            return;
+        }
+
+        if ($request->hasFile('anh_cv')) {
+            if ($hoSo->anh_cv) {
+                Storage::disk('public')->delete($hoSo->anh_cv);
+            }
+
+            $data['anh_cv'] = $request->file('anh_cv')->store('cv_photos', 'public');
+            return;
+        }
+
+        if (!$hoSo->anh_cv && empty($data['anh_cv'])) {
+            throw ValidationException::withMessages([
+                'anh_cv' => ['Hãy tải ảnh đại diện riêng cho CV khi chọn chế độ upload.'],
+            ]);
+        }
+    }
+
+    private function hasBuilderData(array $data): bool
+    {
+        $builderFields = [
+            'mau_cv',
+            'che_do_mau_cv',
+            'vi_tri_ung_tuyen_muc_tieu',
+            'ten_nganh_nghe_muc_tieu',
+            'ky_nang_json',
+            'kinh_nghiem_json',
+            'hoc_van_json',
+            'du_an_json',
+            'chung_chi_json',
+        ];
+
+        foreach ($builderFields as $field) {
+            $value = $data[$field] ?? null;
+
+            if (is_array($value) && $value !== []) {
+                return true;
+            }
+
+            if (!is_array($value) && trim((string) $value) !== '') {
                 return true;
             }
         }
@@ -38,17 +92,22 @@ class HoSoController extends Controller
 
     private function resolveProfileSource(array $data, bool $hasFile): string
     {
-        $hasBuilder = $this->hasBuilderPayload($data);
-
-        if ($hasFile && $hasBuilder) {
-            return HoSo::NGUON_HO_SO_HYBRID;
+        $source = (string) ($data['nguon_ho_so'] ?? '');
+        if (in_array($source, ['upload', 'builder', 'hybrid'], true)) {
+            return $source;
         }
 
-        if ($hasBuilder) {
-            return HoSo::NGUON_HO_SO_BUILDER;
+        $hasBuilderData = $this->hasBuilderData($data);
+
+        if ($hasFile && $hasBuilderData) {
+            return 'hybrid';
         }
 
-        return $hasFile ? HoSo::NGUON_HO_SO_UPLOAD : HoSo::NGUON_HO_SO_BUILDER;
+        if ($hasBuilderData) {
+            return 'builder';
+        }
+
+        return 'upload';
     }
 
     private function unauthorizedResponse(): JsonResponse
@@ -109,18 +168,15 @@ class HoSoController extends Controller
 
         $data = $request->validated();
         $data['nguoi_dung_id'] = $nguoiDung->id;
-        $hasFile = false;
+        $data['nguon_ho_so'] = $this->resolveProfileSource($data, $request->hasFile('file_cv'));
+        $emptyProfile = new HoSo();
+        $this->syncCvPhoto($request, $emptyProfile, $data);
 
         // Upload file CV nếu có
         if ($request->hasFile('file_cv')) {
+            $this->cvUploadValidationService->validate($request->file('file_cv'));
             $data['file_cv'] = $request->file('file_cv')
                 ->store('file_cv', 'public');
-            $hasFile = true;
-        }
-
-        $data['nguon_ho_so'] = $this->resolveProfileSource($data, $hasFile);
-        if (empty($data['mau_cv']) && $data['nguon_ho_so'] !== HoSo::NGUON_HO_SO_UPLOAD) {
-            $data['mau_cv'] = 'classic';
         }
 
         $hoSo = HoSo::create($data);
@@ -172,25 +228,20 @@ class HoSoController extends Controller
             ->findOrFail($id);
 
         $data = $request->validated();
-        $hasFile = !empty($hoSo->file_cv);
+        $data['nguon_ho_so'] = $this->resolveProfileSource(
+            $data + ['file_cv' => $hoSo->file_cv],
+            $request->hasFile('file_cv') || !empty($hoSo->file_cv)
+        );
+        $this->syncCvPhoto($request, $hoSo, $data);
 
         // Upload file CV mới nếu có, xoá file cũ
         if ($request->hasFile('file_cv')) {
+            $this->cvUploadValidationService->validate($request->file('file_cv'));
             if ($hoSo->file_cv) {
                 Storage::disk('public')->delete($hoSo->file_cv);
             }
             $data['file_cv'] = $request->file('file_cv')
                 ->store('file_cv', 'public');
-            $hasFile = true;
-        }
-
-        $merged = array_merge($hoSo->toArray(), $data);
-        $data['nguon_ho_so'] = $this->resolveProfileSource($merged, $hasFile);
-        if (empty($data['mau_cv']) && !empty($merged['mau_cv'])) {
-            $data['mau_cv'] = $merged['mau_cv'];
-        }
-        if (empty($data['mau_cv']) && $data['nguon_ho_so'] !== HoSo::NGUON_HO_SO_UPLOAD) {
-            $data['mau_cv'] = 'classic';
         }
 
         $hoSo->update($data);
@@ -220,6 +271,10 @@ class HoSoController extends Controller
         // Xoá file CV nếu có
         if ($hoSo->file_cv) {
             Storage::disk('public')->delete($hoSo->file_cv);
+        }
+
+        if ($hoSo->anh_cv) {
+            Storage::disk('public')->delete($hoSo->anh_cv);
         }
 
         $hoSo->delete();

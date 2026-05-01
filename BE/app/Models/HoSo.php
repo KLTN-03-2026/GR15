@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\Storage;
 
 class HoSo extends Model
 {
@@ -28,6 +29,13 @@ class HoSo extends Model
         'file_cv',
         'nguon_ho_so',
         'mau_cv',
+        'bo_cuc_cv',
+        'ten_template_cv',
+        'che_do_mau_cv',
+        'vi_tri_ung_tuyen_muc_tieu',
+        'ten_nganh_nghe_muc_tieu',
+        'che_do_anh_cv',
+        'anh_cv',
         'ky_nang_json',
         'kinh_nghiem_json',
         'hoc_van_json',
@@ -50,27 +58,37 @@ class HoSo extends Model
         'chung_chi_json' => 'array',
     ];
 
+    protected $appends = [
+        'anh_cv_url',
+    ];
+
     // ==========================================
     // CONSTANTS - Trạng thái hồ sơ
     // ==========================================
     const TRANG_THAI_AN = 0;
     const TRANG_THAI_CONG_KHAI = 1;
 
-    const NGUON_HO_SO_UPLOAD = 'upload';
-    const NGUON_HO_SO_BUILDER = 'builder';
-    const NGUON_HO_SO_HYBRID = 'hybrid';
-
     // ==========================================
     // CONSTANTS - Trình độ
     // ==========================================
     const TRINH_DO_LIST = [
-        'trung_hoc',
-        'trung_cap',
-        'cao_dang',
-        'dai_hoc',
-        'thac_si',
-        'tien_si',
-        'khac',
+        'Trung học',
+        'Trung cấp',
+        'Cao đẳng',
+        'Đại học',
+        'Thạc sĩ',
+        'Tiến sĩ',
+        'Khác',
+    ];
+
+    const TRINH_DO_LABELS = [
+        'trung_hoc' => 'Trung học',
+        'trung_cap' => 'Trung cấp',
+        'cao_dang' => 'Cao đẳng',
+        'dai_hoc' => 'Đại học',
+        'thac_si' => 'Thạc sĩ',
+        'tien_si' => 'Tiến sĩ',
+        'khac' => 'Khác',
     ];
 
     // ==========================================
@@ -131,14 +149,56 @@ class HoSo extends Model
         return $this->trang_thai === self::TRANG_THAI_AN;
     }
 
-    public function hasBuilderCv(): bool
+    public static function acceptedTrinhDoValues(): array
     {
-        return $this->nguon_ho_so !== self::NGUON_HO_SO_UPLOAD
-            || !empty($this->ky_nang_json)
-            || !empty($this->kinh_nghiem_json)
-            || !empty($this->hoc_van_json)
-            || !empty($this->du_an_json)
-            || !empty($this->chung_chi_json);
+        return array_values(array_unique([
+            ...array_keys(self::TRINH_DO_LABELS),
+            ...array_values(self::TRINH_DO_LABELS),
+        ]));
+    }
+
+    public static function normalizeTrinhDo(?string $value): ?string
+    {
+        $value = trim((string) $value);
+
+        if ($value === '') {
+            return null;
+        }
+
+        return self::TRINH_DO_LABELS[$value] ?? (
+            in_array($value, self::TRINH_DO_LIST, true) ? $value : $value
+        );
+    }
+
+    public static function legacyTrinhDoKey(?string $value): ?string
+    {
+        $normalized = self::normalizeTrinhDo($value);
+
+        if ($normalized === null) {
+            return null;
+        }
+
+        $key = array_search($normalized, self::TRINH_DO_LABELS, true);
+
+        return $key === false ? null : $key;
+    }
+
+    public static function trinhDoQueryValues(?string $value): array
+    {
+        $normalized = self::normalizeTrinhDo($value);
+        $legacyKey = self::legacyTrinhDoKey($value);
+
+        return array_values(array_filter(array_unique([$normalized, $legacyKey])));
+    }
+
+    public function getTrinhDoAttribute($value): ?string
+    {
+        return self::normalizeTrinhDo($value);
+    }
+
+    public function setTrinhDoAttribute($value): void
+    {
+        $this->attributes['trinh_do'] = self::normalizeTrinhDo($value);
     }
 
     /**
@@ -158,15 +218,17 @@ class HoSo extends Model
      */
     public function getTenTrinhDoAttribute(): string
     {
-        return match ($this->trinh_do) {
-            'trung_hoc' => 'Trung học',
-            'trung_cap' => 'Trung cấp',
-            'cao_dang' => 'Cao đẳng',
-            'dai_hoc' => 'Đại học',
-            'thac_si' => 'Thạc sĩ',
-            'tien_si' => 'Tiến sĩ',
-            'khac' => 'Khác',
-            default => $this->trinh_do ?? 'Chưa cập nhật',
-        };
+        return self::normalizeTrinhDo($this->trinh_do) ?? 'Chưa cập nhật';
+    }
+
+    public function getAnhCvUrlAttribute(): ?string
+    {
+        $path = $this->attributes['anh_cv'] ?? null;
+
+        if (!$path) {
+            return null;
+        }
+
+        return Storage::disk('public')->url($path);
     }
 }

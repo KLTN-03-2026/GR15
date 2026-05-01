@@ -2,9 +2,15 @@ from fastapi import APIRouter
 
 from app.schemas.common import BaseAiResponse
 from app.schemas.interview import (
+    InterviewCopilotEvaluateRequest,
+    InterviewCopilotGenerateRequest,
     MockInterviewAnswerRequest,
     MockInterviewQuestionRequest,
     MockInterviewReportRequest,
+)
+from app.services.interview_copilot import (
+    evaluate_interview_copilot,
+    generate_interview_copilot,
 )
 from app.services.mock_interview import (
     evaluate_mock_interview_answer,
@@ -50,5 +56,26 @@ def generate_mock_interview_report_endpoint(payload: MockInterviewReportRequest)
             payload.session_id,
             interview_context=payload.interview_context,
             transcript=payload.transcript,
+        )
+    )
+
+
+@router.post("/interview/copilot/generate", response_model=BaseAiResponse)
+def generate_interview_copilot_endpoint(payload: InterviewCopilotGenerateRequest) -> BaseAiResponse:
+    return BaseAiResponse(
+        **generate_interview_copilot(
+            payload.ung_tuyen_id,
+            application_context=payload.application_context,
+        )
+    )
+
+
+@router.post("/interview/copilot/evaluate", response_model=BaseAiResponse)
+def evaluate_interview_copilot_endpoint(payload: InterviewCopilotEvaluateRequest) -> BaseAiResponse:
+    return BaseAiResponse(
+        **evaluate_interview_copilot(
+            payload.ung_tuyen_id,
+            application_context=payload.application_context,
+            interview_notes=payload.interview_notes,
         )
     )

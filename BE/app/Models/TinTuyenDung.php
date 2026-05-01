@@ -3,11 +3,15 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Schema;
 
 class TinTuyenDung extends Model
 {
     use HasFactory;
+
+    private static ?bool $supportsFeaturedListing = null;
 
     protected $table = 'tin_tuyen_dungs';
 
@@ -18,7 +22,6 @@ class TinTuyenDung extends Model
         'hinh_thuc_lam_viec',
         'cap_bac',
         'so_luong_tuyen',
-        'muc_luong',
         'muc_luong_tu',
         'muc_luong_den',
         'don_vi_luong',
@@ -27,21 +30,36 @@ class TinTuyenDung extends Model
         'ngay_het_han',
         'luot_xem',
         'cong_ty_id',
+        'hr_phu_trach_id',
         'trang_thai',
+        'published_at',
+        'reactivated_at',
+        'featured_activated_at',
+        'featured_until',
     ];
 
     protected $casts = [
         'so_luong_tuyen' => 'integer',
-        'muc_luong' => 'integer',
         'muc_luong_tu' => 'integer',
         'muc_luong_den' => 'integer',
         'luot_xem' => 'integer',
         'cong_ty_id' => 'integer',
+        'hr_phu_trach_id' => 'integer',
         'trang_thai' => 'integer',
         'ngay_het_han' => 'datetime',
+        'published_at' => 'datetime',
+        'reactivated_at' => 'datetime',
+        'featured_activated_at' => 'datetime',
+        'featured_until' => 'datetime',
     ];
 
-    protected $appends = [];
+    protected $appends = [
+        'so_luong_da_nhan',
+        'so_luong_con_lai',
+        'da_tuyen_du',
+        'is_featured',
+        'featured_label',
+    ];
 
     const TRANG_THAI_HOAT_DONG = 1;
     const TRANG_THAI_TAM_NGUNG = 0;
@@ -60,6 +78,11 @@ class TinTuyenDung extends Model
     public function congTy()
     {
         return $this->belongsTo(CongTy::class, 'cong_ty_id');
+    }
+
+    public function hrPhuTrach()
+    {
+        return $this->belongsTo(NguoiDung::class, 'hr_phu_trach_id');
     }
 
     /**
@@ -91,11 +114,7 @@ class TinTuyenDung extends Model
     public function acceptedApplications()
     {
         return $this->hasMany(\App\Models\UngTuyen::class, 'tin_tuyen_dung_id')
-            ->whereIn('trang_thai', [
-                \App\Models\UngTuyen::TRANG_THAI_CHAP_NHAN,
-                \App\Models\UngTuyen::TRANG_THAI_DA_GUI_OFFER,
-                \App\Models\UngTuyen::TRANG_THAI_DA_NHAN_VIEC,
-            ])
+            ->where('trang_thai', \App\Models\UngTuyen::TRANG_THAI_CHAP_NHAN)
             ->whereNotNull('thoi_gian_ung_tuyen');
     }
 
@@ -123,6 +142,25 @@ class TinTuyenDung extends Model
         return $this->hasMany(KetQuaMatching::class, 'tin_tuyen_dung_id');
     }
 
+    public function scopeOrderFeaturedFirst(Builder $query): Builder
+    {
+        if (!self::supportsFeaturedListing()) {
+            return $query;
+        }
+
+        $now = now();
+
+        return $query
+            ->orderByRaw(
+                'CASE WHEN featured_until IS NOT NULL AND featured_until >= ? THEN 0 ELSE 1 END',
+                [$now]
+            )
+            ->orderByRaw(
+                'CASE WHEN featured_until IS NOT NULL AND featured_until >= ? THEN featured_until ELSE NULL END DESC',
+                [$now]
+            );
+    }
+
     public function getSoLuongDaNhanAttribute(): int
     {
         return (int) (
@@ -140,5 +178,31 @@ class TinTuyenDung extends Model
     public function getDaTuyenDuAttribute(): bool
     {
         return $this->so_luong_con_lai <= 0;
+    }
+
+    public function getIsFeaturedAttribute(): bool
+    {
+        if (!self::supportsFeaturedListing()) {
+            return false;
+        }
+
+        return $this->featured_until !== null && $this->featured_until->greaterThanOrEqualTo(now());
+    }
+
+    public function getFeaturedLabelAttribute(): ?string
+    {
+        if (!$this->is_featured) {
+            return null;
+        }
+
+        return 'Tin nổi bật';
+    }
+
+    public static function supportsFeaturedListing(): bool
+    {
+        return self::$supportsFeaturedListing ??= Schema::hasColumns((new static())->getTable(), [
+            'featured_activated_at',
+            'featured_until',
+        ]);
     }
 }

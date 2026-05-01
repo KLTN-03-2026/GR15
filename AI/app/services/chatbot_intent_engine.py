@@ -6,8 +6,8 @@ from app.services.skill_catalog import normalize_search_text
 
 
 OUT_OF_SCOPE_MESSAGE = (
-    "Tôi được thiết kế để hỗ trợ tư vấn nghề nghiệp, giải thích hồ sơ CV, kết quả matching và thông tin tuyển dụng trong hệ thống. "
-    "Với câu hỏi này, tôi chưa phải là trợ lý phù hợp. Bạn có thể hỏi tôi về nghề nghiệp, kỹ năng cần bổ sung, CV, thư xin việc hoặc công việc phù hợp với hồ sơ của bạn."
+    "Trợ lý này được thiết kế để hỗ trợ tư vấn nghề nghiệp, giải thích hồ sơ CV, kết quả đối sánh và thông tin tuyển dụng trong hệ thống. "
+    "Với câu hỏi này, hệ thống chưa phải là kênh hỗ trợ phù hợp. Bạn có thể hỏi về nghề nghiệp, kỹ năng cần bổ sung, CV, thư xin việc hoặc công việc phù hợp với hồ sơ của bạn."
 )
 
 INTENT_OUT_OF_SCOPE = "out_of_scope"
@@ -16,7 +16,7 @@ INTENT_MATCHING_EXPLANATION = "matching_explanation"
 INTENT_JOB_RECOMMENDATION = "job_recommendation"
 INTENT_NEXT_STEP_ACTION = "next_step_action"
 INTENT_CAREER_DIRECTION = "career_direction"
-INTENT_LEARNING_PLAN = "learning_plan"
+INTENT_LEARNING_PLAN = "career_path_simulator"
 INTENT_CV_IMPROVEMENT = "cv_improvement"
 INTENT_COVER_LETTER = "cover_letter"
 INTENT_INTERVIEW_PREP = "interview_prep"
@@ -25,7 +25,7 @@ INTENT_GENERAL_CAREER = "general_career"
 DOMAIN_KEYWORDS = {
     "cv", "ho so", "hồ sơ", "matching", "nghe nghiep", "nghề nghiệp", "ky nang", "kỹ năng",
     "ung tuyen", "ứng tuyển", "job", "cong viec", "công việc", "cover letter", "thu xin viec",
-    "thư xin việc", "phong van", "phỏng vấn", "career", "semantic", "skill", "jd", "resume",
+    "thư xin việc", "phong van", "phỏng vấn", "career", "skill", "jd", "resume",
     "backend", "frontend", "mobile", "ios", "android", "marketing", "ke toan", "kế toán",
     "huong chinh", "hướng chính", "huong thay the", "hướng thay thế", "giai doan", "giai đoạn",
     "ke hoach", "kế hoạch", "lo trinh", "lộ trình", "dinh huong", "định hướng",
@@ -50,11 +50,11 @@ MODEL_PREFERRED_INTENTS = {
 
 INTENT_LABELS = {
     INTENT_SKILL_GAP: "Kỹ năng cần bổ sung",
-    INTENT_MATCHING_EXPLANATION: "Giải thích matching",
+    INTENT_MATCHING_EXPLANATION: "Giải thích đối sánh",
     INTENT_JOB_RECOMMENDATION: "Gợi ý công việc",
     INTENT_NEXT_STEP_ACTION: "Nên làm gì trước",
     INTENT_CAREER_DIRECTION: "Định hướng nghề",
-    INTENT_LEARNING_PLAN: "Lộ trình học",
+    INTENT_LEARNING_PLAN: "Mô phỏng lộ trình nghề nghiệp",
     INTENT_CV_IMPROVEMENT: "Cải thiện CV",
     INTENT_COVER_LETTER: "Thư xin việc",
     INTENT_INTERVIEW_PREP: "Chuẩn bị phỏng vấn",
@@ -119,7 +119,6 @@ def build_template_answer(question: str, context: dict, history: list[dict], int
     candidate = context.get("candidate_profile") or {}
     report = context.get("career_report") or {}
     matches = context.get("top_matching_jobs") or []
-    semantic_jobs = context.get("semantic_jobs") or []
     related_job = context.get("related_job") or {}
     normalized = normalize_search_text(question)
 
@@ -127,8 +126,8 @@ def build_template_answer(question: str, context: dict, history: list[dict], int
         missing = _collect_missing_skills(matches, report)
         if not missing:
             return (
-                "Hiện tại tôi chưa thấy kỹ năng còn thiếu nổi bật từ hồ sơ và các job đã đối sánh.\n"
-                "- Bạn có thể parse thêm JD hoặc tạo matching mới để tôi phân tích sát hơn."
+                "Hiện tại chưa thấy kỹ năng còn thiếu nổi bật từ hồ sơ và các job đã đối sánh.\n"
+                "- Bạn có thể phân tích thêm JD hoặc tạo kết quả đối sánh mới để hệ thống phân tích sát hơn."
             )
 
         lines = [
@@ -144,7 +143,7 @@ def build_template_answer(question: str, context: dict, history: list[dict], int
     if intent == INTENT_MATCHING_EXPLANATION:
         top = matches[0] if matches else {}
         if not top:
-            return "Hiện tôi chưa có dữ liệu matching để giải thích điểm phù hợp. Bạn có thể chạy Generate Matching trước."
+            return "Hiện chưa có dữ liệu đối sánh để giải thích điểm phù hợp. Bạn có thể chạy chức năng đối sánh trước."
 
         matched = top.get("matched_skills", []) or []
         missing = top.get("missing_skills", []) or []
@@ -164,12 +163,12 @@ def build_template_answer(question: str, context: dict, history: list[dict], int
         return "\n".join(lines)
 
     if intent == INTENT_JOB_RECOMMENDATION:
-        jobs = _job_candidates(semantic_jobs, matches)
+        jobs = _job_candidates(matches)
         wants_apply = any(keyword in normalized for keyword in ["apply", "ứng tuyển", "ung tuyen", "apply ngay"])
         if not jobs:
             return (
-                "Hiện tôi chưa có đủ dữ liệu để gợi ý job cụ thể.\n"
-                "- Bạn nên tạo matching mới hoặc chọn thêm JD liên quan để tôi đề xuất sát hơn."
+                "Hiện chưa có đủ dữ liệu để gợi ý job cụ thể.\n"
+                "- Bạn nên tạo kết quả đối sánh mới hoặc chọn thêm JD liên quan để hệ thống đề xuất sát hơn."
             )
 
         lines = [
@@ -180,7 +179,7 @@ def build_template_answer(question: str, context: dict, history: list[dict], int
             lines.extend([
                 "",
                 "Ưu tiên trước:",
-                f"- Bạn có thể ưu tiên apply vị trí {jobs[0]} vì đây là job gần nhất với hồ sơ hiện tại.",
+                f"- Bạn có thể ưu tiên ứng tuyển vị trí {jobs[0]} vì đây là vị trí gần nhất với hồ sơ hiện tại.",
             ])
         else:
             lines.extend([
@@ -206,7 +205,7 @@ def build_template_answer(question: str, context: dict, history: list[dict], int
             "- Chuẩn bị một ví dụ dự án hoặc kinh nghiệm thực tế để chứng minh năng lực khi ứng tuyển.",
             "",
             "Bước tiếp theo:",
-            "- Sau khi cập nhật CV và bù khoảng trống chính, hãy xem lại các job gần nhất trong hệ thống để chọn vị trí phù hợp nhất.",
+            "- Sau khi cập nhật CV và bù khoảng trống chính, hãy xem lại các vị trí gần nhất trong hệ thống để chọn vị trí phù hợp nhất.",
         ])
         return "\n".join(lines)
 
@@ -230,35 +229,7 @@ def build_template_answer(question: str, context: dict, history: list[dict], int
         return "\n".join(lines)
 
     if intent == INTENT_LEARNING_PLAN:
-        role = report.get("nghe_de_xuat") or related_job.get("title") or "Backend Developer"
-        parsed_skills = candidate.get("parsed_skills") or []
-        missing = _collect_missing_skills(matches, report)
-        lines = [
-            "Đề xuất chính:",
-            f"- Mục tiêu phù hợp nhất hiện tại là {role}.",
-            "",
-            "Kế hoạch theo từng giai đoạn:",
-            "Giai đoạn 1:",
-            "- Rà soát lại CV và dự án để nhấn mạnh các kỹ năng đang có.",
-        ]
-        if parsed_skills:
-            lines.append("- Giữ nổi bật các kỹ năng nền như " + ", ".join(parsed_skills[:3]) + ".")
-        lines.extend([
-            "",
-            "Giai đoạn 2:",
-            "- Bổ sung các kỹ năng còn thiếu xuất hiện nhiều trong job mục tiêu.",
-        ])
-        if missing:
-            lines.append("- Ưu tiên lần lượt: " + ", ".join(missing[:4]) + ".")
-        lines.extend([
-            "- Hoàn thành ít nhất 1 bài thực hành hoặc dự án nhỏ bám sát vị trí mục tiêu.",
-            "",
-            "Giai đoạn 3:",
-            "- Cập nhật lại CV theo kỹ năng mới đã học.",
-            "- Chọn 1-2 job gần nhất trong hệ thống để bắt đầu ứng tuyển.",
-            "- Chuẩn bị cách trình bày điểm mạnh, điểm còn thiếu và kế hoạch học tiếp khi phỏng vấn.",
-        ])
-        return "\n".join(lines)
+        return _build_career_path_simulator_answer(candidate, report, matches, related_job)
 
     if intent == INTENT_CV_IMPROVEMENT:
         parsed_skills = candidate.get("parsed_skills") or []
@@ -314,7 +285,7 @@ def build_template_answer(question: str, context: dict, history: list[dict], int
             "",
             "Bạn có thể hỏi tiếp:",
             "- Kỹ năng còn thiếu để tăng độ phù hợp.",
-            "- Job nào nên ưu tiên xem hoặc apply.",
+            "- Công việc nào nên ưu tiên xem hoặc ứng tuyển.",
             "- Cách cải thiện CV hoặc chuẩn bị phỏng vấn.",
         ])
         return "\n".join(lines)
@@ -372,6 +343,15 @@ def _score_intents(normalized: str) -> dict[str, int]:
             ("kế hoạch", 7),
             ("lo trinh", 7),
             ("lộ trình", 7),
+            ("roadmap", 7),
+            ("career path", 7),
+            ("30 ngay", 7),
+            ("30 ngày", 7),
+            ("60 ngay", 7),
+            ("60 ngày", 7),
+            ("90 ngay", 8),
+            ("90 ngày", 8),
+            ("30 60 90", 8),
             ("giai doan", 6),
             ("giai đoạn", 6),
             ("3 thang", 6),
@@ -454,7 +434,8 @@ def _pick_intent(scores: dict[str, int]) -> str:
 def _looks_like_learning_plan_request(normalized: str) -> bool:
     plan_markers = [
         "ke hoach", "kế hoạch", "lo trinh", "lộ trình", "giai doan", "giai đoạn",
-        "3 thang", "3 tháng", "6 thang", "6 tháng",
+        "roadmap", "career path", "30 ngay", "30 ngày", "60 ngay", "60 ngày",
+        "90 ngay", "90 ngày", "30 60 90", "3 thang", "3 tháng", "6 thang", "6 tháng",
     ]
     direction_markers = [
         "huong chinh", "hướng chính", "huong thay the", "hướng thay thế",
@@ -559,16 +540,8 @@ def _direction_reasons(candidate: dict, report: dict, matches: list[dict]) -> li
     return reasons
 
 
-def _job_candidates(semantic_jobs: list[dict], matches: list[dict]) -> list[str]:
+def _job_candidates(matches: list[dict]) -> list[str]:
     jobs: list[str] = []
-
-    for item in semantic_jobs[:3]:
-        title = item.get("title") or item.get("job_title")
-        company = item.get("company_name")
-        if title:
-            label = f"{title} - {company}" if company else title
-            if label not in jobs:
-                jobs.append(label)
 
     for item in matches[:3]:
         title = item.get("job_title")
@@ -576,3 +549,133 @@ def _job_candidates(semantic_jobs: list[dict], matches: list[dict]) -> list[str]
             jobs.append(title)
 
     return jobs
+
+
+def _build_career_path_simulator_answer(
+    candidate: dict,
+    report: dict,
+    matches: list[dict],
+    related_job: dict,
+) -> str:
+    target_role = (
+        candidate.get("vi_tri_ung_tuyen_muc_tieu")
+        or report.get("nghe_de_xuat")
+        or related_job.get("title")
+        or (matches[0].get("job_title") if matches else None)
+        or "vị trí mục tiêu hiện tại"
+    )
+    target_industry = candidate.get("ten_nganh_nghe_muc_tieu")
+    current_skills = _unique_list([
+        *(candidate.get("parsed_skills") or []),
+        *(candidate.get("builder_skills") or []),
+        *_collect_matched_skills(matches),
+    ])
+    missing_skills = _collect_missing_skills(matches, report)
+    jobs = _job_candidates(matches)
+    alternative_roles = _alternative_roles(report, str(target_role))
+    current_level = _infer_current_level(candidate, matches)
+
+    lines = [
+        "Mô phỏng lộ trình nghề nghiệp 30/60/90 ngày:",
+        f"- Mục tiêu chính: {target_role}.",
+        f"- Mức hiện tại: {current_level}.",
+    ]
+    if target_industry:
+        lines.append(f"- Ngành mục tiêu: {target_industry}.")
+
+    if current_skills:
+        lines.extend([
+            "",
+            "Nền tảng đang có:",
+            "- " + ", ".join(current_skills[:6]) + ".",
+        ])
+
+    if missing_skills:
+        lines.extend([
+            "",
+            "Khoảng cách cần bù:",
+            "- " + ", ".join(missing_skills[:6]) + ".",
+        ])
+
+    lines.extend([
+        "",
+        "30 ngày đầu:",
+        "- Chốt 1 phiên bản CV bám sát mục tiêu, ưu tiên đưa kỹ năng và dự án liên quan lên phần đầu.",
+        "- Ôn lại nền tảng cốt lõi của vị trí mục tiêu và ghi lại 3 ví dụ kinh nghiệm/dự án có thể kể khi phỏng vấn.",
+    ])
+    if missing_skills:
+        lines.append(f"- Học sâu kỹ năng ưu tiên số 1: {missing_skills[0]}; tạo một bài thực hành nhỏ để chứng minh năng lực.")
+    elif current_skills:
+        lines.append(f"- Củng cố kỹ năng mạnh nhất hiện tại: {current_skills[0]}; biến nó thành điểm nhấn trong CV.")
+
+    lines.extend([
+        "",
+        "60 ngày:",
+        "- Hoàn thiện một dự án hoặc bài phân tích tình huống có đầu ra đo được, ví dụ API, bảng điều khiển, chiến dịch, quy trình hoặc báo cáo tùy ngành.",
+    ])
+    if len(missing_skills) >= 2:
+        lines.append("- Bổ sung tiếp: " + ", ".join(missing_skills[1:4]) + ".")
+    lines.append("- Chạy lại đối sánh hoặc hỏi trợ lý so sánh CV với vị trí mục tiêu để kiểm tra điểm còn yếu.")
+
+    lines.extend([
+        "",
+        "90 ngày:",
+        "- Tạo bản CV tối ưu theo từng JD, chuẩn bị thư xin việc ngắn và luyện phỏng vấn theo các câu hỏi thường gặp của vị trí mục tiêu.",
+    ])
+    if jobs:
+        lines.append("- Ưu tiên ứng tuyển hoặc theo dõi các vị trí gần nhất: " + "; ".join(jobs[:3]) + ".")
+    else:
+        lines.append("- Chọn 2-3 JD thật trong hệ thống để đối chiếu lại kỹ năng và yêu cầu tuyển dụng.")
+
+    lines.extend([
+        "",
+        "Mốc kiểm tra:",
+        "- Sau 30 ngày: CV rõ mục tiêu hơn và có ít nhất 1 minh chứng mới.",
+        "- Sau 60 ngày: giảm được 1-3 khoảng cách kỹ năng chính.",
+        "- Sau 90 ngày: có thể ứng tuyển tự tin hơn vào nhóm vị trí mục tiêu.",
+    ])
+
+    if alternative_roles:
+        lines.extend([
+            "",
+            "Hướng thay thế nếu muốn mở rộng:",
+            *[f"- {role}" for role in alternative_roles[:2]],
+        ])
+
+    return "\n".join(lines)
+
+
+def _infer_current_level(candidate: dict, matches: list[dict]) -> str:
+    years = candidate.get("kinh_nghiem_nam")
+    try:
+        years = int(years or 0)
+    except (TypeError, ValueError):
+        years = 0
+
+    top_score = 0.0
+    if matches:
+        try:
+            top_score = float(matches[0].get("score") or 0)
+        except (TypeError, ValueError):
+            top_score = 0.0
+
+    if years >= 4 or top_score >= 75:
+        return "đang ở mức khá vững, nên tối ưu chiều sâu và hồ sơ dự án"
+    if years >= 2 or top_score >= 55:
+        return "đã có nền tảng, nên bù khoảng cách kỹ năng và tăng minh chứng thực tế"
+    return "giai đoạn intern/fresher, nên ưu tiên nền tảng và dự án chứng minh năng lực"
+
+
+def _unique_list(items: Iterable) -> list[str]:
+    result: list[str] = []
+    seen: set[str] = set()
+    for item in items:
+        if not item:
+            continue
+        value = str(item).strip()
+        key = normalize_search_text(value)
+        if not value or key in seen:
+            continue
+        seen.add(key)
+        result.append(value)
+    return result

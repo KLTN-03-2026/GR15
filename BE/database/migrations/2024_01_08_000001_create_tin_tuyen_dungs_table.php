@@ -15,7 +15,6 @@ return new class extends Migration {
             $table->string('hinh_thuc_lam_viec', 50)->nullable()->comment('Toàn thời gian, Bán thời gian, Remote...');
             $table->string('cap_bac', 50)->nullable()->comment('Thực tập sinh, Nhân viên, Quản lý...');
             $table->integer('so_luong_tuyen')->default(1);
-            $table->integer('muc_luong')->nullable()->comment('Mức lương ước tính (VNĐ)');
             $table->string('kinh_nghiem_yeu_cau', 100)->nullable();
             $table->date('ngay_het_han')->nullable();
             $table->integer('luot_xem')->default(0);

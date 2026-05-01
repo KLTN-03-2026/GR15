@@ -2,18 +2,22 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Exceptions\BillingException;
 use App\Http\Controllers\Controller;
 use App\Models\AiChatMessage;
 use App\Models\AiChatSession;
 use App\Models\AiInterviewReport;
 use App\Models\HoSo;
 use App\Models\KetQuaMatching;
+use App\Models\SuDungTinhNangAi;
 use App\Models\TinTuyenDung;
 use App\Models\TuVanNgheNghiep;
 use App\Services\Ai\AiClientService;
+use App\Services\Billing\FeatureAccessService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class MockInterviewController extends Controller
@@ -90,14 +94,23 @@ class MockInterviewController extends Controller
         ]);
     }
 
-    public function store(Request $request, AiClientService $aiClient): JsonResponse
+    public function store(
+        Request $request,
+        AiClientService $aiClient,
+        FeatureAccessService $featureAccessService
+    ): JsonResponse
     {
+        /** @var SuDungTinhNangAi|null $billingUsage */
+        $billingUsage = null;
+        /** @var AiChatSession|null $session */
+        $session = null;
+
         $validated = $request->validate([
             'related_ho_so_id' => ['required', 'integer'],
             'related_tin_tuyen_dung_id' => ['nullable', 'integer'],
             'title' => ['nullable', 'string', 'max:255'],
             'auto_generate_first_question' => ['nullable', 'boolean'],
-            'question_count' => ['nullable', 'integer', 'min:3', 'max:7'],
+            'question_count' => ['nullable', 'integer', 'min:1'],
         ]);
 
         $hoSo = HoSo::query()
@@ -110,47 +123,87 @@ class MockInterviewController extends Controller
             TinTuyenDung::findOrFail($jobId);
         }
 
-        $session = AiChatSession::create([
-            'nguoi_dung_id' => $request->user()->id,
-            'session_type' => 'mock_interview',
-            'related_ho_so_id' => $hoSo->id,
-            'related_tin_tuyen_dung_id' => $jobId,
-            'title' => $validated['title'] ?? 'Mock Interview',
-            'status' => 1,
-            'metadata' => [
-                'question_count' => (int) ($validated['question_count'] ?? 5),
-            ],
-        ]);
-
-        $firstQuestionMessage = null;
-        if (($validated['auto_generate_first_question'] ?? true) === true) {
-            $context = $this->buildInterviewContext($request->user()->id, $session);
-            $response = $aiClient->generateMockInterviewQuestion(
-                $session->id,
-                $context,
-                [],
-                1,
-                $this->resolveQuestionCount($session)
-            );
-            $data = $response['data'] ?? [];
-
-            $firstQuestionMessage = AiChatMessage::create([
-                'session_id' => $session->id,
-                'role' => 'assistant',
-                'content' => (string) ($data['question_text'] ?? ''),
-                'metadata' => [
-                    'type' => 'interview_question',
-                    'question_index' => $data['question_index'] ?? 1,
-                    'max_questions' => $data['max_questions'] ?? 5,
-                    'question_type' => $data['question_type'] ?? null,
-                    'interview_stage_label' => $data['interview_stage_label'] ?? null,
-                    'focus_skills' => $data['focus_skills'] ?? [],
-                    'suggested_answer_points' => $data['suggested_answer_points'] ?? [],
-                    'generation_provider' => $data['generation_provider'] ?? null,
-                    'model_version' => $response['model_version'] ?? null,
+        try {
+            $billingUsage = $featureAccessService->beginUsage(
+                $request->user(),
+                'mock_interview_session',
+                'mock_interview_session',
+                null,
+                [
+                    'ho_so_id' => $hoSo->id,
+                    'tin_tuyen_dung_id' => $jobId,
+                    'question_count' => (int) ($validated['question_count'] ?? 5),
+                    'auto_generate_first_question' => (bool) ($validated['auto_generate_first_question'] ?? true),
                 ],
-                'created_at' => now(),
+                $this->resolveIdempotencyKey($request, $hoSo->id, $jobId),
+            );
+
+            $session = AiChatSession::create([
+                'nguoi_dung_id' => $request->user()->id,
+                'session_type' => 'mock_interview',
+                'related_ho_so_id' => $hoSo->id,
+                'related_tin_tuyen_dung_id' => $jobId,
+                'title' => $validated['title'] ?? 'Mock Interview',
+                'status' => 1,
+                'metadata' => [
+                    'question_count' => (int) ($validated['question_count'] ?? 5),
+                ],
             ]);
+
+            $firstQuestionMessage = null;
+            if (($validated['auto_generate_first_question'] ?? true) === true) {
+                $context = $this->buildInterviewContext($request->user()->id, $session);
+                $response = $aiClient->generateMockInterviewQuestion(
+                    $session->id,
+                    $context,
+                    [],
+                    1,
+                    $this->resolveQuestionCount($session)
+                );
+                $data = $response['data'] ?? [];
+
+                $firstQuestionMessage = AiChatMessage::create([
+                    'session_id' => $session->id,
+                    'role' => 'assistant',
+                    'content' => (string) ($data['question_text'] ?? ''),
+                    'metadata' => [
+                        'type' => 'interview_question',
+                        'question_index' => $data['question_index'] ?? 1,
+                        'max_questions' => $data['max_questions'] ?? 5,
+                        'question_type' => $data['question_type'] ?? null,
+                        'interview_stage_label' => $data['interview_stage_label'] ?? null,
+                        'focus_skills' => $data['focus_skills'] ?? [],
+                        'suggested_answer_points' => $data['suggested_answer_points'] ?? [],
+                        'generation_provider' => $data['generation_provider'] ?? null,
+                        'model_version' => $response['model_version'] ?? null,
+                    ],
+                    'created_at' => now(),
+                ]);
+            }
+
+            $billingUsage = $featureAccessService->commitUsage($billingUsage, [
+                'session_id' => $session->id,
+                'first_question_message_id' => $firstQuestionMessage?->id,
+            ]);
+        } catch (BillingException $exception) {
+            return response()->json([
+                'success' => false,
+                'code' => $exception->errorCode,
+                'message' => $exception->getMessage(),
+                ...$exception->context,
+            ], $exception->status);
+        } catch (\Throwable $exception) {
+            if ($billingUsage) {
+                $this->safeFailUsage($featureAccessService, $billingUsage, $exception->getMessage());
+            }
+
+            if ($session) {
+                AiChatMessage::query()->where('session_id', $session->id)->delete();
+                Cache::store('file')->forget($this->baseContextCacheKey($request->user()->id, $session));
+                $session->delete();
+            }
+
+            throw $exception;
         }
 
         return response()->json([
@@ -370,6 +423,16 @@ class MockInterviewController extends Controller
         ]);
     }
 
+    private function resolveIdempotencyKey(Request $request, int $hoSoId, ?int $jobId): string
+    {
+        $headerKey = trim((string) $request->header('X-Idempotency-Key', ''));
+        if ($headerKey !== '') {
+            return $headerKey;
+        }
+
+        return 'mock-interview:' . $request->user()->id . ':' . $hoSoId . ':' . ($jobId ?: 'none') . ':' . Str::uuid();
+    }
+
     private function resolveSession(int $nguoiDungId, int $sessionId): AiChatSession
     {
         return AiChatSession::query()
@@ -522,7 +585,7 @@ class MockInterviewController extends Controller
     {
         $questionCount = (int) (($session->metadata['question_count'] ?? null) ?: 5);
 
-        return max(3, min($questionCount, 7));
+        return max(1, $questionCount);
     }
 
     private function processAnswer(int $userId, array $validated, AiClientService $aiClient): array
@@ -629,6 +692,18 @@ class MockInterviewController extends Controller
             'question_completed' => $data['question_index'] ?? null,
             'completed' => $data['completed'] ?? false,
         ];
+    }
+
+    private function safeFailUsage(
+        FeatureAccessService $featureAccessService,
+        SuDungTinhNangAi $usage,
+        string $reason
+    ): void {
+        try {
+            $featureAccessService->failUsage($usage, $reason);
+        } catch (\Throwable) {
+            // Không làm hỏng response chính nếu rollback billing gặp lỗi.
+        }
     }
 
     private function sseEvent(string $event, array $payload): string

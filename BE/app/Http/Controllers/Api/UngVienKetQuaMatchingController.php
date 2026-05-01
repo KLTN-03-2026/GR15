@@ -21,7 +21,7 @@ class UngVienKetQuaMatchingController extends Controller
             $q->where('nguoi_dung_id', $userId);
         })
         ->with([
-            'tinTuyenDung:id,cong_ty_id,tieu_de,dia_diem_lam_viec,muc_luong,hinh_thuc_lam_viec,trang_thai',
+            'tinTuyenDung:id,cong_ty_id,tieu_de,dia_diem_lam_viec,muc_luong_tu,muc_luong_den,hinh_thuc_lam_viec,trang_thai',
             'tinTuyenDung.congTy:id,ten_cong_ty,logo',
             'hoSo:id,tieu_de_ho_so' // Chỉ lấy tiêu đề CV để ứng viên xem "công việc này hợp với CV nào của mình"
         ]);
