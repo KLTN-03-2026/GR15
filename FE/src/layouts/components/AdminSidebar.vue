@@ -52,6 +52,10 @@ defineProps({
         <span class="material-symbols-outlined text-[22px]">leaderboard</span>
         <span v-if="!collapsed" class="text-sm">Quan ly thong ke</span>
       </RouterLink>
+      <RouterLink to="/admin/audit-logs" active-class="active-nav" class="nav-link flex items-center gap-3 rounded-xl px-3 py-2.5 text-slate-600 transition-colors font-medium hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800" :class="collapsed ? 'justify-center' : ''" :title="collapsed ? 'Nhat ky he thong' : ''">
+        <span class="material-symbols-outlined text-[22px]">history</span>
+        <span v-if="!collapsed" class="text-sm">Nhat ky he thong</span>
+      </RouterLink>
     </nav>
   </aside>
 </template>

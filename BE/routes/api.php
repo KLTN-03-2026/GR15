@@ -37,6 +37,8 @@ use App\Http\Controllers\Api\Admin\AdminLuuTinController;
 use App\Http\Controllers\Api\Admin\AdminUngTuyenController;
 use App\Http\Controllers\Api\Admin\AdminKetQuaMatchingController;
 use App\Http\Controllers\Api\Admin\AdminTuVanNgheNghiepController;
+use App\Http\Controllers\Api\Admin\AdminAuditLogController;
+use App\Http\Controllers\Api\NhaTuyenDungAuditLogController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -817,3 +819,21 @@ Route::get('v1/admin/tu-van-nghe-nghieps/thong-ke', [AdminTuVanNgheNghiepControl
 Route::get('v1/admin/tu-van-nghe-nghieps', [AdminTuVanNgheNghiepController::class, 'index'])
     ->middleware(['auth:sanctum', 'role:admin'])
     ->name('admin.tu-van-nghe-nghieps.index');
+
+
+// ============================================================
+// NHÓM 28: ADMIN — Nhật ký hệ thống (Audit Logs)
+// ============================================================
+
+Route::get('v1/admin/audit-logs', [AdminAuditLogController::class, 'index'])
+    ->middleware(['auth:sanctum', 'role:admin'])
+    ->name('admin.audit-logs.index');
+
+
+// ============================================================
+// NHÓM 29: NHÀ TUYỂN DỤNG — Nhật ký công ty (Audit Logs)
+// ============================================================
+
+Route::get('v1/nha-tuyen-dung/audit-logs', [NhaTuyenDungAuditLogController::class, 'index'])
+    ->middleware(['auth:sanctum', 'role:nha_tuyen_dung', 'company_role'])
+    ->name('nha-tuyen-dung.audit-logs.index');

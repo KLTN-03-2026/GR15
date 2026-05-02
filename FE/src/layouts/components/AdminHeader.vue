@@ -83,6 +83,11 @@ const submitSearch = () => {
     return
   }
 
+  if (keyword.includes('audit') || keyword.includes('nhat ky') || keyword.includes('log')) {
+    router.push('/admin/audit-logs')
+    return
+  }
+
   router.push('/admin/stats')
 }
 

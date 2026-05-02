@@ -762,6 +762,29 @@ export const adminCareerAdvisingService = {
   },
 }
 
+const buildAuditLogQuery = (options = {}) => {
+  const params = new URLSearchParams()
+  const keys = ['page', 'per_page', 'actor_id', 'actor_query', 'actor_role', 'company_id', 'action', 'scope', 'target_type', 'from', 'to']
+
+  keys.forEach((key) => {
+    const value = options[key]
+    if (value !== undefined && value !== null && value !== '') {
+      params.append(key, value)
+    }
+  })
+
+  return params.toString()
+}
+
+export const adminAuditLogService = {
+  getLogs: (options = {}) => {
+    const query = buildAuditLogQuery(options)
+    return apiCall(`/admin/audit-logs${query ? `?${query}` : ''}`, {
+      method: 'GET',
+    })
+  },
+}
+
 // === Employer APIs ===
 export const employerCompanyService = {
   getCompany: () =>
@@ -819,6 +842,15 @@ export const employerCompanyService = {
     apiCall(`/nha-tuyen-dung/cong-ty/thanh-viens/${memberId}`, {
       method: 'DELETE',
     }),
+}
+
+export const employerAuditLogService = {
+  getLogs: (options = {}) => {
+    const query = buildAuditLogQuery(options)
+    return apiCall(`/nha-tuyen-dung/audit-logs${query ? `?${query}` : ''}`, {
+      method: 'GET',
+    })
+  },
 }
 
 export const employerJobService = {

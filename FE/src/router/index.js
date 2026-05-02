@@ -111,6 +111,12 @@ const routes = [
     meta: { layout: 'employer', requiresAuth: true, role: ROLE_EMPLOYER },
   },
   {
+    path: '/employer/audit-logs',
+    name: 'EmployerAuditLogs',
+    component: () => import('@/components/Employer/EmployerAuditLogPage.vue'),
+    meta: { layout: 'employer', requiresAuth: true, role: ROLE_EMPLOYER },
+  },
+  {
     path: '/admin',
     redirect: '/admin/stats',
   },
@@ -154,6 +160,12 @@ const routes = [
     path: '/admin/stats',
     name: 'StatsManagement',
     component: () => import('@/components/Admin/StatsManagementPage.vue'),
+    meta: { layout: 'admin', requiresAuth: true, role: ROLE_ADMIN },
+  },
+  {
+    path: '/admin/audit-logs',
+    name: 'AdminAuditLogs',
+    component: () => import('@/components/Admin/AdminAuditLogPage.vue'),
     meta: { layout: 'admin', requiresAuth: true, role: ROLE_ADMIN },
   },
   {
