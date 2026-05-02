@@ -87,7 +87,7 @@ const formatSalary = (job) => {
   if (job.muc_luong_tu && job.muc_luong_den) {
     return `${formatCurrency(job.muc_luong_tu)} - ${formatCurrency(job.muc_luong_den)}`
   }
-  if (job.muc_luong) return formatCurrency(job.muc_luong)
+  if (job.muc_luong_tu) return formatCurrency(job.muc_luong_tu)
   return 'Thỏa thuận'
 }
 

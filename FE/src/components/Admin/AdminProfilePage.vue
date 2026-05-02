@@ -6,6 +6,7 @@ import { buildStorageAssetCandidates, resolvePrimaryStorageAssetUrl } from '@/ut
 
 const isLoading = ref(true)
 const isSaving = ref(false)
+const isChangingPassword = ref(false)
 const isUploadingAvatar = ref(false)
 const avatarInputRef = ref(null)
 const selectedAvatarFile = ref(null)
@@ -28,6 +29,12 @@ const form = reactive({
   gioi_tinh: '',
   dia_chi: '',
   anh_dai_dien: '',
+})
+
+const passwordForm = reactive({
+  mat_khau_cu: '',
+  mat_khau_moi: '',
+  mat_khau_moi_confirmation: '',
 })
 
 let alertTimeoutId = null
@@ -190,6 +197,12 @@ const resetForm = () => {
   applyProfileToForm(adminProfile.value)
 }
 
+const resetPasswordForm = () => {
+  passwordForm.mat_khau_cu = ''
+  passwordForm.mat_khau_moi = ''
+  passwordForm.mat_khau_moi_confirmation = ''
+}
+
 const saveProfile = async () => {
   isSaving.value = true
   alert.message = ''
@@ -215,6 +228,26 @@ const saveProfile = async () => {
     setAlert('error', error.message || 'Không thể cập nhật hồ sơ.', { autoDismiss: false })
   } finally {
     isSaving.value = false
+  }
+}
+
+const changePassword = async () => {
+  isChangingPassword.value = true
+  alert.message = ''
+
+  try {
+    const response = await authService.changePassword(
+      passwordForm.mat_khau_cu,
+      passwordForm.mat_khau_moi,
+      passwordForm.mat_khau_moi_confirmation,
+    )
+
+    resetPasswordForm()
+    setAlert('success', response.message || 'Đổi mật khẩu thành công.')
+  } catch (error) {
+    setAlert('error', error.message || 'Không thể đổi mật khẩu.', { autoDismiss: false })
+  } finally {
+    isChangingPassword.value = false
   }
 }
 
@@ -510,6 +543,66 @@ onBeforeUnmount(() => {
                   placeholder="Nhập địa chỉ"
                 />
               </div>
+            </div>
+          </section>
+
+          <section class="rounded-2xl border border-slate-200 p-5 dark:border-slate-800">
+            <div class="mb-5 flex items-center gap-3">
+              <div class="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-600">
+                <span class="material-symbols-outlined">lock_reset</span>
+              </div>
+              <h2 class="text-xl font-bold text-slate-950 dark:text-white">Đổi mật khẩu</h2>
+            </div>
+
+            <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
+              <div class="space-y-2 md:col-span-2">
+                <label class="text-sm font-semibold text-slate-600 dark:text-slate-300">Mật khẩu hiện tại</label>
+                <input
+                  v-model="passwordForm.mat_khau_cu"
+                  type="password"
+                  autocomplete="current-password"
+                  required
+                  class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100 dark:border-slate-700 dark:bg-slate-800"
+                  placeholder="Nhập mật khẩu hiện tại"
+                />
+              </div>
+              <div class="space-y-2">
+                <label class="text-sm font-semibold text-slate-600 dark:text-slate-300">Mật khẩu mới</label>
+                <input
+                  v-model="passwordForm.mat_khau_moi"
+                  type="password"
+                  autocomplete="new-password"
+                  minlength="6"
+                  required
+                  class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100 dark:border-slate-700 dark:bg-slate-800"
+                  placeholder="Tối thiểu 6 ký tự"
+                />
+              </div>
+              <div class="space-y-2">
+                <label class="text-sm font-semibold text-slate-600 dark:text-slate-300">Xác nhận mật khẩu mới</label>
+                <input
+                  v-model="passwordForm.mat_khau_moi_confirmation"
+                  type="password"
+                  autocomplete="new-password"
+                  minlength="6"
+                  required
+                  class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100 dark:border-slate-700 dark:bg-slate-800"
+                  placeholder="Nhập lại mật khẩu mới"
+                />
+              </div>
+            </div>
+
+            <div class="mt-5 flex justify-end">
+              <button
+                type="button"
+                class="inline-flex items-center gap-2 rounded-2xl bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                :disabled="isChangingPassword || isLoading"
+                @click="changePassword"
+              >
+                <span v-if="!isChangingPassword" class="material-symbols-outlined text-[18px]">key</span>
+                <span v-else class="material-symbols-outlined animate-spin text-[18px]">progress_activity</span>
+                {{ isChangingPassword ? 'Đang đổi...' : 'Đổi mật khẩu' }}
+              </button>
             </div>
           </section>
         </form>

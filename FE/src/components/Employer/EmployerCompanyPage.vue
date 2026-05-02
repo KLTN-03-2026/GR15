@@ -9,14 +9,11 @@ const notify = useNotify()
 
 const loading = ref(false)
 const saving = ref(false)
-const memberSubmitting = ref(false)
 const roleUpdatingIds = ref([])
 const company = ref(null)
 const industries = ref([])
 const logoPreview = ref('')
 const selectedLogoFile = ref(null)
-const memberEmail = ref('')
-const memberRole = ref('recruiter')
 const removingMemberIds = ref([])
 const stats = ref({
   totalJobs: 0,
@@ -42,8 +39,8 @@ const hasCompany = computed(() => Boolean(company.value?.id))
 const companyMembers = computed(() => Array.isArray(company.value?.thanh_viens) ? company.value.thanh_viens : [])
 const isCompanyOwner = computed(() => Boolean(company.value?.la_chu_so_huu))
 const companyPermissions = computed(() => company.value?.quyen_noi_bo || {})
-const canManageCompanyProfile = computed(() => Boolean(companyPermissions.value?.co_the_quan_ly_cong_ty) || !hasCompany.value)
-const canManageMembers = computed(() => Boolean(companyPermissions.value?.co_the_quan_ly_thanh_vien))
+const canManageCompanyProfile = computed(() => Boolean(companyPermissions.value?.company_profile) || !hasCompany.value)
+const canManageMembers = computed(() => Boolean(companyPermissions.value?.members))
 const totalHr = computed(() => Number(company.value?.tong_so_hr || companyMembers.value.length || 0))
 const internalRoleOptions = computed(() =>
   Object.entries(company.value?.vai_tro_noi_bo_options || {}).filter(([role]) => role !== 'owner'),
@@ -280,45 +277,6 @@ const handleLogoChange = (event) => {
 const restoreFromServer = async () => {
   await fetchCompany()
   notify.info('Đã tải lại dữ liệu công ty từ hệ thống.')
-}
-
-const addHrMember = async () => {
-  if (!hasCompany.value) {
-    notify.warning('Hãy tạo thông tin công ty trước khi thêm HR.')
-    return
-  }
-
-  if (!canManageMembers.value) {
-    notify.warning('Chỉ owner mới có thể thêm HR vào công ty.')
-    return
-  }
-
-  const email = String(memberEmail.value || '').trim()
-  if (!email) {
-    notify.warning('Vui lòng nhập email tài khoản HR cần thêm.')
-    return
-  }
-
-  memberSubmitting.value = true
-  try {
-    const response = await employerCompanyService.addMember(email, memberRole.value)
-    const nextCompany = response?.data?.cong_ty || response?.data?.data?.cong_ty || null
-
-    if (nextCompany) {
-      company.value = nextCompany
-      fillForm(nextCompany)
-    } else {
-      await fetchCompany()
-    }
-
-    memberEmail.value = ''
-    memberRole.value = 'recruiter'
-    notify.success('Đã thêm HR vào công ty.')
-  } catch (error) {
-    notify.apiError(error, 'Không thể thêm HR vào công ty.')
-  } finally {
-    memberSubmitting.value = false
-  }
 }
 
 const updateHrMemberRole = async (member, nextRole) => {
@@ -611,115 +569,43 @@ onUnmounted(() => {
         </section>
 
         <section class="rounded-xl border border-slate-200 bg-white p-8 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div class="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <h3 class="flex items-center gap-2 text-lg font-bold">
-                <span class="material-symbols-outlined text-[#2463eb]">groups</span> Thành viên HR nội bộ
+                <span class="material-symbols-outlined text-[#2463eb]">groups</span> Nhân sự HR nội bộ
               </h3>
               <p class="mt-1 text-sm text-slate-500">{{ ownerSummary }}</p>
             </div>
-            <span
-              class="inline-flex w-fit items-center gap-2 rounded-full px-3 py-1 text-xs font-bold"
-              :class="isCompanyOwner ? 'bg-[#2463eb]/10 text-[#2463eb]' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'"
+            <RouterLink
+              to="/employer/hr-management"
+              class="inline-flex items-center gap-2 rounded-lg bg-[#2463eb] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#2463eb]/90"
             >
-              <span class="size-2 rounded-full" :class="isCompanyOwner ? 'bg-[#2463eb]' : 'bg-slate-400'" />
-              {{ isCompanyOwner ? 'Owner' : 'Member' }}
-            </span>
+              <span class="material-symbols-outlined text-[18px]">open_in_new</span>
+              Mở module HR
+            </RouterLink>
           </div>
 
-          <div v-if="hasCompany && canManageMembers" class="mb-6 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-800/40">
-            <label class="mb-2 block text-sm font-semibold text-slate-600 dark:text-slate-300">Thêm HR bằng email tài khoản nhà tuyển dụng</label>
-            <div class="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_220px_auto]">
-              <input
-                v-model="memberEmail"
-                class="w-full rounded-lg border border-slate-200 bg-white px-4 py-2.5 transition-all focus:border-transparent focus:ring-2 focus:ring-[#2463eb] dark:border-slate-700 dark:bg-slate-900"
-                type="email"
-                placeholder="hr@company.com"
-                @keydown.enter.prevent="addHrMember"
-              >
-              <select
-                v-model="memberRole"
-                class="w-full rounded-lg border border-slate-200 bg-white px-4 py-2.5 transition-all focus:border-transparent focus:ring-2 focus:ring-[#2463eb] dark:border-slate-700 dark:bg-slate-900"
-              >
-                <option v-for="[role, label] in internalRoleOptions" :key="role" :value="role">
-                  {{ label }}
-                </option>
-              </select>
-              <button
-                class="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-[#2463eb] px-5 py-2.5 text-sm font-bold text-white transition-all hover:bg-[#2463eb]/90 disabled:cursor-not-allowed disabled:opacity-60"
-                :disabled="memberSubmitting"
-                type="button"
-                @click="addHrMember"
-              >
-                <span class="material-symbols-outlined text-lg">person_add</span>
-                {{ memberSubmitting ? 'Đang thêm...' : 'Thêm HR' }}
-              </button>
+          <div v-if="!hasCompany" class="mt-5 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-5 py-6 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-800/40 dark:text-slate-400">
+            Bạn cần tạo công ty trước khi sử dụng module quản lý nhân sự HR.
+          </div>
+
+          <div v-else class="mt-5 grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-800/40">
+              <p class="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Tổng HR nội bộ</p>
+              <p class="mt-2 text-2xl font-black text-slate-900 dark:text-white">{{ totalHr }}</p>
             </div>
-          </div>
-
-          <div v-if="!hasCompany" class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-5 py-6 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-800/40 dark:text-slate-400">
-            Bạn cần tạo công ty trước khi thêm và quản lý thành viên HR.
-          </div>
-
-          <div v-else-if="companyMembers.length" class="space-y-4">
-            <div
-              v-for="member in companyMembers"
-              :key="member.id"
-              class="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950/30 lg:flex-row lg:items-center lg:justify-between"
-            >
-              <div class="flex items-center gap-4">
-                <div class="flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 text-lg font-bold text-[#2463eb] dark:border-slate-700 dark:bg-slate-800">
-                  <img
-                    v-if="member.avatar_url"
-                    :src="member.avatar_url"
-                    alt="avatar HR"
-                    class="h-full w-full object-cover"
-                  >
-                  <span v-else>{{ String(member.ho_ten || 'H').trim().charAt(0).toUpperCase() }}</span>
-                </div>
-                <div>
-                  <p class="font-bold text-slate-900 dark:text-white">{{ member.ho_ten }}</p>
-                  <p class="text-sm text-slate-500">{{ member.email }}</p>
-                  <p class="text-sm text-slate-500">{{ member.so_dien_thoai || 'Chưa cập nhật số điện thoại' }}</p>
-                  <p class="mt-1 text-xs font-medium text-slate-400">Vai trò nội bộ: {{ member.ten_vai_tro_noi_bo || 'HR Member' }}</p>
-                </div>
-              </div>
-
-              <div class="flex flex-wrap items-center gap-2 lg:justify-end">
-                <span
-                  class="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-bold"
-                  :class="member.la_chu_so_huu ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'"
-                >
-                  <span class="material-symbols-outlined text-sm">{{ member.la_chu_so_huu ? 'workspace_premium' : 'badge' }}</span>
-                  {{ member.la_chu_so_huu ? 'Owner' : (member.ten_vai_tro_noi_bo || 'HR Member') }}
-                </span>
-                <select
-                  v-if="canManageMembers && !member.la_chu_so_huu"
-                  :value="member.vai_tro_noi_bo || 'recruiter'"
-                  class="min-w-[180px] rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium transition-all focus:border-transparent focus:ring-2 focus:ring-[#2463eb] dark:border-slate-700 dark:bg-slate-900"
-                  :disabled="roleUpdatingIds.includes(member.id)"
-                  @change="updateHrMemberRole(member, $event.target.value)"
-                >
-                  <option v-for="[role, label] in internalRoleOptions" :key="role" :value="role">
-                    {{ label }}
-                  </option>
-                </select>
-                <button
-                  v-if="canManageMembers && !member.la_chu_so_huu"
-                  class="inline-flex items-center gap-2 rounded-lg border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-rose-900/40 dark:text-rose-300 dark:hover:bg-rose-900/10"
-                  :disabled="removingMemberIds.includes(member.id) || roleUpdatingIds.includes(member.id)"
-                  type="button"
-                  @click="removeHrMember(member)"
-                >
-                  <span class="material-symbols-outlined text-[18px]">person_remove</span>
-                  {{ removingMemberIds.includes(member.id) ? 'Đang gỡ...' : 'Gỡ HR' }}
-                </button>
-              </div>
+            <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-800/40">
+              <p class="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Vai trò hiện tại</p>
+              <p class="mt-2 text-2xl font-black text-slate-900 dark:text-white">
+                {{ company?.ten_vai_tro_noi_bo_hien_tai || (isCompanyOwner ? 'Owner' : 'HR Member') }}
+              </p>
             </div>
-          </div>
-
-          <div v-else class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-5 py-6 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-800/40 dark:text-slate-400">
-            Công ty hiện chưa có thêm HR nội bộ nào ngoài tài khoản sở hữu.
+            <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-800/40">
+              <p class="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Trạng thái quyền</p>
+              <p class="mt-2 text-2xl font-black text-slate-900 dark:text-white">
+                {{ canManageMembers ? 'Quản lý được' : 'Chỉ xem' }}
+              </p>
+            </div>
           </div>
         </section>
 

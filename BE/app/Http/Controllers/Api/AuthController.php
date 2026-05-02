@@ -3,10 +3,13 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\CongTy\TaoCongTyRequest;
 use App\Http\Requests\NguoiDung\DangKyRequest;
 use App\Http\Requests\NguoiDung\DangNhapRequest;
+use App\Http\Requests\NguoiDung\DatLaiMatKhauRequest;
 use App\Http\Requests\NguoiDung\DoiMatKhauRequest;
 use App\Http\Requests\NguoiDung\CapNhatHoSoRequest;
+use App\Http\Requests\NguoiDung\QuenMatKhauRequest;
 use App\Models\NguoiDung;
 use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Http\JsonResponse;
@@ -17,6 +20,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Validator;
 use Laravel\Socialite\Facades\Socialite;
 
 /**
@@ -118,6 +122,8 @@ class AuthController extends Controller
             ? url('/api/v1/anh-dai-dien?path=' . urlencode($nguoiDung->anh_dai_dien))
             : null;
         $data['da_xac_thuc_email'] = !is_null($nguoiDung->email_verified_at);
+        $data['ten_cap_admin'] = $nguoiDung->ten_cap_admin;
+        $data['quyen_admin'] = $nguoiDung->resolved_admin_permissions;
 
         return $data;
     }
@@ -130,6 +136,18 @@ class AuthController extends Controller
     {
         $data = $request->validated();
         $data['vai_tro'] = $data['vai_tro'] ?? NguoiDung::VAI_TRO_UNG_VIEN;
+
+        if ((int) $data['vai_tro'] === NguoiDung::VAI_TRO_NHA_TUYEN_DUNG) {
+            Validator::make(
+                [
+                    'ten_cong_ty' => $data['ten_cong_ty'] ?? null,
+                    'dien_thoai' => $data['so_dien_thoai'] ?? null,
+                    'email' => $data['email'] ?? null,
+                ],
+                TaoCongTyRequest::registrationRules(),
+                TaoCongTyRequest::registrationMessages(),
+            )->validate();
+        }
 
         $nguoiDung = NguoiDung::create($data);
         dispatch(function () use ($nguoiDung): void {
@@ -154,6 +172,7 @@ class AuthController extends Controller
         if (!$nguoiDung || !Hash::check($request->mat_khau, $nguoiDung->mat_khau)) {
             return response()->json([
                 'success' => false,
+                'code' => 'INVALID_CREDENTIALS',
                 'message' => 'Email hoặc mật khẩu không đúng.',
             ], 401);
         }
@@ -161,13 +180,22 @@ class AuthController extends Controller
         if (!$nguoiDung->isActive()) {
             return response()->json([
                 'success' => false,
+                'code' => 'ACCOUNT_LOCKED',
                 'message' => 'Tài khoản đã bị khoá. Vui lòng liên hệ quản trị viên.',
+                'current_role' => match ((int) $nguoiDung->vai_tro) {
+                    NguoiDung::VAI_TRO_ADMIN => 'admin',
+                    NguoiDung::VAI_TRO_NHA_TUYEN_DUNG => 'nha_tuyen_dung',
+                    NguoiDung::VAI_TRO_UNG_VIEN => 'ung_vien',
+                    default => null,
+                },
+                'current_role_label' => $nguoiDung->ten_vai_tro,
             ], 403);
         }
 
         if (!$nguoiDung->isAdmin() && !$nguoiDung->hasVerifiedEmail()) {
             return response()->json([
                 'success' => false,
+                'code' => 'EMAIL_NOT_VERIFIED',
                 'message' => 'Tài khoản chưa xác thực email. Vui lòng kiểm tra hộp thư và xác nhận trước khi đăng nhập.',
                 'data' => [
                     'requires_email_verification' => true,
@@ -289,11 +317,9 @@ class AuthController extends Controller
      * POST /api/quen-mat-khau
      * Tạo token đặt lại mật khẩu cho môi trường web/app hiện tại.
      */
-    public function quenMatKhau(Request $request): JsonResponse
+    public function quenMatKhau(QuenMatKhauRequest $request): JsonResponse
     {
-        $data = $request->validate([
-            'email' => ['required', 'email'],
-        ]);
+        $data = $request->validated();
 
         $nguoiDung = NguoiDung::where('email', $data['email'])->first();
 
@@ -463,22 +489,16 @@ class AuthController extends Controller
      * POST /api/dat-lai-mat-khau
      * Đặt lại mật khẩu bằng token đã cấp.
      */
-    public function datLaiMatKhau(Request $request): JsonResponse
+    public function datLaiMatKhau(DatLaiMatKhauRequest $request): JsonResponse
     {
-        $data = $request->validate([
-            'email' => ['required', 'email'],
-            'token' => ['required', 'string'],
-            'mat_khau' => ['required', 'string', 'min:6', 'confirmed'],
-        ], [
-            'mat_khau.confirmed' => 'Mật khẩu xác nhận không khớp.',
-        ]);
+        $data = $request->validated();
 
         $status = Password::broker()->reset(
             [
                 'email' => $data['email'],
                 'token' => $data['token'],
                 'password' => $data['mat_khau'],
-                'password_confirmation' => $request->input('mat_khau_confirmation'),
+                'password_confirmation' => $data['mat_khau_confirmation'],
             ],
             function (NguoiDung $nguoiDung, string $password): void {
                 $nguoiDung->forceFill([
@@ -506,7 +526,7 @@ class AuthController extends Controller
 
     /**
      * POST /api/doi-mat-khau
-     * Đổi mật khẩu - thu hồi tất cả token, bắt đăng nhập lại.
+     * Đổi mật khẩu - giữ phiên hiện tại, thu hồi các token khác.
      */
     public function doiMatKhau(DoiMatKhauRequest $request): JsonResponse
     {
@@ -526,12 +546,19 @@ class AuthController extends Controller
             ], 422);
         }
 
+        $currentTokenId = $nguoiDung->currentAccessToken()?->id;
+
         $nguoiDung->update(['mat_khau' => $request->mat_khau_moi]);
-        $nguoiDung->tokens()->delete();
+
+        if ($currentTokenId) {
+            $nguoiDung->tokens()
+                ->where('id', '!=', $currentTokenId)
+                ->delete();
+        }
 
         return response()->json([
             'success' => true,
-            'message' => 'Đổi mật khẩu thành công. Vui lòng đăng nhập lại.',
+            'message' => 'Đổi mật khẩu thành công.',
         ]);
     }
 }

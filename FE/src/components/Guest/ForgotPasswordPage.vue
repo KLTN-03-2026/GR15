@@ -1,10 +1,12 @@
 <script setup>
-import { reactive, ref } from 'vue'
+import { onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { authService } from '@/services/api'
 
+const ALERT_AUTO_DISMISS_MS = 5000
 const isLoading = ref(false)
 const errorMessage = ref('')
 const successMessage = ref('')
+const alertTimeoutId = ref(null)
 
 const forgotForm = reactive({
   email: '',
@@ -12,6 +14,41 @@ const forgotForm = reactive({
 
 const forgotErrors = reactive({
   email: '',
+})
+
+const resetMessages = () => {
+  if (alertTimeoutId.value) {
+    clearTimeout(alertTimeoutId.value)
+    alertTimeoutId.value = null
+  }
+
+  errorMessage.value = ''
+  successMessage.value = ''
+}
+
+const scheduleAlertDismiss = () => {
+  if (alertTimeoutId.value) {
+    clearTimeout(alertTimeoutId.value)
+  }
+
+  if (!errorMessage.value && !successMessage.value) {
+    alertTimeoutId.value = null
+    return
+  }
+
+  alertTimeoutId.value = window.setTimeout(() => {
+    resetMessages()
+  }, ALERT_AUTO_DISMISS_MS)
+}
+
+watch([errorMessage, successMessage], () => {
+  scheduleAlertDismiss()
+})
+
+onBeforeUnmount(() => {
+  if (alertTimeoutId.value) {
+    clearTimeout(alertTimeoutId.value)
+  }
 })
 
 const validateForm = () => {
@@ -30,8 +67,7 @@ const handleForgotPassword = async () => {
   if (!validateForm()) return
 
   isLoading.value = true
-  errorMessage.value = ''
-  successMessage.value = ''
+  resetMessages()
 
   try {
     const response = await authService.forgotPassword(forgotForm.email)

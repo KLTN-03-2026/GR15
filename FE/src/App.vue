@@ -5,6 +5,7 @@ import GuestWrapper from '@/layouts/wrapper/GuestLayout.vue'
 import AuthWrapper from '@/layouts/wrapper/AuthLayout.vue'
 import DashboardWrapper from '@/layouts/wrapper/DashboardLayout.vue'
 import CvBuilderWrapper from '@/layouts/wrapper/CvBuilderLayout.vue'
+import PlainWrapper from '@/layouts/wrapper/PlainLayout.vue'
 import AdminWrapper from '@/layouts/wrapper/AdminLayout.vue'
 import EmployerWrapper from '@/layouts/wrapper/EmployerLayout.vue'
 import { authService } from '@/services/api'
@@ -21,6 +22,7 @@ const layoutComponent = computed(() => {
     case 'auth': return AuthWrapper
     case 'dashboard': return DashboardWrapper
     case 'cv-builder': return CvBuilderWrapper
+    case 'plain': return PlainWrapper
     case 'admin': return AdminWrapper
     case 'employer': return EmployerWrapper
     default: return GuestWrapper
@@ -39,7 +41,7 @@ const forceLogoutIfSessionExpired = async () => {
       clearAuthStorage()
 
       if (route.meta?.requiresAuth) {
-        await router.replace('/')
+        await router.replace('/login')
       }
     }
   } finally {
@@ -55,7 +57,7 @@ const handleVisibilityChange = async () => {
 
 const handleAuthInvalidated = async () => {
   if (route.meta?.requiresAuth) {
-    await router.replace('/')
+    await router.replace('/login')
   }
 }
 

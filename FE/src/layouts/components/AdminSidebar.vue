@@ -1,12 +1,67 @@
 <script setup>
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import AppLogo from '@/components/AppLogo.vue'
 import { RouterLink } from 'vue-router'
+import { getStoredUser } from '@/utils/authStorage'
+import { hasAdminPermission } from '@/constants/adminPermissions'
+import { useNotify } from '@/composables/useNotify'
 
 defineProps({
   collapsed: {
     type: Boolean,
     default: false,
   },
+})
+
+const currentUser = ref(getStoredUser())
+const notify = useNotify()
+const lockedMessage = 'Bạn không có quyền thực hiện chức năng này'
+
+const syncCurrentUser = () => {
+  currentUser.value = getStoredUser()
+}
+
+const canManageAdmins = computed(() =>
+  Number(currentUser.value?.vai_tro) === 2 && currentUser.value?.cap_admin === 'super_admin'
+)
+
+const navigationItems = [
+  { to: '/admin', icon: 'dashboard', label: 'Dashboard' },
+  { to: '/admin/users', icon: 'group', label: 'Người dùng', permission: 'users' },
+  { to: '/admin/companies', icon: 'domain', label: 'Công ty', permission: 'companies' },
+  { to: '/admin/profiles', icon: 'description', label: 'Hồ sơ', permission: 'profiles' },
+  { to: '/admin/user-skills', icon: 'psychology', label: 'Kỹ năng người dùng', permission: 'user_skills' },
+  { to: '/admin/matchings', icon: 'compare_arrows', label: 'AI Matching', permission: 'matchings' },
+  { to: '/admin/career-advising', icon: 'travel_explore', label: 'AI Advising', permission: 'career_advising' },
+  { to: '/admin/ai-usage', icon: 'memory', label: 'AI Usage', permission: 'ai_usage' },
+  { to: '/admin/billing', icon: 'payments', label: 'Billing', permission: 'billing' },
+  { to: '/admin/applications', icon: 'assignment', label: 'Ứng tuyển', permission: 'applications' },
+  { to: '/admin/skills', icon: 'bolt', label: 'Kỹ năng', permission: 'skills' },
+  { to: '/admin/industries', icon: 'factory', label: 'Ngành nghề', permission: 'industries' },
+  { to: '/admin/jobs', icon: 'work', label: 'Tin tuyển dụng', permission: 'jobs' },
+  { to: '/admin/cv-templates', icon: 'palette', label: 'Template CV', permission: 'cv_templates' },
+  { to: '/admin/audit-logs', icon: 'history', label: 'Nhật ký hệ thống', permission: 'audit_logs' },
+  { to: '/admin/stats', icon: 'leaderboard', label: 'Báo cáo & phân tích', permission: 'stats' },
+]
+
+const visibleNavigationItems = computed(() =>
+  navigationItems.filter((item) => item.to !== '/admin')
+)
+
+const canAccessItem = (item) => !item.permission || hasAdminPermission(currentUser.value, item.permission)
+
+const showLockedNotice = () => {
+  notify.warning(lockedMessage)
+}
+
+onMounted(() => {
+  window.addEventListener('auth-changed', syncCurrentUser)
+  window.addEventListener('admin-profile-updated', syncCurrentUser)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('auth-changed', syncCurrentUser)
+  window.removeEventListener('admin-profile-updated', syncCurrentUser)
 })
 </script>
 
@@ -23,55 +78,59 @@ defineProps({
         subtitle="Management Console"
       />
     </div>
-    <nav class="flex-1 space-y-1 px-4">
-      <RouterLink to="/admin" exact-active-class="active-nav" class="nav-link flex items-center gap-3 rounded-xl px-3 py-2.5 text-slate-600 transition-colors font-medium hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800" :class="collapsed ? 'justify-center' : ''" :title="collapsed ? 'Tổng quan' : ''">
+    <nav class="flex-1 space-y-1 overflow-y-auto px-4">
+      <RouterLink
+        to="/admin"
+        exact-active-class="active-nav"
+        class="nav-link flex items-center gap-3 rounded-xl px-3 py-2.5 text-slate-600 transition-colors font-medium hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800"
+        :class="collapsed ? 'justify-center' : ''"
+        :title="collapsed ? 'Dashboard' : ''"
+      >
         <span class="material-symbols-outlined text-[22px]">dashboard</span>
-        <span v-if="!collapsed" class="text-sm">Tổng quan</span>
+        <span v-if="!collapsed" class="text-sm">Dashboard</span>
       </RouterLink>
-      <RouterLink to="/admin/users" active-class="active-nav" class="nav-link flex items-center gap-3 rounded-xl px-3 py-2.5 text-slate-600 transition-colors font-medium hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800" :class="collapsed ? 'justify-center' : ''" :title="collapsed ? 'Người dùng' : ''">
-        <span class="material-symbols-outlined text-[22px]">group</span>
-        <span v-if="!collapsed" class="text-sm">Người dùng</span>
+      <RouterLink v-if="canManageAdmins" to="/admin/admins" active-class="active-nav" class="nav-link flex items-center gap-3 rounded-xl px-3 py-2.5 text-slate-600 transition-colors font-medium hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800" :class="collapsed ? 'justify-center' : ''" :title="collapsed ? 'Quản lý admin' : ''">
+        <span class="material-symbols-outlined text-[22px]">admin_panel_settings</span>
+        <span v-if="!collapsed" class="text-sm">Quản lý admin</span>
       </RouterLink>
-      <RouterLink to="/admin/companies" active-class="active-nav" class="nav-link flex items-center gap-3 rounded-xl px-3 py-2.5 text-slate-600 transition-colors font-medium hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800" :class="collapsed ? 'justify-center' : ''" :title="collapsed ? 'Công ty' : ''">
-        <span class="material-symbols-outlined text-[22px]">domain</span>
-        <span v-if="!collapsed" class="text-sm">Công ty</span>
-      </RouterLink>
-      <RouterLink to="/admin/profiles" active-class="active-nav" class="nav-link flex items-center gap-3 rounded-xl px-3 py-2.5 text-slate-600 transition-colors font-medium hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800" :class="collapsed ? 'justify-center' : ''" :title="collapsed ? 'Hồ sơ' : ''">
-        <span class="material-symbols-outlined text-[22px]">description</span>
-        <span v-if="!collapsed" class="text-sm">Hồ sơ</span>
-      </RouterLink>
-      <RouterLink to="/admin/user-skills" active-class="active-nav" class="nav-link flex items-center gap-3 rounded-xl px-3 py-2.5 text-slate-600 transition-colors font-medium hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800" :class="collapsed ? 'justify-center' : ''" :title="collapsed ? 'Kỹ năng người dùng' : ''">
-        <span class="material-symbols-outlined text-[22px]">psychology</span>
-        <span v-if="!collapsed" class="text-sm">Kỹ năng người dùng</span>
-      </RouterLink>
-      <RouterLink to="/admin/matchings" active-class="active-nav" class="nav-link flex items-center gap-3 rounded-xl px-3 py-2.5 text-slate-600 transition-colors font-medium hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800" :class="collapsed ? 'justify-center' : ''" :title="collapsed ? 'AI Matching' : ''">
-        <span class="material-symbols-outlined text-[22px]">compare_arrows</span>
-        <span v-if="!collapsed" class="text-sm">AI Matching</span>
-      </RouterLink>
-      <RouterLink to="/admin/career-advising" active-class="active-nav" class="nav-link flex items-center gap-3 rounded-xl px-3 py-2.5 text-slate-600 transition-colors font-medium hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800" :class="collapsed ? 'justify-center' : ''" :title="collapsed ? 'AI Advising' : ''">
-        <span class="material-symbols-outlined text-[22px]">travel_explore</span>
-        <span v-if="!collapsed" class="text-sm">AI Advising</span>
-      </RouterLink>
-      <RouterLink to="/admin/applications" active-class="active-nav" class="nav-link flex items-center gap-3 rounded-xl px-3 py-2.5 text-slate-600 transition-colors font-medium hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800" :class="collapsed ? 'justify-center' : ''" :title="collapsed ? 'Ứng tuyển' : ''">
-        <span class="material-symbols-outlined text-[22px]">assignment</span>
-        <span v-if="!collapsed" class="text-sm">Ứng tuyển</span>
-      </RouterLink>
-      <RouterLink to="/admin/skills" active-class="active-nav" class="nav-link flex items-center gap-3 rounded-xl px-3 py-2.5 text-slate-600 transition-colors font-medium hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800" :class="collapsed ? 'justify-center' : ''" :title="collapsed ? 'Kỹ năng' : ''">
-        <span class="material-symbols-outlined text-[22px]">bolt</span>
-        <span v-if="!collapsed" class="text-sm">Kỹ năng</span>
-      </RouterLink>
-      <RouterLink to="/admin/industries" active-class="active-nav" class="nav-link flex items-center gap-3 rounded-xl px-3 py-2.5 text-slate-600 transition-colors font-medium hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800" :class="collapsed ? 'justify-center' : ''" :title="collapsed ? 'Ngành nghề' : ''">
-        <span class="material-symbols-outlined text-[22px]">factory</span>
-        <span v-if="!collapsed" class="text-sm">Ngành nghề</span>
-      </RouterLink>
-      <RouterLink to="/admin/jobs" active-class="active-nav" class="nav-link flex items-center gap-3 rounded-xl px-3 py-2.5 text-slate-600 transition-colors font-medium hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800" :class="collapsed ? 'justify-center' : ''" :title="collapsed ? 'Tin tuyển dụng' : ''">
-        <span class="material-symbols-outlined text-[22px]">work</span>
-        <span v-if="!collapsed" class="text-sm">Tin tuyển dụng</span>
-      </RouterLink>
-      <RouterLink to="/admin/stats" active-class="active-nav" class="nav-link flex items-center gap-3 rounded-xl px-3 py-2.5 text-slate-600 transition-colors font-medium hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800" :class="collapsed ? 'justify-center' : ''" :title="collapsed ? 'Thống kê' : ''">
-        <span class="material-symbols-outlined text-[22px]">leaderboard</span>
-        <span v-if="!collapsed" class="text-sm">Thống kê</span>
-      </RouterLink>
+      <button
+        v-else
+        class="nav-link locked-nav flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left font-medium text-slate-400 transition-colors hover:bg-slate-50 dark:text-slate-600 dark:hover:bg-slate-800"
+        :class="collapsed ? 'justify-center' : ''"
+        :title="lockedMessage"
+        type="button"
+        @click="showLockedNotice"
+      >
+        <span class="material-symbols-outlined text-[22px]">admin_panel_settings</span>
+        <span v-if="!collapsed" class="text-sm">Quản lý admin</span>
+        <span v-if="!collapsed" class="material-symbols-outlined ml-auto text-[17px]">lock</span>
+      </button>
+
+      <template v-for="item in visibleNavigationItems" :key="item.to">
+        <RouterLink
+          v-if="canAccessItem(item)"
+          :to="item.to"
+          active-class="active-nav"
+          class="nav-link flex items-center gap-3 rounded-xl px-3 py-2.5 text-slate-600 transition-colors font-medium hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800"
+          :class="collapsed ? 'justify-center' : ''"
+          :title="collapsed ? item.label : ''"
+        >
+          <span class="material-symbols-outlined text-[22px]">{{ item.icon }}</span>
+          <span v-if="!collapsed" class="text-sm">{{ item.label }}</span>
+        </RouterLink>
+        <button
+          v-else
+          class="nav-link locked-nav flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left font-medium text-slate-400 transition-colors hover:bg-slate-50 dark:text-slate-600 dark:hover:bg-slate-800"
+          :class="collapsed ? 'justify-center' : ''"
+          :title="lockedMessage"
+          type="button"
+          @click="showLockedNotice"
+        >
+          <span class="material-symbols-outlined text-[22px]">{{ item.icon }}</span>
+          <span v-if="!collapsed" class="text-sm">{{ item.label }}</span>
+          <span v-if="!collapsed" class="material-symbols-outlined ml-auto text-[17px]">lock</span>
+        </button>
+      </template>
     </nav>
   </aside>
 </template>
@@ -84,5 +143,9 @@ defineProps({
 
 .nav-link.active-nav:hover {
   background-color: rgb(36 99 235 / 0.15);
+}
+
+.locked-nav {
+  cursor: not-allowed;
 }
 </style>

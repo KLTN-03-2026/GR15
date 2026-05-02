@@ -6,6 +6,7 @@ import { useAuth } from '@/composables/useAuth'
 import { useNotify } from '@/composables/useNotify'
 import { getStoredEmployer } from '@/utils/authStorage'
 import { buildStorageAssetCandidates } from '@/utils/media'
+import { useEmployerCompanyPermissions } from '@/composables/useEmployerCompanyPermissions'
 
 const props = defineProps({
   sidebarCollapsed: {
@@ -25,6 +26,12 @@ const avatarCandidateIndex = ref(0)
 const avatarLoadFailed = ref(false)
 const { logout, isLoading } = useAuth()
 const notify = useNotify()
+const lockedMessage = 'Bạn không có quyền thực hiện chức năng này'
+const {
+  permissions,
+  permissionsLoaded,
+  ensurePermissionsLoaded,
+} = useEmployerCompanyPermissions()
 
 const syncCurrentEmployer = () => {
   currentEmployer.value = getStoredEmployer()
@@ -46,10 +53,31 @@ const avatarCandidates = computed(() =>
   )
 )
 const displayAvatar = computed(() => avatarCandidates.value[avatarCandidateIndex.value] || '')
+const canOpenCandidates = computed(() => permissionsLoaded.value && Boolean(permissions.value.applications))
+const canOpenJobs = computed(() => permissionsLoaded.value && Boolean(permissions.value.jobs))
+const canOpenCompany = computed(() => permissionsLoaded.value && Boolean(permissions.value.company_profile))
+
+const showLockedNotice = () => {
+  notify.warning(lockedMessage)
+}
 
 const submitSearch = () => {
+  if (!canOpenCandidates.value) {
+    showLockedNotice()
+    return
+  }
+
   const keyword = searchKeyword.value.trim()
   router.push(keyword ? `/employer/candidates?search=${encodeURIComponent(keyword)}` : '/employer/candidates')
+}
+
+const goToJobs = () => {
+  if (!canOpenJobs.value) {
+    showLockedNotice()
+    return
+  }
+
+  router.push('/employer/jobs')
 }
 
 const toggleProfileMenu = () => {
@@ -61,6 +89,11 @@ const closeProfileMenu = () => {
 }
 
 const goToCompany = () => {
+  if (!canOpenCompany.value) {
+    showLockedNotice()
+    return
+  }
+
   closeProfileMenu()
   router.push('/employer/company')
 }
@@ -101,6 +134,7 @@ onMounted(() => {
   window.addEventListener('auth-changed', syncCurrentEmployer)
   window.addEventListener('employer-profile-updated', syncCurrentEmployer)
   syncCurrentEmployer()
+  ensurePermissionsLoaded().catch(() => {})
 })
 
 onBeforeUnmount(() => {
@@ -147,11 +181,12 @@ watch(
       />
       <button
         class="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+        :class="!canOpenJobs ? 'cursor-not-allowed opacity-60' : ''"
         type="button"
-        title="Mở trang tin tuyển dụng"
-        @click="router.push('/employer/jobs')"
+        :title="canOpenJobs ? 'Mở trang tin tuyển dụng' : lockedMessage"
+        @click="goToJobs"
       >
-        <span class="material-symbols-outlined">work</span>
+        <span class="material-symbols-outlined">{{ canOpenJobs ? 'work' : 'lock' }}</span>
       </button>
       <div class="mx-1 h-8 w-px bg-slate-200 dark:bg-slate-800"></div>
       <div ref="profileMenuRef" class="relative">

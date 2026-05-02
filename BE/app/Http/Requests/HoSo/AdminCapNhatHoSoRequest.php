@@ -2,10 +2,21 @@
 
 namespace App\Http\Requests\HoSo;
 
+use App\Models\HoSo;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class AdminCapNhatHoSoRequest extends FormRequest
 {
+    protected function prepareForValidation(): void
+    {
+        if ($this->has('trinh_do')) {
+            $this->merge([
+                'trinh_do' => HoSo::normalizeTrinhDo($this->input('trinh_do')),
+            ]);
+        }
+    }
+
     public function authorize(): bool
     {
         return true;
@@ -16,7 +27,7 @@ class AdminCapNhatHoSoRequest extends FormRequest
         return [
             'tieu_de_ho_so' => ['sometimes', 'string', 'max:200'],
             'muc_tieu_nghe_nghiep' => ['nullable', 'string'],
-            'trinh_do' => ['nullable', 'string', 'max:100', 'in:trung_hoc,trung_cap,cao_dang,dai_hoc,thac_si,tien_si,khac'],
+            'trinh_do' => ['nullable', 'string', 'max:100', Rule::in(HoSo::acceptedTrinhDoValues())],
             'kinh_nghiem_nam' => ['nullable', 'integer', 'min:0', 'max:50'],
             'mo_ta_ban_than' => ['nullable', 'string'],
             'trang_thai' => ['nullable', 'integer', 'in:0,1'],
@@ -27,7 +38,7 @@ class AdminCapNhatHoSoRequest extends FormRequest
     {
         return [
             'tieu_de_ho_so.max' => 'Tiêu đề hồ sơ tối đa 200 ký tự.',
-            'trinh_do.in' => 'Trình độ phải là: trung_hoc, trung_cap, cao_dang, dai_hoc, thac_si, tien_si, khac.',
+            'trinh_do.in' => 'Trình độ không hợp lệ.',
             'kinh_nghiem_nam.integer' => 'Kinh nghiệm năm phải là số nguyên.',
             'kinh_nghiem_nam.min' => 'Kinh nghiệm năm không được nhỏ hơn 0.',
             'kinh_nghiem_nam.max' => 'Kinh nghiệm năm không được lớn hơn 50.',

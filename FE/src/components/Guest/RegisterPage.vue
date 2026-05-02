@@ -1,16 +1,19 @@
 <script setup>
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { authService } from '@/services/api'
+import { extractApiErrorMessage, extractApiFieldErrors } from '@/utils/apiErrors'
 
 const router = useRouter()
 const route = useRoute()
+const ALERT_AUTO_DISMISS_MS = 5000
 const accountType = ref('candidate')
 const isLoading = ref(false)
 const showPassword = ref(false)
 const showConfirmPassword = ref(false)
 const successMessage = ref('')
 const errorMessage = ref('')
+const alertTimeoutId = ref(null)
 
 const registerForm = reactive({
   fullName: '',
@@ -41,11 +44,11 @@ const pageCopy = computed(() => {
       showcaseDescription:
         'Thiết lập hồ sơ doanh nghiệp, đăng tin nhanh hơn và tiếp cận đúng ứng viên với hệ thống tuyển dụng thông minh.',
       headTitle: 'Đăng ký nhà tuyển dụng',
-      headDescription: 'Tạo tài khoản doanh nghiệp để quản lý công ty và đăng tin tuyển dụng.',
-      submitLabel: 'Tạo tài khoản tuyển dụng',
+      headDescription: 'Tạo tài khoản doanh nghiệp để đăng tuyển và quản lý hồ sơ công ty trên hệ thống.',
+      submitLabel: 'Tạo tài khoản',
       loginHint: 'Đã có tài khoản doanh nghiệp?',
-      fullNameLabel: 'Người liên hệ',
-      fullNamePlaceholder: 'Nhập họ tên người phụ trách tuyển dụng',
+      fullNameLabel: 'Người phụ trách',
+      fullNamePlaceholder: 'Nhập họ tên người phụ trách công ty',
     }
   }
 
@@ -55,7 +58,7 @@ const pageCopy = computed(() => {
       'Kết nối đúng người, đúng việc với công nghệ trí tuệ nhân tạo hàng đầu. Khởi đầu hành trình mới của bạn ngay hôm nay.',
     headTitle: 'Đăng ký ứng viên',
     headDescription: 'Tham gia mạng lưới tuyển dụng thông minh ngay hôm nay.',
-    submitLabel: 'Tạo tài khoản SmartJob AI',
+    submitLabel: 'Tạo tài khoản',
     loginHint: 'Bạn đã có tài khoản?',
     fullNameLabel: 'Họ và tên',
     fullNamePlaceholder: 'Nhập họ và tên của bạn',
@@ -63,8 +66,28 @@ const pageCopy = computed(() => {
 })
 
 const resetMessages = () => {
+  if (alertTimeoutId.value) {
+    clearTimeout(alertTimeoutId.value)
+    alertTimeoutId.value = null
+  }
+
   errorMessage.value = ''
   successMessage.value = ''
+}
+
+const scheduleAlertDismiss = () => {
+  if (alertTimeoutId.value) {
+    clearTimeout(alertTimeoutId.value)
+  }
+
+  if (!errorMessage.value && !successMessage.value) {
+    alertTimeoutId.value = null
+    return
+  }
+
+  alertTimeoutId.value = window.setTimeout(() => {
+    resetMessages()
+  }, ALERT_AUTO_DISMISS_MS)
 }
 
 const clearValidationErrors = () => {
@@ -75,6 +98,18 @@ const clearValidationErrors = () => {
   registerErrors.phone = ''
   registerErrors.password = ''
   registerErrors.confirmPassword = ''
+}
+
+const applyServerValidationErrors = (fieldErrors) => {
+  const firstMessage = (field) => fieldErrors[field]?.[0] || ''
+
+  registerErrors.fullName = firstMessage('ho_ten')
+  registerErrors.companyName = firstMessage('ten_cong_ty')
+  registerErrors.contactPerson = firstMessage('ho_ten')
+  registerErrors.email = firstMessage('email')
+  registerErrors.phone = firstMessage('so_dien_thoai') || firstMessage('dien_thoai')
+  registerErrors.password = firstMessage('mat_khau')
+  registerErrors.confirmPassword = firstMessage('mat_khau_confirmation')
 }
 
 watch(
@@ -94,52 +129,19 @@ watch(accountType, (type) => {
   })
 })
 
-const validateRegister = () => {
-  clearValidationErrors()
+watch([errorMessage, successMessage], () => {
+  scheduleAlertDismiss()
+})
 
-  if (isEmployer.value) {
-    if (!registerForm.companyName.trim()) {
-      registerErrors.companyName = 'Vui lòng nhập tên công ty'
-    }
-
-    if (!registerForm.contactPerson.trim()) {
-      registerErrors.contactPerson = 'Vui lòng nhập người liên hệ'
-    }
-  } else if (!registerForm.fullName.trim()) {
-    registerErrors.fullName = 'Vui lòng nhập họ tên'
+onBeforeUnmount(() => {
+  if (alertTimeoutId.value) {
+    clearTimeout(alertTimeoutId.value)
   }
-
-  if (!registerForm.email.trim()) {
-    registerErrors.email = 'Vui lòng nhập email'
-  } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(registerForm.email)) {
-    registerErrors.email = 'Email không hợp lệ'
-  }
-
-  if (!registerForm.phone.trim()) {
-    registerErrors.phone = 'Vui lòng nhập số điện thoại'
-  } else if (!/^0\d{9}$/.test(registerForm.phone.replace(/\s+/g, ''))) {
-    registerErrors.phone = 'Số điện thoại không hợp lệ'
-  }
-
-  if (!registerForm.password) {
-    registerErrors.password = 'Vui lòng nhập mật khẩu'
-  } else if (registerForm.password.length < 6) {
-    registerErrors.password = 'Mật khẩu phải có ít nhất 6 ký tự'
-  }
-
-  if (!registerForm.confirmPassword) {
-    registerErrors.confirmPassword = 'Vui lòng xác nhận mật khẩu'
-  } else if (registerForm.confirmPassword !== registerForm.password) {
-    registerErrors.confirmPassword = 'Mật khẩu xác nhận không khớp'
-  }
-
-  return Object.values(registerErrors).every(err => !err)
-}
+})
 
 const handleRegister = async () => {
-  if (!validateRegister()) return
-
   isLoading.value = true
+  clearValidationErrors()
   resetMessages()
 
   try {
@@ -155,17 +157,19 @@ const handleRegister = async () => {
 
     const response = isEmployer.value
       ? await authService.registerEmployer(
-        registerForm.companyName,
-        registerForm.contactPerson,
-        registerForm.email,
-        registerForm.phone,
-        registerForm.password
+        registerForm.companyName.trim(),
+        registerForm.contactPerson.trim(),
+        registeredEmail,
+        registerForm.phone.trim(),
+        registerForm.password,
+        registerForm.confirmPassword
       )
       : await authService.registerCandidate(
-        registerForm.fullName,
-        registerForm.email,
-        registerForm.phone,
-        registerForm.password
+        registerForm.fullName.trim(),
+        registeredEmail,
+        registerForm.phone.trim(),
+        registerForm.password,
+        registerForm.confirmPassword
       )
 
     if (response.success || response.message) {
@@ -195,7 +199,13 @@ const handleRegister = async () => {
       }, 1200)
     }
   } catch (error) {
-    errorMessage.value = error.message || 'Đăng ký thất bại'
+    const fieldErrors = extractApiFieldErrors(error)
+
+    if (Object.keys(fieldErrors).length) {
+      applyServerValidationErrors(fieldErrors)
+    }
+
+    errorMessage.value = extractApiErrorMessage(error, 'Đăng ký thất bại')
   } finally {
     isLoading.value = false
   }
@@ -269,7 +279,7 @@ const handleRegister = async () => {
             </button>
           </div>
 
-          <form class="auth-form" @submit.prevent="handleRegister">
+          <form class="auth-form" novalidate @submit.prevent="handleRegister">
             <div v-if="isEmployer" class="field-group">
               <label for="companyName">Tên công ty</label>
               <div class="input-shell" :class="{ 'input-shell--error': registerErrors.companyName }">
@@ -659,6 +669,14 @@ const handleRegister = async () => {
   margin-top: 0.45rem;
   color: #dc2626;
   font-size: 0.82rem;
+}
+
+.field-hint {
+  display: block;
+  margin-top: 0.45rem;
+  color: #64748b;
+  font-size: 0.82rem;
+  line-height: 1.45;
 }
 
 .submit-button {

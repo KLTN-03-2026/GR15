@@ -1,27 +1,52 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
-import { employerApplicationService, employerJobService } from '@/services/api'
+import { employerApplicationService, employerBillingService, employerJobService } from '@/services/api'
+import { useEmployerCompanyPermissions } from '@/composables/useEmployerCompanyPermissions'
 import { useNotify } from '@/composables/useNotify'
 import { getApplicationStatusMeta } from '@/utils/applicationStatus'
 import { formatDateTimeVN, formatHistoricalDateTimeVN } from '@/utils/dateTime'
+import { getAuthToken } from '@/utils/authStorage'
+import { hasBuilderCv, openCvPrintPreview } from '@/utils/profileCvBuilder'
 
 const route = useRoute()
 const router = useRouter()
 const notify = useNotify()
+const { ensurePermissionsLoaded, canManageJobs, canManageAllAssignments, currentEmployerId, currentInternalRoleLabel } = useEmployerCompanyPermissions()
 
 const loading = ref(false)
+const billingLoading = ref(false)
 const parsingLoading = ref(false)
 const togglingStatus = ref(false)
+const shortlistLoading = ref(false)
+const aiScoringLoading = ref(false)
+const comparingShortlist = ref(false)
+const sponsorLoading = ref('')
 const job = ref(null)
 const applications = ref([])
+const shortlistItems = ref([])
+const shortlistMeta = ref(null)
+const selectedCompareProfileIds = ref([])
+const comparisonResult = ref(null)
+const shortlistScope = ref('public')
+const billingWallet = ref(null)
+const billingPricing = ref([])
+const billingEntitlements = ref([])
 
 const formatDateTime = (value) => formatDateTimeVN(value, 'Chưa cập nhật')
 const formatSubmittedDateTime = (value) => formatHistoricalDateTimeVN(value, 'Chưa cập nhật')
+const formatCurrency = (value) => `${Number(value || 0).toLocaleString('vi-VN')} đ`
 
-const formatSalary = (value) => {
-  if (value === null || value === undefined || value === '') return 'Thỏa thuận'
-  return `${Number(value).toLocaleString('vi-VN')} đ`
+const formatSalary = (job) => {
+  const salaryFrom = Number(job?.muc_luong_tu || 0)
+  const salaryTo = Number(job?.muc_luong_den || 0)
+
+  if (salaryFrom && salaryTo) {
+    return `${salaryFrom.toLocaleString('vi-VN')} đ - ${salaryTo.toLocaleString('vi-VN')} đ`
+  }
+
+  if (salaryFrom) return `${salaryFrom.toLocaleString('vi-VN')} đ`
+  return 'Thỏa thuận'
 }
 
 const statusLabel = computed(() => (Number(job.value?.trang_thai) === 1 ? 'Đang hoạt động' : 'Tạm ngưng'))
@@ -91,6 +116,54 @@ const statusCards = computed(() => {
 })
 
 const applicationStatusMeta = getApplicationStatusMeta
+const isOwnedJob = computed(() => Number(job.value?.hr_phu_trach?.id || job.value?.hr_phu_trach_id || 0) === Number(currentEmployerId.value || 0))
+const canMutateCurrentJob = computed(() => Boolean(canManageJobs.value && (canManageAllAssignments.value || isOwnedJob.value)))
+const walletAvailable = computed(() => Number(billingWallet.value?.so_du_kha_dung || 0))
+const featuredStatusLabel = computed(() => {
+  if (!job.value?.is_featured) return 'Tin đang chạy hiển thị thường'
+  return `Đang nổi bật đến ${formatDateTime(job.value?.featured_until)}`
+})
+const resolveBillingFeature = (featureCode) => {
+  const pricing = billingPricing.value.find((item) => item.feature_code === featureCode) || null
+  const entitlement = billingEntitlements.value.find((item) => item.feature_code === featureCode) || null
+  const hasIncludedQuota = Boolean(entitlement?.subscription_is_unlimited)
+    || Number(entitlement?.subscription_quota_remaining || 0) > 0
+    || Number(entitlement?.free_quota_remaining || 0) > 0
+  const walletPrice = Number(pricing?.don_gia || entitlement?.wallet_price || 0)
+  const walletUnit = pricing?.don_vi_tinh || entitlement?.wallet_unit || 'lượt'
+  const requiresWallet = !hasIncludedQuota && walletPrice > 0
+
+  return {
+    featureCode,
+    pricing,
+    entitlement,
+    hasIncludedQuota,
+    walletPrice,
+    walletUnit,
+    requiresWallet,
+    affordable: !requiresWallet || walletAvailable.value >= walletPrice,
+  }
+}
+const shortlistAiFeature = computed(() => resolveBillingFeature('employer_shortlist_ai_explanation'))
+const compareAiFeature = computed(() => resolveBillingFeature('employer_candidate_compare_ai'))
+const featuredPackages = computed(() =>
+  ['employer_featured_job_7d', 'employer_featured_job_30d']
+    .map((featureCode) => {
+      const pricing = billingPricing.value.find((item) => item.feature_code === featureCode) || null
+      const entitlement = billingEntitlements.value.find((item) => item.feature_code === featureCode) || null
+
+      return {
+        featureCode,
+        label: pricing?.ten_hien_thi || (featureCode === 'employer_featured_job_7d' ? 'Featured Job 7 ngày' : 'Featured Job 30 ngày'),
+        description: featureCode === 'employer_featured_job_7d'
+          ? 'Đẩy tin lên nhóm nổi bật trong 7 ngày.'
+          : 'Giữ tin trong nhóm nổi bật trong 30 ngày.',
+        price: Number(pricing?.don_gia || entitlement?.wallet_price || 0),
+        unit: pricing?.don_vi_tinh || entitlement?.wallet_unit || 'listing',
+      }
+    })
+    .filter((item) => item.price > 0)
+)
 
 const requiredSkills = computed(() => {
   const manualSkills = (job.value?.ky_nang_yeu_caus || [])
@@ -123,6 +196,40 @@ const parsedBenefits = computed(() =>
 )
 
 const upcomingApplications = computed(() => applications.value.slice(0, 6))
+const topShortlistItems = computed(() => shortlistItems.value.slice(0, 5))
+const canCompareShortlist = computed(() => selectedCompareProfileIds.value.length >= 2)
+const formatFeaturePrice = (feature) => {
+  if (!feature?.walletPrice) return 'Chưa cấu hình giá'
+  return `${formatCurrency(feature.walletPrice)}/${feature.walletUnit || 'lượt'}`
+}
+const canRunPaidFeature = (feature) => {
+  if (!feature) return true
+  if (feature.hasIncludedQuota) return true
+  if (!feature.walletPrice) return true
+  return feature.affordable
+}
+
+const loadBillingContext = async () => {
+  billingLoading.value = true
+  try {
+    const [walletResponse, pricingResponse, entitlementsResponse] = await Promise.all([
+      employerBillingService.getWallet(),
+      employerBillingService.getPricing(),
+      employerBillingService.getEntitlements(),
+    ])
+
+    billingWallet.value = walletResponse?.data?.wallet || null
+    billingPricing.value = pricingResponse?.data || []
+    billingEntitlements.value = entitlementsResponse?.data?.entitlements || []
+  } catch (error) {
+    billingWallet.value = null
+    billingPricing.value = []
+    billingEntitlements.value = []
+    notify.apiError(error, 'Không tải được dữ liệu billing employer.')
+  } finally {
+    billingLoading.value = false
+  }
+}
 
 const fetchJobDetail = async () => {
   loading.value = true
@@ -137,6 +244,9 @@ const fetchJobDetail = async () => {
 
     job.value = jobResponse?.data || null
     applications.value = applicationResponse?.data?.data || []
+    if (job.value?.id) {
+      await fetchShortlist(false)
+    }
   } catch (error) {
     notify.apiError(error, 'Không tải được chi tiết tin tuyển dụng.')
     await router.push('/employer/jobs')
@@ -145,8 +255,197 @@ const fetchJobDetail = async () => {
   }
 }
 
+const sponsorJob = async (featureCode) => {
+  if (!job.value?.id) return
+  if (!canMutateCurrentJob.value) {
+    notify.warning(canManageJobs.value
+      ? 'Bạn chỉ có thể đẩy nổi bật cho tin tuyển dụng mình phụ trách.'
+      : `Vai trò ${currentInternalRoleLabel.value} không thể đẩy nổi bật tin tuyển dụng.`)
+    return
+  }
+
+  sponsorLoading.value = featureCode
+  try {
+    const response = await employerJobService.sponsorJob(job.value.id, featureCode)
+    notify.success(response?.message || 'Đã kích hoạt featured listing cho tin tuyển dụng.')
+    await Promise.all([fetchJobDetail(), loadBillingContext()])
+  } catch (error) {
+    notify.apiError(error, 'Không thể kích hoạt featured listing cho tin tuyển dụng.')
+  } finally {
+    sponsorLoading.value = ''
+  }
+}
+
+const fetchShortlist = async (withAi = false) => {
+  if (!route.params.id) return
+
+  if (withAi) {
+    aiScoringLoading.value = true
+  } else {
+    shortlistLoading.value = true
+  }
+
+  try {
+    const response = await employerJobService.getShortlist(route.params.id, {
+      limit: 10,
+      scope: shortlistScope.value,
+      ai_explain: withAi,
+    })
+    shortlistItems.value = response?.data?.items || []
+    shortlistMeta.value = response?.data?.meta || null
+    selectedCompareProfileIds.value = []
+    comparisonResult.value = null
+    if (withAi) {
+      await loadBillingContext()
+    }
+  } catch (error) {
+    shortlistItems.value = []
+    shortlistMeta.value = null
+    selectedCompareProfileIds.value = []
+    comparisonResult.value = null
+    notify.apiError(error, 'Không tải được AI Shortlist cho tin tuyển dụng.')
+  } finally {
+    shortlistLoading.value = false
+    aiScoringLoading.value = false
+  }
+}
+
+const changeShortlistScope = async (scope) => {
+  if (shortlistScope.value === scope) return
+  shortlistScope.value = scope
+  await fetchShortlist(false)
+}
+
+const rescoreShortlistWithAi = async () => {
+  await fetchShortlist(true)
+}
+
+const isSelectedForCompare = (item) => selectedCompareProfileIds.value.includes(Number(item?.ho_so?.id || 0))
+
+const toggleCompareSelection = (item) => {
+  const profileId = Number(item?.ho_so?.id || 0)
+  if (!profileId) return
+
+  if (selectedCompareProfileIds.value.includes(profileId)) {
+    selectedCompareProfileIds.value = selectedCompareProfileIds.value.filter((id) => id !== profileId)
+    return
+  }
+
+  if (selectedCompareProfileIds.value.length >= 5) {
+    notify.warning('Chỉ có thể so sánh tối đa 5 CV trong một lần.')
+    return
+  }
+
+  selectedCompareProfileIds.value = [...selectedCompareProfileIds.value, profileId]
+}
+
+const compareShortlistCandidates = async () => {
+  if (!canCompareShortlist.value) {
+    notify.info('Vui lòng chọn ít nhất 2 CV để so sánh.')
+    return
+  }
+
+  comparingShortlist.value = true
+  try {
+    const response = await employerJobService.compareShortlistCandidates(route.params.id, selectedCompareProfileIds.value, { ai_explain: true })
+    comparisonResult.value = response?.data || null
+    await loadBillingContext()
+  } catch (error) {
+    comparisonResult.value = null
+    notify.apiError(error, 'Không so sánh được các ứng viên đã chọn.')
+  } finally {
+    comparingShortlist.value = false
+  }
+}
+
+const clearComparison = () => {
+  selectedCompareProfileIds.value = []
+  comparisonResult.value = null
+}
+
+const scoreTone = (score) => {
+  const value = Number(score || 0)
+  if (value >= 80) return 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-300'
+  if (value >= 65) return 'bg-blue-500/10 text-blue-600 dark:text-blue-300'
+  if (value >= 50) return 'bg-amber-500/10 text-amber-600 dark:text-amber-300'
+  return 'bg-rose-500/10 text-rose-600 dark:text-rose-300'
+}
+
+const confidenceTone = (level) => {
+  if (level === 'high') return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
+  if (level === 'medium') return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+  return 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300'
+}
+
+const explanationGroups = (structured) => [
+  { key: 'strengths', label: 'Điểm mạnh', items: structured?.strengths || [] },
+  { key: 'weaknesses', label: 'Điểm yếu', items: structured?.weaknesses || [] },
+  { key: 'risks', label: 'Rủi ro', items: structured?.risks || [] },
+  { key: 'interview_questions', label: 'Câu hỏi phỏng vấn', items: structured?.interview_questions || [] },
+].filter((group) => group.items.length)
+
+const fetchProtectedFile = async (url) => {
+  const token = getAuthToken()
+
+  if (!token) {
+    notify.warning('Vui lòng đăng nhập lại để xem file CV.')
+    return null
+  }
+
+  const response = await fetch(encodeURI(url), {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,*/*',
+    },
+  })
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`)
+  }
+
+  return response.blob()
+}
+
+const openShortlistCv = async (item) => {
+  const profile = item?.ho_so
+
+  if (!profile?.file_cv_url && !hasBuilderCv(profile)) {
+    notify.info('Hồ sơ này chưa có file CV hoặc dữ liệu CV tạo trên hệ thống để xem.')
+    return
+  }
+
+  if (!profile.file_cv_url && hasBuilderCv(profile)) {
+    const opened = openCvPrintPreview({
+      profile,
+      owner: item?.candidate,
+    })
+
+    if (!opened) {
+      notify.warning('Trình duyệt đang chặn cửa sổ xem CV. Hãy cho phép popup và thử lại.')
+    }
+    return
+  }
+
+  try {
+    const blob = await fetchProtectedFile(profile.file_cv_url)
+    if (!blob) return
+    const objectUrl = URL.createObjectURL(blob)
+    window.open(objectUrl, '_blank', 'noopener')
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000)
+  } catch (error) {
+    notify.error('Không mở được file CV. Vui lòng thử lại.')
+  }
+}
+
 const parseJob = async () => {
   if (!job.value) return
+  if (!canMutateCurrentJob.value) {
+    notify.warning(canManageJobs.value
+      ? 'Bạn chỉ có thể parse JD cho tin tuyển dụng mình phụ trách.'
+      : `Vai trò ${currentInternalRoleLabel.value} không thể parse JD cho tin tuyển dụng.`)
+    return
+  }
 
   parsingLoading.value = true
   try {
@@ -162,6 +461,12 @@ const parseJob = async () => {
 
 const toggleStatus = async () => {
   if (!job.value) return
+  if (!canMutateCurrentJob.value) {
+    notify.warning(canManageJobs.value
+      ? 'Bạn chỉ có thể đổi trạng thái cho tin tuyển dụng mình phụ trách.'
+      : `Vai trò ${currentInternalRoleLabel.value} không thể đổi trạng thái tin tuyển dụng.`)
+    return
+  }
 
   togglingStatus.value = true
   try {
@@ -175,7 +480,10 @@ const toggleStatus = async () => {
   }
 }
 
-onMounted(fetchJobDetail)
+onMounted(async () => {
+  await ensurePermissionsLoaded()
+  await Promise.all([fetchJobDetail(), loadBillingContext()])
+})
 </script>
 
 <template>
@@ -200,6 +508,13 @@ onMounted(fetchJobDetail)
               <span class="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-bold" :class="parseStatusMeta.classes">
                 {{ parseStatusMeta.label }}
               </span>
+              <span
+                v-if="job.is_featured"
+                class="inline-flex items-center gap-2 rounded-full border border-amber-300/40 bg-amber-400/15 px-3 py-1.5 text-xs font-bold text-amber-100"
+              >
+                <span class="material-symbols-outlined text-[16px]">rocket_launch</span>
+                Featured đến {{ formatDateTime(job.featured_until) }}
+              </span>
             </div>
 
             <h1 class="text-3xl font-black tracking-tight sm:text-4xl">{{ job.tieu_de }}</h1>
@@ -218,19 +533,40 @@ onMounted(fetchJobDetail)
               </span>
               <span class="inline-flex items-center gap-2 rounded-2xl bg-white/8 px-4 py-2 backdrop-blur">
                 <span class="material-symbols-outlined text-[18px]">payments</span>
-                {{ formatSalary(job.muc_luong) }}
+                {{ formatSalary(job) }}
               </span>
               <span class="inline-flex items-center gap-2 rounded-2xl bg-white/8 px-4 py-2 backdrop-blur">
                 <span class="material-symbols-outlined text-[18px]">event</span>
                 Hết hạn: {{ formatDateTime(job.ngay_het_han) }}
               </span>
+              <span class="inline-flex items-center gap-2 rounded-2xl bg-white/8 px-4 py-2 backdrop-blur">
+                <span class="material-symbols-outlined text-[18px]">badge</span>
+                HR phụ trách: {{ job.hr_phu_trach?.ho_ten || 'Chưa gán' }}
+              </span>
             </div>
+            <p
+              v-if="canManageJobs && !canManageAllAssignments && !isOwnedJob"
+              class="mt-4 inline-flex rounded-full bg-amber-500/15 px-3 py-1.5 text-xs font-semibold text-amber-100"
+            >
+              Bạn đang xem tin không thuộc phần việc của mình. Các thao tác cập nhật đã bị khóa.
+            </p>
           </div>
 
           <div class="flex flex-wrap gap-3 xl:justify-end">
             <button
               class="inline-flex items-center gap-2 rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/15 disabled:opacity-60"
-              :disabled="parsingLoading"
+              :disabled="shortlistLoading"
+              type="button"
+              @click="fetchShortlist"
+            >
+              <span class="material-symbols-outlined text-[18px]" :class="shortlistLoading ? 'animate-spin' : ''">
+                {{ shortlistLoading ? 'progress_activity' : 'psychology' }}
+              </span>
+              {{ shortlistLoading ? 'Đang xếp hạng...' : 'Tải Shortlist' }}
+            </button>
+            <button
+              class="inline-flex items-center gap-2 rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/15 disabled:opacity-60"
+              :disabled="parsingLoading || !canMutateCurrentJob"
               type="button"
               @click="parseJob"
             >
@@ -241,7 +577,7 @@ onMounted(fetchJobDetail)
             </button>
             <button
               class="inline-flex items-center gap-2 rounded-2xl bg-white px-4 py-3 text-sm font-bold text-[#1f49b6] shadow-lg shadow-black/10 transition hover:-translate-y-0.5 disabled:opacity-60"
-              :disabled="togglingStatus"
+              :disabled="togglingStatus || !canMutateCurrentJob"
               type="button"
               @click="toggleStatus"
             >
@@ -251,6 +587,390 @@ onMounted(fetchJobDetail)
               {{ Number(job.trang_thai) === 1 ? 'Tạm ngưng tin' : 'Kích hoạt lại tin' }}
             </button>
           </div>
+        </div>
+      </div>
+
+      <div class="mb-6 rounded-3xl border border-amber-100 bg-white p-6 shadow-sm shadow-slate-950/5 dark:border-amber-500/20 dark:bg-slate-900">
+        <div class="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+          <div class="max-w-3xl">
+            <p class="text-xs font-bold uppercase tracking-[0.28em] text-amber-500">Sponsored Job</p>
+            <h2 class="mt-2 text-2xl font-black text-slate-900 dark:text-white">Featured listing cho tin tuyển dụng này</h2>
+            <p class="mt-2 text-sm leading-7 text-slate-500 dark:text-slate-400">
+              Đẩy job vào nhóm hiển thị nổi bật để tăng lượng click và CV. Gói sẽ cộng dồn thêm thời gian nếu tin đang chạy featured.
+            </p>
+          </div>
+
+          <div class="rounded-2xl bg-amber-50 px-4 py-3 text-sm dark:bg-amber-500/10">
+            <p class="font-bold text-slate-900 dark:text-white">{{ featuredStatusLabel }}</p>
+            <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              {{ billingLoading ? 'Đang tải ví employer...' : `Ví khả dụng: ${formatCurrency(walletAvailable)}` }}
+            </p>
+          </div>
+        </div>
+
+        <div class="mt-5 grid gap-4 lg:grid-cols-2">
+          <article
+            v-for="item in featuredPackages"
+            :key="item.featureCode"
+            class="rounded-2xl border border-slate-200 bg-slate-50 p-5 dark:border-slate-800 dark:bg-slate-800/60"
+          >
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p class="text-lg font-black text-slate-900 dark:text-white">{{ item.label }}</p>
+                <p class="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">{{ item.description }}</p>
+              </div>
+              <div class="rounded-2xl bg-white px-4 py-3 text-right shadow-sm dark:bg-slate-900">
+                <p class="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">Giá</p>
+                <p class="mt-1 text-2xl font-black text-slate-900 dark:text-white">{{ formatCurrency(item.price) }}</p>
+              </div>
+            </div>
+
+            <button
+              class="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-amber-500 px-4 py-3 text-sm font-bold text-white transition hover:bg-amber-600 disabled:opacity-60"
+              :disabled="billingLoading || sponsorLoading === item.featureCode || !canMutateCurrentJob"
+              type="button"
+              @click="sponsorJob(item.featureCode)"
+            >
+              <span class="material-symbols-outlined text-[18px]" :class="sponsorLoading === item.featureCode ? 'animate-spin' : ''">
+                {{ sponsorLoading === item.featureCode ? 'progress_activity' : 'rocket_launch' }}
+              </span>
+              {{ sponsorLoading === item.featureCode ? 'Đang kích hoạt...' : `Mua gói ${item.label}` }}
+            </button>
+          </article>
+
+          <div
+            v-if="!featuredPackages.length"
+            class="rounded-2xl border border-dashed border-slate-200 px-5 py-8 text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400"
+          >
+            Chưa có gói featured nào được cấu hình trong bảng giá AI.
+          </div>
+        </div>
+      </div>
+
+      <div class="mb-6 rounded-3xl border border-blue-100 bg-white p-6 shadow-sm shadow-slate-950/5 dark:border-blue-500/20 dark:bg-slate-900">
+        <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <p class="text-xs font-bold uppercase tracking-[0.28em] text-[#2463eb]">AI Shortlist</p>
+            <h2 class="mt-2 text-2xl font-black text-slate-900 dark:text-white">Ứng viên phù hợp nhất với JD này</h2>
+            <p class="mt-2 max-w-3xl text-sm leading-7 text-slate-500 dark:text-slate-400">
+              Hệ thống so khớp kỹ năng, kinh nghiệm, trình độ và ngành nghề. Mặc định chấm nhanh bằng rule-based, khi cần có thể chấm lại bằng AI để có giải thích sâu hơn.
+            </p>
+          </div>
+          <div class="flex flex-col items-start gap-2 rounded-2xl bg-slate-50 px-4 py-3 text-sm dark:bg-slate-800 lg:items-end">
+            <span class="font-bold text-slate-900 dark:text-white">
+              {{ shortlistMeta?.total_candidates_scanned || 0 }} ứng viên đã quét
+            </span>
+            <span class="text-xs text-slate-500 dark:text-slate-400">
+              {{ shortlistMeta?.total_profiles_scanned || 0 }} CV - {{ shortlistMeta?.scope_label || 'CV công khai' }}
+            </span>
+            <span v-if="shortlistMeta?.permission_scope" class="text-xs font-semibold text-slate-400">
+              Quyền xem: {{ shortlistMeta.permission_scope === 'company' ? 'Toàn công ty' : 'Tin phụ trách' }}
+            </span>
+          </div>
+        </div>
+
+        <div class="mt-5 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-800/50 lg:flex-row lg:items-center lg:justify-between">
+          <div class="flex flex-wrap gap-2">
+            <button
+              class="rounded-xl px-4 py-2 text-sm font-bold transition"
+              :class="shortlistScope === 'public' ? 'bg-[#2463eb] text-white' : 'bg-white text-slate-600 hover:bg-slate-100 dark:bg-slate-900 dark:text-slate-300'"
+              type="button"
+              @click="changeShortlistScope('public')"
+            >
+              CV công khai
+            </button>
+            <button
+              class="rounded-xl px-4 py-2 text-sm font-bold transition"
+              :class="shortlistScope === 'applied' ? 'bg-[#2463eb] text-white' : 'bg-white text-slate-600 hover:bg-slate-100 dark:bg-slate-900 dark:text-slate-300'"
+              type="button"
+              @click="changeShortlistScope('applied')"
+            >
+              Ứng viên đã ứng tuyển
+            </button>
+          </div>
+          <div class="flex flex-col items-start gap-2 lg:items-end">
+            <p class="text-xs text-slate-500 dark:text-slate-400">
+              {{ billingLoading ? 'Đang tải bảng giá AI...' : `AI shortlist: ${formatFeaturePrice(shortlistAiFeature)} · AI compare: ${formatFeaturePrice(compareAiFeature)}` }}
+            </p>
+            <p class="text-xs text-slate-500 dark:text-slate-400">
+              {{ billingLoading ? 'Đang tải số dư ví employer...' : `Ví khả dụng: ${formatCurrency(walletAvailable)}` }}
+            </p>
+            <button
+              class="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 text-sm font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-white dark:text-slate-900"
+              :disabled="billingLoading || shortlistLoading || aiScoringLoading || !canRunPaidFeature(shortlistAiFeature)"
+              type="button"
+              @click="rescoreShortlistWithAi"
+            >
+              <span class="material-symbols-outlined text-[18px]" :class="aiScoringLoading ? 'animate-spin' : ''">
+                {{ aiScoringLoading ? 'progress_activity' : 'auto_awesome' }}
+              </span>
+              {{ aiScoringLoading ? 'AI đang chấm...' : `Chấm lại bằng AI · ${formatFeaturePrice(shortlistAiFeature)}` }}
+            </button>
+          </div>
+        </div>
+
+        <div class="mt-3 flex flex-col gap-2 rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-3 text-xs leading-6 text-slate-500 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-400">
+          <p>Shortlist mặc định là rule-based và không trừ ví. Chỉ các thao tác AI như chấm lại bằng AI hoặc compare bằng AI mới charge sau khi AI trả kết quả thành công.</p>
+          <RouterLink
+            v-if="(!canRunPaidFeature(shortlistAiFeature) || !canRunPaidFeature(compareAiFeature)) && !billingLoading"
+            class="inline-flex items-center gap-2 font-bold text-[#2463eb] transition hover:text-[#1d4ed8]"
+            to="/employer/billing"
+          >
+            <span class="material-symbols-outlined text-[16px]">account_balance_wallet</span>
+            Nạp thêm ví employer để tiếp tục dùng AI
+          </RouterLink>
+        </div>
+
+        <div v-if="shortlistLoading" class="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <div v-for="index in 3" :key="index" class="h-48 animate-pulse rounded-2xl bg-slate-100 dark:bg-slate-800" />
+        </div>
+
+        <div v-else-if="topShortlistItems.length" class="mt-6">
+          <div class="mb-4 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-800/50 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p class="text-sm font-bold text-slate-900 dark:text-white">
+                Đã chọn {{ selectedCompareProfileIds.length }}/5 CV để so sánh
+              </p>
+              <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                Chọn 2 đến 5 CV trong shortlist để xem bảng so sánh theo kỹ năng, kinh nghiệm, chất lượng CV và minh chứng.
+              </p>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <button
+                class="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#2463eb] px-4 text-sm font-bold text-white transition hover:bg-[#1d4ed8] disabled:cursor-not-allowed disabled:opacity-50"
+                :disabled="billingLoading || !canCompareShortlist || comparingShortlist || !canRunPaidFeature(compareAiFeature)"
+                type="button"
+                @click="compareShortlistCandidates"
+              >
+                <span class="material-symbols-outlined text-[18px]" :class="comparingShortlist ? 'animate-spin' : ''">
+                  {{ comparingShortlist ? 'progress_activity' : 'compare_arrows' }}
+                </span>
+                {{ comparingShortlist ? 'Đang so sánh...' : `So sánh ứng viên · ${formatFeaturePrice(compareAiFeature)}` }}
+              </button>
+              <button
+                v-if="selectedCompareProfileIds.length || comparisonResult"
+                class="inline-flex h-10 items-center justify-center rounded-xl border border-slate-200 px-4 text-sm font-bold text-slate-600 transition hover:bg-white dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-900"
+                type="button"
+                @click="clearComparison"
+              >
+                Bỏ chọn
+              </button>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 gap-4 xl:grid-cols-5">
+            <div
+              v-for="item in topShortlistItems"
+              :key="`${item.candidate?.id}-${item.ho_so?.id}`"
+              class="flex flex-col rounded-2xl border bg-slate-50 p-4 transition dark:bg-slate-800/50"
+              :class="isSelectedForCompare(item) ? 'border-[#2463eb] ring-2 ring-[#2463eb]/20 dark:border-[#8fb1ff]' : 'border-slate-200 dark:border-slate-800'"
+            >
+              <div class="flex items-start gap-3">
+                <div class="size-12 shrink-0 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+                  <img
+                    v-if="item.candidate?.avatar_url"
+                    :src="item.candidate.avatar_url"
+                    alt="avatar"
+                    class="h-full w-full object-cover"
+                  >
+                  <div v-else class="flex h-full w-full items-center justify-center text-lg font-black text-slate-500">
+                    {{ (item.candidate?.ho_ten || 'U').charAt(0).toUpperCase() }}
+                  </div>
+                </div>
+                <div class="min-w-0 flex-1">
+                  <h3 class="truncate text-base font-black text-slate-900 dark:text-white">
+                    {{ item.candidate?.ho_ten || 'Ứng viên' }}
+                  </h3>
+                  <p class="mt-1 line-clamp-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                    {{ item.ho_so?.tieu_de_ho_so || 'Hồ sơ ứng viên' }}
+                  </p>
+                  <div class="mt-2 flex flex-wrap gap-1.5">
+                    <span class="rounded-full bg-white px-2 py-1 text-[10px] font-bold text-slate-500 dark:bg-slate-900 dark:text-slate-300">
+                      {{ item.source_insights?.label || 'CV' }}
+                    </span>
+                    <span
+                      v-if="item.ai_explanation"
+                      class="rounded-full bg-violet-100 px-2 py-1 text-[10px] font-bold text-violet-700 dark:bg-violet-900/30 dark:text-violet-300"
+                    >
+                      AI giải thích
+                    </span>
+                    <span
+                      v-if="item.confidence?.label"
+                      class="rounded-full px-2 py-1 text-[10px] font-bold"
+                      :class="confidenceTone(item.confidence.level)"
+                    >
+                      {{ item.confidence.label }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="mt-4 flex items-center justify-between gap-3">
+                <span class="rounded-full px-3 py-1 text-xs font-black" :class="scoreTone(item.score)">
+                  {{ Math.round(item.score || 0) }}%
+                </span>
+                <span class="text-right text-[11px] font-bold uppercase tracking-tight text-slate-400">
+                  {{ item.recommendation }}
+                </span>
+              </div>
+
+              <p class="mt-4 max-h-40 min-h-[100px] overflow-y-auto pr-1 text-xs leading-5 text-slate-600 dark:text-slate-300 whitespace-pre-line">
+                {{ item.explanation }}
+              </p>
+              <p v-if="item.ai_error" class="mt-2 text-[11px] leading-5 text-amber-600 dark:text-amber-300">
+                AI service chưa phản hồi, đang dùng điểm rule-based.
+              </p>
+              <div v-if="item.confidence?.warnings?.length" class="mt-2 rounded-xl bg-amber-50 p-2 text-[11px] leading-5 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300">
+                {{ item.confidence.warnings.slice(0, 2).join(' ') }}
+              </div>
+
+              <div class="mt-4 space-y-2">
+                <div class="flex flex-wrap gap-1.5">
+                  <span
+                    v-for="skill in (item.matched_skills || []).slice(0, 3)"
+                    :key="skill"
+                    class="rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-bold text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
+                  >
+                    {{ skill }}
+                  </span>
+                </div>
+                <div v-if="item.missing_skills?.length" class="text-[11px] leading-5 text-slate-500 dark:text-slate-400">
+                  Thiếu: {{ item.missing_skills.slice(0, 3).join(', ') }}
+                </div>
+              </div>
+
+              <div class="mt-auto grid grid-cols-2 gap-2 pt-4">
+                <button
+                  class="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-white px-3 text-sm font-bold text-slate-700 shadow-sm transition hover:bg-slate-100 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-950"
+                  type="button"
+                  @click="openShortlistCv(item)"
+                >
+                  <span class="material-symbols-outlined text-[18px]">description</span>
+                  Xem CV
+                </button>
+                <button
+                  class="inline-flex h-10 items-center justify-center rounded-xl border px-3 text-sm font-bold transition"
+                  :class="isSelectedForCompare(item)
+                    ? 'border-[#2463eb] bg-[#2463eb] text-white'
+                    : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200'"
+                  type="button"
+                  @click="toggleCompareSelection(item)"
+                >
+                  {{ isSelectedForCompare(item) ? 'Đã chọn' : 'So sánh' }}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div
+            v-if="comparisonResult?.matrix?.rows?.length"
+            class="mt-5 overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"
+          >
+            <div class="border-b border-slate-200 px-5 py-4 dark:border-slate-800">
+              <h3 class="text-lg font-black text-slate-900 dark:text-white">Bảng so sánh ứng viên</h3>
+              <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                So sánh dựa trên điểm hybrid, kỹ năng khớp/thiếu và vùng mạnh/yếu trong CV.
+              </p>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-800">
+                <thead class="bg-slate-50 text-left text-xs font-bold uppercase tracking-[0.18em] text-slate-500 dark:bg-slate-800/60">
+                  <tr>
+                    <th class="px-5 py-3">Ứng viên</th>
+                    <th class="px-5 py-3">Điểm</th>
+                    <th class="px-5 py-3">Nguồn CV</th>
+                    <th class="px-5 py-3">Độ tin cậy</th>
+                    <th class="px-5 py-3">Điểm mạnh nổi bật</th>
+                    <th class="px-5 py-3">Điểm cần cải thiện</th>
+                    <th class="px-5 py-3">Kỹ năng khớp</th>
+                    <th class="px-5 py-3">Kỹ năng/yêu cầu còn thiếu</th>
+                    <th class="px-5 py-3">Giải thích AI</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+                  <tr
+                    v-for="row in comparisonResult.matrix.rows"
+                    :key="row.ho_so_id"
+                    class="align-top text-slate-700 dark:text-slate-300"
+                  >
+                    <td class="px-5 py-4 font-bold text-slate-900 dark:text-white">{{ row.candidate_name }}</td>
+                    <td class="px-5 py-4">
+                      <span class="rounded-full px-3 py-1 text-xs font-black" :class="scoreTone(row.score)">
+                        {{ Math.round(row.score || 0) }}%
+                      </span>
+                    </td>
+                    <td class="px-5 py-4">{{ row.source || 'CV' }}</td>
+                    <td class="min-w-48 px-5 py-4">
+                      <span
+                        v-if="row.confidence?.label"
+                        class="rounded-full px-3 py-1 text-xs font-black"
+                        :class="confidenceTone(row.confidence.level)"
+                      >
+                        {{ row.confidence.label }}
+                      </span>
+                      <p v-if="row.confidence?.warnings?.length" class="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                        {{ row.confidence.warnings.slice(0, 2).join(' ') }}
+                      </p>
+                    </td>
+                    <td class="min-w-[260px] px-5 py-4 leading-7">{{ row.strongest_area }}</td>
+                    <td class="min-w-[260px] px-5 py-4 leading-7">{{ row.weakest_area }}</td>
+                    <td class="min-w-56 max-w-xs px-5 py-4">{{ (row.matched_skills || []).slice(0, 6).join(', ') || 'Chưa rõ' }}</td>
+                    <td class="min-w-56 max-w-xs px-5 py-4">{{ (row.missing_skills || []).slice(0, 6).join(', ') || 'Không có' }}</td>
+                    <td class="min-w-[360px] max-w-xl whitespace-pre-line px-5 py-4 leading-7">
+                      {{ row.ai_explanation || row.explanation || 'Chưa có giải thích AI chi tiết.' }}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="border-t border-slate-200 bg-slate-50 p-5 dark:border-slate-800 dark:bg-slate-800/40">
+              <h4 class="text-sm font-black uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+                Giải thích chi tiết
+              </h4>
+              <div class="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
+                <div
+                  v-for="row in comparisonResult.matrix.rows"
+                  :key="`explanation-${row.ho_so_id}`"
+                  class="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900"
+                >
+                  <div class="flex items-center justify-between gap-3">
+                    <p class="font-black text-slate-900 dark:text-white">{{ row.candidate_name }}</p>
+                    <span class="rounded-full px-3 py-1 text-xs font-black" :class="scoreTone(row.score)">
+                      {{ Math.round(row.score || 0) }}%
+                    </span>
+                  </div>
+                  <p class="mt-3 whitespace-pre-line text-sm leading-7 text-slate-600 dark:text-slate-300">
+                    {{ row.ai_explanation || row.explanation || 'Chưa có giải thích AI chi tiết.' }}
+                  </p>
+                  <div v-if="row.structured_explanation" class="mt-4 space-y-3">
+                    <div
+                      v-for="group in explanationGroups(row.structured_explanation)"
+                      :key="`${row.ho_so_id}-${group.key}`"
+                      class="rounded-xl bg-slate-50 p-3 dark:bg-slate-800"
+                    >
+                      <p class="text-xs font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">{{ group.label }}</p>
+                      <ul class="mt-2 space-y-1 text-sm leading-6 text-slate-600 dark:text-slate-300">
+                        <li v-for="entry in group.items" :key="entry" class="flex gap-2">
+                          <span class="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[#2463eb]" />
+                          <span>{{ entry }}</span>
+                        </li>
+                      </ul>
+                    </div>
+                    <p
+                      v-if="row.structured_explanation.recommendation"
+                      class="rounded-xl bg-blue-50 p-3 text-sm font-semibold leading-6 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300"
+                    >
+                      Khuyến nghị: {{ row.structured_explanation.recommendation }}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div v-else class="mt-6 rounded-2xl border border-dashed border-slate-200 px-5 py-8 text-center text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
+          Chưa có ứng viên phù hợp trong phạm vi {{ shortlistScope === 'applied' ? 'đã ứng tuyển' : 'CV công khai' }} để tạo shortlist cho tin này.
         </div>
       </div>
 

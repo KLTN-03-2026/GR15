@@ -139,11 +139,13 @@ Lý do:
 Hướng thay thế:
 - ...
 - Nếu người dùng hỏi về lộ trình, kế hoạch 3 tháng hoặc 6 tháng, phải chia rõ theo từng giai đoạn:
-Giai đoạn 1:
+Career Path Simulator 30/60/90 ngày:
 - ...
-Giai đoạn 2:
+30 ngày đầu:
 - ...
-Giai đoạn 3:
+60 ngày:
+- ...
+90 ngày:
 - ...
 - Trả lời phải bám sát đúng câu hỏi hiện tại, không chuyển sang chủ đề khác.
 - Ý định câu hỏi đã được hệ thống phân loại là: {resolved_intent}.
@@ -173,9 +175,12 @@ def _compact_context(context: dict) -> dict:
         "candidate_profile": {
             "ho_ten": candidate.get("ho_ten"),
             "tieu_de_ho_so": candidate.get("tieu_de_ho_so"),
+            "vi_tri_ung_tuyen_muc_tieu": candidate.get("vi_tri_ung_tuyen_muc_tieu"),
+            "ten_nganh_nghe_muc_tieu": candidate.get("ten_nganh_nghe_muc_tieu"),
             "kinh_nghiem_nam": candidate.get("kinh_nghiem_nam"),
             "trinh_do": candidate.get("trinh_do"),
             "parsed_skills": (candidate.get("parsed_skills") or [])[:8],
+            "builder_skills": (candidate.get("builder_skills") or [])[:8],
         },
         "career_report": {
             "nghe_de_xuat": report.get("nghe_de_xuat"),

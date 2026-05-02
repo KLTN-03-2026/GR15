@@ -96,7 +96,6 @@ class FollowedCompanyJobActivated implements ShouldBroadcastNow
                 'activity_type' => $activityType,
                 'dia_diem_lam_viec' => $job->dia_diem_lam_viec,
                 'hinh_thuc_lam_viec' => $job->hinh_thuc_lam_viec,
-                'muc_luong' => $job->muc_luong,
                 'muc_luong_tu' => $job->muc_luong_tu,
                 'muc_luong_den' => $job->muc_luong_den,
                 'ngay_het_han' => $job->ngay_het_han?->toISOString(),
@@ -123,6 +122,16 @@ class FollowedCompanyJobActivated implements ShouldBroadcastNow
     }
 
     public function broadcastWith(): array
+    {
+        return $this->payload;
+    }
+
+    public function recipientIds(): array
+    {
+        return $this->recipientIds;
+    }
+
+    public function notificationPayload(): array
     {
         return $this->payload;
     }

@@ -17,6 +17,35 @@ use Illuminate\Http\Request;
  */
 class TinTuyenDungController extends Controller
 {
+    private function buildLocationSearchTerms(string $location): array
+    {
+        $location = trim($location);
+        if ($location === '') {
+            return [];
+        }
+
+        $terms = [$location];
+        $withoutCityPrefix = preg_replace('/^(Thành phố|TP\\.?|Tp\\.?)\\s+/iu', '', $location);
+        if (is_string($withoutCityPrefix) && $withoutCityPrefix !== $location) {
+            $terms[] = trim($withoutCityPrefix);
+        }
+
+        $cityAliases = [
+            'Thành phố Hồ Chí Minh' => ['Hồ Chí Minh', 'TP. Hồ Chí Minh', 'TP.HCM', 'TP HCM', 'HCM', 'Sài Gòn', 'Sai Gon'],
+            'Thành phố Hà Nội' => ['Hà Nội'],
+            'Thành phố Hải Phòng' => ['Hải Phòng'],
+            'Thành phố Đà Nẵng' => ['Đà Nẵng'],
+            'Thành phố Huế' => ['Huế'],
+            'Thành phố Cần Thơ' => ['Cần Thơ'],
+        ];
+
+        foreach ($cityAliases[$location] ?? [] as $alias) {
+            $terms[] = $alias;
+        }
+
+        return array_values(array_unique(array_filter($terms)));
+    }
+
     private function buildBaseDetailQuery()
     {
         return TinTuyenDung::with([
@@ -94,10 +123,17 @@ class TinTuyenDungController extends Controller
 
         // Lọc theo tỉnh/thành phố hoặc địa điểm
         if ($request->filled('dia_diem')) {
-            $query->where('dia_diem_lam_viec', 'like', '%' . $request->dia_diem . '%');
+            $locationTerms = $this->buildLocationSearchTerms((string) $request->dia_diem);
+            $query->where(function ($q) use ($locationTerms) {
+                foreach ($locationTerms as $term) {
+                    $q->orWhere('dia_diem_lam_viec', 'like', '%' . $term . '%');
+                }
+            });
         }
 
-        $query->orderBy('created_at', 'desc');
+        $query
+            ->orderFeaturedFirst()
+            ->orderBy('created_at', 'desc');
 
         $perPage = (int) $request->get('per_page', 15);
         $data = $query->paginate($perPage);

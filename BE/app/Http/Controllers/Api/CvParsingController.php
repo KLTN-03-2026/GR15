@@ -183,9 +183,12 @@ class CvParsingController extends Controller
                 $parts = array_filter([
                     trim((string) ($item['ten'] ?? '')),
                     trim((string) ($item['vai_tro'] ?? '')),
-                    trim((string) ($item['cong_nghe'] ?? '')),
+                    trim((string) ($item['don_vi_hoac_khach_hang'] ?? '')),
+                    trim((string) ($item['linh_vuc_hoac_cong_cu'] ?? $item['cong_nghe'] ?? '')),
                     trim((string) ($item['mo_ta'] ?? '')),
-                    trim((string) ($item['link'] ?? '')),
+                    trim((string) ($item['ket_qua_noi_bat'] ?? '')),
+                    trim((string) ($item['loai_minh_chung'] ?? '')),
+                    trim((string) ($item['lien_ket_minh_chung'] ?? $item['link'] ?? '')),
                 ]);
                 return $parts === [] ? null : implode(' | ', $parts);
             })
@@ -263,12 +266,12 @@ class CvParsingController extends Controller
         }, $educationBlocks)));
 
         return match (true) {
-            str_contains($text, 'tiến sĩ') || str_contains($text, 'tien si') || str_contains($text, 'phd') => 'tien_si',
-            str_contains($text, 'thạc sĩ') || str_contains($text, 'thac si') || str_contains($text, 'master') => 'thac_si',
-            str_contains($text, 'đại học') || str_contains($text, 'dai hoc') || str_contains($text, 'university') => 'dai_hoc',
-            str_contains($text, 'cao đẳng') || str_contains($text, 'cao dang') || str_contains($text, 'college') => 'cao_dang',
-            str_contains($text, 'trung cấp') || str_contains($text, 'trung cap') => 'trung_cap',
-            str_contains($text, 'trung học') || str_contains($text, 'trung hoc') || str_contains($text, 'high school') => 'trung_hoc',
+            str_contains($text, 'tiến sĩ') || str_contains($text, 'tien si') || str_contains($text, 'phd') => 'Tiến sĩ',
+            str_contains($text, 'thạc sĩ') || str_contains($text, 'thac si') || str_contains($text, 'master') => 'Thạc sĩ',
+            str_contains($text, 'đại học') || str_contains($text, 'dai hoc') || str_contains($text, 'university') => 'Đại học',
+            str_contains($text, 'cao đẳng') || str_contains($text, 'cao dang') || str_contains($text, 'college') => 'Cao đẳng',
+            str_contains($text, 'trung cấp') || str_contains($text, 'trung cap') => 'Trung cấp',
+            str_contains($text, 'trung học') || str_contains($text, 'trung hoc') || str_contains($text, 'high school') => 'Trung học',
             default => null,
         };
     }

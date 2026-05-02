@@ -5,6 +5,7 @@ import { employerApplicationService, employerCompanyService, employerJobService 
 import { useNotify } from '@/composables/useNotify'
 import { formatDateTimeVN, formatHistoricalDateTimeVN } from '@/utils/dateTime'
 import { getApplicationStatusLabel, getApplicationStatusMeta } from '@/utils/applicationStatus'
+import { useEmployerCompanyPermissions } from '@/composables/useEmployerCompanyPermissions'
 
 const router = useRouter()
 const notify = useNotify()
@@ -13,6 +14,15 @@ const loading = ref(false)
 const company = ref(null)
 const jobs = ref([])
 const applications = ref([])
+const {
+  permissions,
+  permissionsLoaded,
+  ensurePermissionsLoaded,
+} = useEmployerCompanyPermissions()
+const canViewJobs = computed(() => permissionsLoaded.value && Boolean(permissions.value.jobs))
+const canViewApplications = computed(() => permissionsLoaded.value && Boolean(permissions.value.applications))
+const canViewCompany = computed(() => permissionsLoaded.value && Boolean(permissions.value.company_profile))
+const lockedMessage = 'Bạn không có quyền thực hiện chức năng này'
 
 const applicationStatusLabel = getApplicationStatusLabel
 const applicationStatusTone = (status) => `${getApplicationStatusMeta(status).classes} border border-transparent`
@@ -59,6 +69,89 @@ const stats = computed(() => {
 const recentJobs = computed(() => jobs.value.slice(0, 4))
 const recentApplications = computed(() => applications.value.slice(0, 5))
 
+const funnelStats = computed(() => {
+  const all = applications.value
+  const total = all.length || 1
+  const rows = [
+    { label: 'Chờ duyệt', status: 0 },
+    { label: 'Đã xem', status: 1 },
+    { label: 'Hẹn phỏng vấn', status: 2 },
+    { label: 'Qua phỏng vấn', status: 3 },
+    { label: 'Trúng tuyển', status: 4 },
+    { label: 'Từ chối', status: 5 },
+  ]
+
+  return rows.map((row) => {
+    const count = all.filter((item) => Number(item.trang_thai) === row.status).length
+    return {
+      ...row,
+      count,
+      percent: Math.round((count / total) * 100),
+    }
+  })
+})
+
+const advancedMetrics = computed(() => {
+  const all = applications.value
+  const total = all.length || 0
+  const interviewed = all.filter((item) => [2, 3, 4].includes(Number(item.trang_thai))).length
+  const hired = all.filter((item) => Number(item.trang_thai) === 4).length
+  const rejected = all.filter((item) => Number(item.trang_thai) === 5).length
+
+  return [
+    {
+      label: 'Tỷ lệ vào phỏng vấn',
+      value: total ? `${Math.round((interviewed / total) * 100)}%` : '0%',
+      hint: `${interviewed}/${total} hồ sơ đã vào pipeline phỏng vấn`,
+    },
+    {
+      label: 'Tỷ lệ tuyển thành công',
+      value: total ? `${Math.round((hired / total) * 100)}%` : '0%',
+      hint: `${hired}/${total} hồ sơ trúng tuyển`,
+    },
+    {
+      label: 'Tỷ lệ từ chối',
+      value: total ? `${Math.round((rejected / total) * 100)}%` : '0%',
+      hint: `${rejected}/${total} hồ sơ không phù hợp`,
+    },
+  ]
+})
+
+const cvSourceStats = computed(() => {
+  const uploaded = applications.value.filter((item) => item.ho_so?.file_cv).length
+  const builder = applications.value.filter((item) => !item.ho_so?.file_cv).length
+  const total = Math.max(1, uploaded + builder)
+
+  return [
+    { label: 'CV upload', count: uploaded, percent: Math.round((uploaded / total) * 100), tone: 'bg-blue-500' },
+    { label: 'CV tạo trên hệ thống', count: builder, percent: Math.round((builder / total) * 100), tone: 'bg-emerald-500' },
+  ]
+})
+
+const topApplicationJobs = computed(() => {
+  const map = new Map()
+
+  applications.value.forEach((application) => {
+    const jobId = application.tin_tuyen_dung?.id || application.tin_tuyen_dung_id
+    if (!jobId) return
+
+    const current = map.get(jobId) || {
+      id: jobId,
+      title: application.tin_tuyen_dung?.tieu_de || 'Tin tuyển dụng',
+      total: 0,
+      pending: 0,
+      hired: 0,
+    }
+
+    current.total += 1
+    if (Number(application.trang_thai) === 0) current.pending += 1
+    if (Number(application.trang_thai) === 4) current.hired += 1
+    map.set(jobId, current)
+  })
+
+  return [...map.values()].sort((a, b) => b.total - a.total).slice(0, 5)
+})
+
 const hiringInsights = computed(() => {
   const insights = []
 
@@ -74,6 +167,11 @@ const hiringInsights = computed(() => {
   const pendingApplications = applications.value.filter((item) => Number(item.trang_thai) === 0).length
   if (pendingApplications) {
     insights.push(`Có ${pendingApplications} hồ sơ đang ở trạng thái chờ. Nên xem và phản hồi sớm để không bỏ lỡ ứng viên phù hợp.`)
+  }
+
+  const topJob = topApplicationJobs.value[0]
+  if (topJob) {
+    insights.push(`Tin "${topJob.title}" đang có nhiều ứng viên nhất (${topJob.total} hồ sơ). Nên ưu tiên rà soát pipeline cho tin này.`)
   }
 
   if (!insights.length) {
@@ -101,10 +199,11 @@ const companyCompletion = computed(() => {
 const fetchDashboard = async () => {
   loading.value = true
   try {
+    await ensurePermissionsLoaded()
     const [companyRes, jobsRes, applicationsRes] = await Promise.all([
       employerCompanyService.getCompany().catch(() => null),
-      employerJobService.getJobs({ per_page: 50 }),
-      employerApplicationService.getApplications({ per_page: 50 }),
+      canViewJobs.value ? employerJobService.getJobs({ per_page: 50 }) : Promise.resolve(null),
+      canViewApplications.value ? employerApplicationService.getApplications({ per_page: 50 }) : Promise.resolve(null),
     ])
 
     company.value = companyRes?.data || null
@@ -117,9 +216,36 @@ const fetchDashboard = async () => {
   }
 }
 
-const goToCompany = () => router.push('/employer/company')
-const goToJobs = () => router.push('/employer/jobs')
-const goToCandidates = () => router.push('/employer/candidates')
+const showLockedNotice = () => {
+  notify.warning(lockedMessage)
+}
+
+const goToCompany = () => {
+  if (!canViewCompany.value) {
+    showLockedNotice()
+    return
+  }
+
+  router.push('/employer/company')
+}
+
+const goToJobs = () => {
+  if (!canViewJobs.value) {
+    showLockedNotice()
+    return
+  }
+
+  router.push('/employer/jobs')
+}
+
+const goToCandidates = () => {
+  if (!canViewApplications.value) {
+    showLockedNotice()
+    return
+  }
+
+  router.push('/employer/candidates')
+}
 
 const refreshDashboard = async () => {
   await fetchDashboard()
@@ -204,6 +330,85 @@ onMounted(fetchDashboard)
             <span class="material-symbols-outlined rounded-2xl p-3 text-[22px]" :class="card.tone">{{ card.icon }}</span>
           </div>
           <p class="mt-4 text-sm leading-6 text-slate-500 dark:text-slate-400">{{ card.hint }}</p>
+        </div>
+      </div>
+
+      <div class="mb-6 grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.35fr)_420px]">
+        <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm shadow-slate-950/5 dark:border-slate-800 dark:bg-slate-900">
+          <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h2 class="text-xl font-bold text-slate-900 dark:text-white">Phễu tuyển dụng</h2>
+              <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Theo dõi tỷ lệ hồ sơ ở từng bước xử lý để phát hiện điểm nghẽn.</p>
+            </div>
+            <span class="rounded-full bg-[#2463eb]/10 px-3 py-1 text-xs font-black text-[#2463eb] dark:text-[#8fb1ff]">
+              {{ applications.length }} hồ sơ
+            </span>
+          </div>
+          <div class="mt-5 space-y-4">
+            <div v-for="row in funnelStats" :key="row.label">
+              <div class="mb-2 flex items-center justify-between text-sm">
+                <span class="font-semibold text-slate-700 dark:text-slate-200">{{ row.label }}</span>
+                <span class="font-bold text-slate-900 dark:text-white">{{ row.count }} hồ sơ · {{ row.percent }}%</span>
+              </div>
+              <div class="h-3 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                <div class="h-full rounded-full bg-gradient-to-r from-[#2463eb] to-[#724dff]" :style="{ width: `${row.percent}%` }" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="space-y-4">
+          <div class="grid grid-cols-1 gap-3">
+            <div
+              v-for="metric in advancedMetrics"
+              :key="metric.label"
+              class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-950/5 dark:border-slate-800 dark:bg-slate-900"
+            >
+              <p class="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">{{ metric.label }}</p>
+              <p class="mt-2 text-3xl font-black text-slate-900 dark:text-white">{{ metric.value }}</p>
+              <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{ metric.hint }}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm shadow-slate-950/5 dark:border-slate-800 dark:bg-slate-900">
+          <h2 class="text-xl font-bold text-slate-900 dark:text-white">Nguồn CV trong ứng tuyển</h2>
+          <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">So sánh tỷ trọng CV upload và CV tạo trực tiếp trên hệ thống.</p>
+          <div class="mt-5 space-y-4">
+            <div v-for="source in cvSourceStats" :key="source.label">
+              <div class="mb-2 flex items-center justify-between text-sm">
+                <span class="font-semibold text-slate-700 dark:text-slate-200">{{ source.label }}</span>
+                <span class="font-bold text-slate-900 dark:text-white">{{ source.count }} · {{ source.percent }}%</span>
+              </div>
+              <div class="h-3 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                <div class="h-full rounded-full" :class="source.tone" :style="{ width: `${source.percent}%` }" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm shadow-slate-950/5 dark:border-slate-800 dark:bg-slate-900">
+          <h2 class="text-xl font-bold text-slate-900 dark:text-white">Top tin có nhiều ứng viên</h2>
+          <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Ưu tiên theo dõi các tin đang tạo nhiều hồ sơ nhất.</p>
+          <div v-if="topApplicationJobs.length" class="mt-5 space-y-3">
+            <div
+              v-for="job in topApplicationJobs"
+              :key="job.id"
+              class="rounded-2xl bg-slate-50 p-4 dark:bg-slate-800/70"
+            >
+              <p class="line-clamp-1 font-black text-slate-900 dark:text-white">{{ job.title }}</p>
+              <div class="mt-2 flex flex-wrap gap-2 text-xs font-bold text-slate-500 dark:text-slate-400">
+                <span>{{ job.total }} hồ sơ</span>
+                <span>{{ job.pending }} chờ xử lý</span>
+                <span>{{ job.hired }} trúng tuyển</span>
+              </div>
+            </div>
+          </div>
+          <p v-else class="mt-5 rounded-xl border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
+            Chưa có dữ liệu ứng tuyển theo tin.
+          </p>
         </div>
       </div>
 

@@ -37,8 +37,8 @@ const sortedMatches = computed(() => {
       return items.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
     case 'salary_desc':
       return items.sort((a, b) => {
-        const salaryA = Number(a.tin_tuyen_dung?.muc_luong || 0)
-        const salaryB = Number(b.tin_tuyen_dung?.muc_luong || 0)
+        const salaryA = Number(a.tin_tuyen_dung?.muc_luong_tu || 0)
+        const salaryB = Number(b.tin_tuyen_dung?.muc_luong_tu || 0)
         return salaryB - salaryA
       })
     case 'match_desc':
@@ -77,7 +77,7 @@ const formatSalary = (job) => {
   if (job.muc_luong_tu && job.muc_luong_den) {
     return `${formatCurrency(job.muc_luong_tu)} - ${formatCurrency(job.muc_luong_den)}`
   }
-  if (job.muc_luong) return formatCurrency(job.muc_luong)
+  if (job.muc_luong_tu) return formatCurrency(job.muc_luong_tu)
   return 'Thỏa thuận'
 }
 

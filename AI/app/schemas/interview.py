@@ -22,3 +22,14 @@ class MockInterviewReportRequest(BaseModel):
     session_id: int
     interview_context: dict | None = None
     transcript: list[dict] = Field(default_factory=list)
+
+
+class InterviewCopilotGenerateRequest(BaseModel):
+    ung_tuyen_id: int
+    application_context: dict = Field(default_factory=dict)
+
+
+class InterviewCopilotEvaluateRequest(BaseModel):
+    ung_tuyen_id: int
+    application_context: dict = Field(default_factory=dict)
+    interview_notes: dict = Field(default_factory=dict)

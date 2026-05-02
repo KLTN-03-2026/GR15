@@ -27,6 +27,12 @@ class CapNhatTrangThaiRequest extends FormRequest
                 'date',
                 function (string $attribute, mixed $value, \Closure $fail): void {
                     try {
+                        $targetStatus = (int) $this->input('trang_thai');
+
+                        if ($targetStatus > UngTuyen::TRANG_THAI_DA_HEN_PHONG_VAN) {
+                            return;
+                        }
+
                         if (Carbon::parse((string) $value, 'UTC')->lt(now('UTC'))) {
                             $fail('Ngày giờ hẹn phỏng vấn phải lớn hơn hoặc bằng thời điểm hiện tại.');
                         }
@@ -70,19 +76,44 @@ class CapNhatTrangThaiRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
-        if (!$this->filled('ngay_hen_phong_van')) {
-            return;
+        $payload = [];
+
+        if ($this->filled('hinh_thuc_phong_van')) {
+            $payload['hinh_thuc_phong_van'] = match (mb_strtolower(trim((string) $this->input('hinh_thuc_phong_van')))) {
+                'online' => 'online',
+                'offline', 'trực tiếp', 'truc tiep' => 'offline',
+                'phone', 'điện thoại', 'dien thoai' => 'phone',
+                default => $this->input('hinh_thuc_phong_van'),
+            };
         }
 
-        try {
-            $this->merge([
-                'ngay_hen_phong_van' => Carbon::parse((string) $this->input('ngay_hen_phong_van'), 'Asia/Ho_Chi_Minh')
+        if ($this->filled('ngay_hen_phong_van')) {
+            try {
+                $payload['ngay_hen_phong_van'] = Carbon::parse((string) $this->input('ngay_hen_phong_van'), 'Asia/Ho_Chi_Minh')
                     ->utc()
-                    ->format('Y-m-d H:i:s'),
-            ]);
-        } catch (\Throwable) {
-            // Giữ nguyên để validator xử lý.
+                    ->format('Y-m-d H:i:s');
+            } catch (\Throwable) {
+                // Giữ nguyên để validator xử lý.
+            }
         }
+
+        if ($payload !== []) {
+            $this->merge($payload);
+        }
+    }
+
+    public function attributes(): array
+    {
+        return [
+            'trang_thai' => 'trạng thái',
+            'ngay_hen_phong_van' => 'ngày giờ hẹn phỏng vấn',
+            'hinh_thuc_phong_van' => 'hình thức phỏng vấn',
+            'nguoi_phong_van' => 'người phỏng vấn',
+            'link_phong_van' => 'link phỏng vấn',
+            'ket_qua_phong_van' => 'kết quả phỏng vấn',
+            'hr_phu_trach_id' => 'HR phụ trách',
+            'ghi_chu' => 'ghi chú',
+        ];
     }
 
     public function messages(): array
@@ -90,6 +121,7 @@ class CapNhatTrangThaiRequest extends FormRequest
         return [
             'trang_thai.required' => 'Vui lòng cung cấp trạng thái mới.',
             'trang_thai.in' => 'Trạng thái không hợp lệ.',
+            'hinh_thuc_phong_van.in' => 'Hình thức phỏng vấn không hợp lệ. Vui lòng chọn Online, Trực tiếp hoặc Điện thoại.',
         ];
     }
 }

@@ -77,6 +77,41 @@ const scoreColor = (score) => {
   return 'text-rose-500 bg-rose-500/10'
 }
 
+const skillName = (skill) => {
+  if (!skill) return 'Không rõ kỹ năng'
+  if (typeof skill === 'string') return skill
+  if (typeof skill !== 'object') return String(skill)
+
+  return skill.skill_name
+    || skill.ten_ky_nang
+    || skill.name
+    || skill.ten
+    || skill.value
+    || 'Không rõ kỹ năng'
+}
+
+const skillMeta = (skill) => {
+  if (!skill || typeof skill !== 'object') return ''
+
+  const parts = []
+  if (skill.bat_buoc === true || skill.required === true) {
+    parts.push('Bắt buộc')
+  }
+
+  const weight = skill.trong_so ?? skill.weight
+  if (weight !== undefined && weight !== null && weight !== '') {
+    parts.push(`Trọng số ${Number(weight).toFixed(Number(weight) % 1 === 0 ? 0 : 1)}`)
+  }
+
+  return parts.join(' · ')
+}
+
+const skillKey = (skill, index, prefix = 'skill') => {
+  const name = skillName(skill)
+  const weight = skill && typeof skill === 'object' ? (skill.trong_so ?? skill.weight ?? '') : ''
+  return `${prefix}-${index}-${name}-${weight}`
+}
+
 const normalizePayload = (response) => {
   const payload = response?.data || {}
   records.value = payload.data || []
@@ -386,11 +421,12 @@ onMounted(async () => {
             <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Kỹ năng khớp</p>
             <div class="mt-3 flex flex-wrap gap-2">
               <span
-                v-for="skill in selectedRecord.matched_skills_json || []"
-                :key="skill"
-                class="rounded-full bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-600"
+                v-for="(skill, index) in selectedRecord.matched_skills_json || []"
+                :key="skillKey(skill, index, 'matched')"
+                class="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-600"
               >
-                {{ skill }}
+                <span>{{ skillName(skill) }}</span>
+                <span v-if="skillMeta(skill)" class="text-emerald-500/75">· {{ skillMeta(skill) }}</span>
               </span>
               <span v-if="!(selectedRecord.matched_skills_json || []).length" class="text-sm text-slate-400">
                 Chưa có kỹ năng khớp được ghi nhận.
@@ -402,11 +438,12 @@ onMounted(async () => {
             <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Kỹ năng còn thiếu</p>
             <div class="mt-3 flex flex-wrap gap-2">
               <span
-                v-for="skill in selectedRecord.missing_skills_json || []"
-                :key="skill"
-                class="rounded-full bg-rose-500/10 px-3 py-1.5 text-xs font-semibold text-rose-600"
+                v-for="(skill, index) in selectedRecord.missing_skills_json || []"
+                :key="skillKey(skill, index, 'missing')"
+                class="inline-flex items-center gap-1 rounded-full bg-rose-500/10 px-3 py-1.5 text-xs font-semibold text-rose-600"
               >
-                {{ skill }}
+                <span>{{ skillName(skill) }}</span>
+                <span v-if="skillMeta(skill)" class="text-rose-500/75">· {{ skillMeta(skill) }}</span>
               </span>
               <span v-if="!(selectedRecord.missing_skills_json || []).length" class="text-sm text-slate-400">
                 Không có kỹ năng thiếu nổi bật.

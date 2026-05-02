@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\CongTy\TaoCongTyRequest;
 use App\Http\Requests\CongTy\CapNhatCongTyRequest;
 use App\Models\CongTy;
+use App\Services\AuditLogService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -25,6 +26,21 @@ use Illuminate\Http\Request;
  */
 class AdminCongTyController extends Controller
 {
+    private function companyAuditSnapshot(CongTy $congTy): array
+    {
+        return $congTy->only([
+            'id',
+            'nguoi_dung_id',
+            'ten_cong_ty',
+            'email',
+            'so_dien_thoai',
+            'dia_chi',
+            'nganh_nghe_id',
+            'quy_mo',
+            'trang_thai',
+        ]);
+    }
+
     /**
      * GET /api/v1/admin/cong-tys
      * Danh sách tất cả công ty.
@@ -91,6 +107,16 @@ class AdminCongTyController extends Controller
         }
 
         $congTy = CongTy::create($data);
+        app(AuditLogService::class)->logModelAction(
+            actor: $request->user(),
+            action: 'admin_company_created',
+            description: "Admin tạo công ty {$congTy->ten_cong_ty}.",
+            target: $congTy,
+            company: $congTy,
+            after: $this->companyAuditSnapshot($congTy),
+            metadata: ['scope' => 'admin_company'],
+            request: $request,
+        );
 
         return response()->json([
             'success' => true,
@@ -122,8 +148,20 @@ class AdminCongTyController extends Controller
     {
         $congTy = CongTy::findOrFail($id);
         $data = $request->validated();
+        $before = $this->companyAuditSnapshot($congTy);
 
         $congTy->update($data);
+        app(AuditLogService::class)->logModelAction(
+            actor: $request->user(),
+            action: 'admin_company_updated',
+            description: "Admin cập nhật công ty {$congTy->ten_cong_ty}.",
+            target: $congTy,
+            company: $congTy,
+            before: $before,
+            after: $this->companyAuditSnapshot($congTy->fresh()),
+            metadata: ['scope' => 'admin_company'],
+            request: $request,
+        );
 
         return response()->json([
             'success' => true,
@@ -139,12 +177,23 @@ class AdminCongTyController extends Controller
     public function doiTrangThai(int $id): JsonResponse
     {
         $congTy = CongTy::findOrFail($id);
+        $before = $this->companyAuditSnapshot($congTy);
         $congTy->trang_thai = $congTy->trang_thai === CongTy::TRANG_THAI_HOAT_DONG
             ? CongTy::TRANG_THAI_TAM_NGUNG
             : CongTy::TRANG_THAI_HOAT_DONG;
         $congTy->save();
 
         $trangThai = $congTy->trang_thai === CongTy::TRANG_THAI_HOAT_DONG ? 'hoạt động' : 'tạm ngưng';
+        app(AuditLogService::class)->logModelAction(
+            actor: auth()->user(),
+            action: 'admin_company_status_toggled',
+            description: "Admin chuyển trạng thái công ty {$congTy->ten_cong_ty} sang {$trangThai}.",
+            target: $congTy,
+            company: $congTy,
+            before: $before,
+            after: $this->companyAuditSnapshot($congTy),
+            metadata: ['scope' => 'admin_company'],
+        );
 
         return response()->json([
             'success' => true,
@@ -159,7 +208,16 @@ class AdminCongTyController extends Controller
     public function destroy(int $id): JsonResponse
     {
         $congTy = CongTy::findOrFail($id);
+        $before = $this->companyAuditSnapshot($congTy);
         $congTy->delete();
+        app(AuditLogService::class)->logModelAction(
+            actor: auth()->user(),
+            action: 'admin_company_deleted',
+            description: "Admin xóa công ty {$before['ten_cong_ty']}.",
+            target: $congTy,
+            before: $before,
+            metadata: ['scope' => 'admin_company'],
+        );
 
         return response()->json([
             'success' => true,

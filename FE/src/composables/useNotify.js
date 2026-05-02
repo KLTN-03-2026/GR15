@@ -1,4 +1,5 @@
 import { useToast } from 'vue-toastification'
+import { extractApiErrorMessage } from '@/utils/apiErrors'
 
 export const useNotify = () => {
   const toast = useToast()
@@ -16,13 +17,7 @@ export const useNotify = () => {
     toast.warning(message, options)
 
   const apiError = (err, fallback = 'Đã xảy ra lỗi, vui lòng thử lại.') => {
-    const message =
-      err?.message ||
-      err?.data?.message ||
-      err?.response?.data?.message ||
-      fallback
-
-    toast.error(message)
+    toast.error(extractApiErrorMessage(err, fallback))
   }
 
   const saved = (entity = 'Dữ liệu') => {

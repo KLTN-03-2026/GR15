@@ -1,7 +1,10 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
-import { adminMarketService, companyService, userService } from '@/services/api'
+import { RouterLink } from 'vue-router'
+import { adminBillingService, adminMarketService, companyService, userService } from '@/services/api'
 import { useNotify } from '@/composables/useNotify'
+import { getStoredUser } from '@/utils/authStorage'
+import { hasAdminPermission } from '@/constants/adminPermissions'
 
 const notify = useNotify()
 
@@ -9,6 +12,12 @@ const loading = ref(false)
 const userStats = ref(null)
 const companyStats = ref(null)
 const marketDashboard = ref(null)
+const billingOverview = ref(null)
+const currentAdmin = computed(() => getStoredUser())
+const canViewUsers = computed(() => hasAdminPermission(currentAdmin.value, 'users'))
+const canViewCompanies = computed(() => hasAdminPermission(currentAdmin.value, 'companies'))
+const canViewStats = computed(() => hasAdminPermission(currentAdmin.value, 'stats'))
+const canViewBilling = computed(() => hasAdminPermission(currentAdmin.value, 'billing'))
 
 const formatCurrency = (value) => {
   const amount = Number(value || 0)
@@ -27,7 +36,7 @@ const statCards = computed(() => {
   const overview = marketDashboard.value?.overview || {}
 
   return [
-    {
+    canViewUsers.value ? {
       label: 'Người dùng toàn hệ thống',
       value: users.tong || 0,
       subValue: `${users.ung_vien || 0} ứng viên • ${users.nha_tuyen_dung || 0} nhà tuyển dụng`,
@@ -35,8 +44,8 @@ const statCards = computed(() => {
       icon: 'groups',
       tone: 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-300',
       progress: safePercent(users.dang_hoat_dong, users.tong),
-    },
-    {
+    } : null,
+    canViewCompanies.value ? {
       label: 'Công ty trên nền tảng',
       value: companies.tong || 0,
       subValue: `${companies.hoat_dong || 0} công ty đang hoạt động`,
@@ -44,8 +53,8 @@ const statCards = computed(() => {
       icon: 'domain',
       tone: 'bg-purple-50 text-purple-600 dark:bg-purple-900/20 dark:text-purple-300',
       progress: safePercent(companies.hoat_dong, companies.tong),
-    },
-    {
+    } : null,
+    canViewStats.value ? {
       label: 'Tin tuyển dụng đang chạy',
       value: overview.active_job_count || 0,
       subValue: `${overview.application_count || 0} lượt ứng tuyển`,
@@ -53,8 +62,8 @@ const statCards = computed(() => {
       icon: 'work',
       tone: 'bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-300',
       progress: 100,
-    },
-    {
+    } : null,
+    canViewStats.value ? {
       label: 'Lương trung bình thị trường',
       value: formatCurrency(overview.average_salary),
       subValue: `Median ${formatCurrency(overview.median_salary)}`,
@@ -62,12 +71,41 @@ const statCards = computed(() => {
       icon: 'payments',
       tone: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-300',
       progress: safePercent(overview.remote_job_count, overview.active_job_count),
-    },
-  ]
+    } : null,
+  ].filter(Boolean)
 })
 
 const topSkills = computed(() => (marketDashboard.value?.top_skills || []).slice(0, 5))
 const insights = computed(() => marketDashboard.value?.insights || [])
+const billingStats = computed(() => {
+  const totals = billingOverview.value?.totals || {}
+
+  if (!canViewBilling.value) return []
+
+  return [
+    {
+      label: 'Doanh thu đã xử lý',
+      value: formatCurrency(totals.processed_amount),
+      helper: `${totals.pending_count || 0} giao dịch pending`,
+      tone: 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-300',
+      icon: 'payments',
+    },
+    {
+      label: 'Nạp ví AI',
+      value: formatCurrency(totals.topup_amount),
+      helper: `${totals.topup_count || 0} giao dịch thành công`,
+      tone: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-300',
+      icon: 'account_balance_wallet',
+    },
+    {
+      label: 'Doanh thu gói Pro',
+      value: formatCurrency(totals.subscription_revenue),
+      helper: `${totals.subscription_count || 0} lượt mua`,
+      tone: 'bg-violet-50 text-violet-600 dark:bg-violet-900/20 dark:text-violet-300',
+      icon: 'workspace_premium',
+    },
+  ]
+})
 const monthlyTrend = computed(() => {
   const rows = marketDashboard.value?.monthly_job_trend || []
   const max = Math.max(...rows.map((item) => Number(item.count || 0)), 1)
@@ -85,15 +123,17 @@ const topCategories = computed(() => (marketDashboard.value?.top_categories || [
 const fetchDashboard = async () => {
   loading.value = true
   try {
-    const [usersRes, companiesRes, marketRes] = await Promise.all([
-      userService.getUserStats(),
-      companyService.getCompanyStats(),
-      adminMarketService.getDashboard(),
+    const [usersRes, companiesRes, marketRes, billingRes] = await Promise.all([
+      canViewUsers.value ? userService.getUserStats() : Promise.resolve(null),
+      canViewCompanies.value ? companyService.getCompanyStats() : Promise.resolve(null),
+      canViewStats.value ? adminMarketService.getDashboard() : Promise.resolve(null),
+      canViewBilling.value ? adminBillingService.getOverview() : Promise.resolve(null),
     ])
 
     userStats.value = usersRes?.data || null
     companyStats.value = companiesRes?.data || null
     marketDashboard.value = marketRes?.data || null
+    billingOverview.value = billingRes?.data || null
   } catch (error) {
     notify.apiError(error, 'Không tải được dữ liệu dashboard quản trị.')
   } finally {
@@ -110,7 +150,7 @@ onMounted(fetchDashboard)
       <div>
         <h2 class="text-3xl font-extrabold tracking-tight">Dashboard quản trị</h2>
         <p class="mt-1 text-slate-500 dark:text-slate-400">
-          Theo dõi sức khỏe toàn hệ thống, thị trường tuyển dụng và hành vi sử dụng theo thời gian thực.
+          Theo dõi các module quản trị mà tài khoản của bạn đang được cấp quyền.
         </p>
       </div>
       <div class="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300">
@@ -145,7 +185,38 @@ onMounted(fetchDashboard)
       </article>
     </div>
 
-    <div class="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.7fr)_420px]">
+    <section v-if="canViewBilling" class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div class="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h4 class="font-bold text-lg">Billing snapshot</h4>
+          <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Doanh thu, top-up và subscription từ module thanh toán.</p>
+        </div>
+        <RouterLink
+          to="/admin/billing"
+          class="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+        >
+          <span class="material-symbols-outlined text-[18px]">open_in_new</span>
+          Mở billing dashboard
+        </RouterLink>
+      </div>
+
+      <div class="grid gap-4 md:grid-cols-3">
+        <article
+          v-for="item in billingStats"
+          :key="item.label"
+          class="rounded-2xl border border-slate-200 bg-slate-50/70 p-5 dark:border-slate-700 dark:bg-slate-950/45"
+        >
+          <div class="flex size-11 items-center justify-center rounded-xl" :class="item.tone">
+            <span class="material-symbols-outlined">{{ item.icon }}</span>
+          </div>
+          <p class="mt-4 text-sm font-medium text-slate-500 dark:text-slate-400">{{ item.label }}</p>
+          <h3 class="mt-2 text-2xl font-bold text-slate-900 dark:text-white">{{ loading ? '...' : item.value }}</h3>
+          <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">{{ item.helper }}</p>
+        </article>
+      </div>
+    </section>
+
+    <div v-if="canViewStats" class="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.7fr)_420px]">
       <section class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <div class="mb-6 flex items-center justify-between">
           <div>
@@ -277,5 +348,12 @@ onMounted(fetchDashboard)
         </div>
       </section>
     </div>
+
+    <section
+      v-if="!statCards.length && !canViewBilling && !canViewStats"
+      class="rounded-xl border border-dashed border-slate-200 bg-white p-8 text-center text-slate-500 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400"
+    >
+      Tài khoản admin này chưa được cấp quyền xem dữ liệu dashboard. Vui lòng liên hệ Super Admin để được cấp quyền module phù hợp.
+    </section>
   </div>
 </template>

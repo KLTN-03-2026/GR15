@@ -29,6 +29,8 @@ class HoSo extends Model
         'file_cv',
         'nguon_ho_so',
         'mau_cv',
+        'bo_cuc_cv',
+        'ten_template_cv',
         'che_do_mau_cv',
         'vi_tri_ung_tuyen_muc_tieu',
         'ten_nganh_nghe_muc_tieu',
@@ -70,13 +72,23 @@ class HoSo extends Model
     // CONSTANTS - Trình độ
     // ==========================================
     const TRINH_DO_LIST = [
-        'trung_hoc',
-        'trung_cap',
-        'cao_dang',
-        'dai_hoc',
-        'thac_si',
-        'tien_si',
-        'khac',
+        'Trung học',
+        'Trung cấp',
+        'Cao đẳng',
+        'Đại học',
+        'Thạc sĩ',
+        'Tiến sĩ',
+        'Khác',
+    ];
+
+    const TRINH_DO_LABELS = [
+        'trung_hoc' => 'Trung học',
+        'trung_cap' => 'Trung cấp',
+        'cao_dang' => 'Cao đẳng',
+        'dai_hoc' => 'Đại học',
+        'thac_si' => 'Thạc sĩ',
+        'tien_si' => 'Tiến sĩ',
+        'khac' => 'Khác',
     ];
 
     // ==========================================
@@ -137,6 +149,58 @@ class HoSo extends Model
         return $this->trang_thai === self::TRANG_THAI_AN;
     }
 
+    public static function acceptedTrinhDoValues(): array
+    {
+        return array_values(array_unique([
+            ...array_keys(self::TRINH_DO_LABELS),
+            ...array_values(self::TRINH_DO_LABELS),
+        ]));
+    }
+
+    public static function normalizeTrinhDo(?string $value): ?string
+    {
+        $value = trim((string) $value);
+
+        if ($value === '') {
+            return null;
+        }
+
+        return self::TRINH_DO_LABELS[$value] ?? (
+            in_array($value, self::TRINH_DO_LIST, true) ? $value : $value
+        );
+    }
+
+    public static function legacyTrinhDoKey(?string $value): ?string
+    {
+        $normalized = self::normalizeTrinhDo($value);
+
+        if ($normalized === null) {
+            return null;
+        }
+
+        $key = array_search($normalized, self::TRINH_DO_LABELS, true);
+
+        return $key === false ? null : $key;
+    }
+
+    public static function trinhDoQueryValues(?string $value): array
+    {
+        $normalized = self::normalizeTrinhDo($value);
+        $legacyKey = self::legacyTrinhDoKey($value);
+
+        return array_values(array_filter(array_unique([$normalized, $legacyKey])));
+    }
+
+    public function getTrinhDoAttribute($value): ?string
+    {
+        return self::normalizeTrinhDo($value);
+    }
+
+    public function setTrinhDoAttribute($value): void
+    {
+        $this->attributes['trinh_do'] = self::normalizeTrinhDo($value);
+    }
+
     /**
      * Lấy nhãn trạng thái dạng text.
      */
@@ -154,16 +218,7 @@ class HoSo extends Model
      */
     public function getTenTrinhDoAttribute(): string
     {
-        return match ($this->trinh_do) {
-            'trung_hoc' => 'Trung học',
-            'trung_cap' => 'Trung cấp',
-            'cao_dang' => 'Cao đẳng',
-            'dai_hoc' => 'Đại học',
-            'thac_si' => 'Thạc sĩ',
-            'tien_si' => 'Tiến sĩ',
-            'khac' => 'Khác',
-            default => $this->trinh_do ?? 'Chưa cập nhật',
-        };
+        return self::normalizeTrinhDo($this->trinh_do) ?? 'Chưa cập nhật';
     }
 
     public function getAnhCvUrlAttribute(): ?string

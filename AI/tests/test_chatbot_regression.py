@@ -22,9 +22,12 @@ def sample_context() -> dict:
         "candidate_profile": {
             "ho_ten": "Nguyen Van A",
             "tieu_de_ho_so": "CV Backend Laravel",
+            "vi_tri_ung_tuyen_muc_tieu": "Backend Developer Laravel",
+            "ten_nganh_nghe_muc_tieu": "Công nghệ thông tin",
             "kinh_nghiem_nam": 1,
             "trinh_do": "Dai hoc",
             "parsed_skills": ["Laravel", "Git", "REST API", "PHP"],
+            "builder_skills": ["Laravel", "PHP"],
         },
         "career_report": {
             "nghe_de_xuat": "Backend Developer Laravel",
@@ -197,9 +200,11 @@ class ChatbotRegressionTests(unittest.TestCase):
             [],
             INTENT_LEARNING_PLAN,
         )
-        self.assertIn("Giai đoạn 1:", answer)
-        self.assertIn("Giai đoạn 2:", answer)
-        self.assertIn("Giai đoạn 3:", answer)
+        self.assertIn("Career Path Simulator 30/60/90 ngày:", answer)
+        self.assertIn("30 ngày đầu:", answer)
+        self.assertIn("60 ngày:", answer)
+        self.assertIn("90 ngày:", answer)
+        self.assertIn("Mốc kiểm tra:", answer)
 
 
 if __name__ == "__main__":

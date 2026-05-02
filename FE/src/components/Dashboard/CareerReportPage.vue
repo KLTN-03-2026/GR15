@@ -1,17 +1,32 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { careerReportService, profileService } from '@/services/api'
+import { RouterLink } from 'vue-router'
+import { careerReportService, profileService, walletService } from '@/services/api'
 import { useNotify } from '@/composables/useNotify'
+import {
+  getBillingFeatureLabel,
+  getEntitlementActionLabel,
+  getEntitlementCoverageNote,
+  getEntitlementUsageHint,
+} from '@/utils/billing'
 
 const notify = useNotify()
 
 const loadingProfiles = ref(false)
 const loadingReports = ref(false)
+const loadingBilling = ref(false)
 const generating = ref(false)
+const deletingReportId = ref(null)
+const showDeleteModal = ref(false)
+const reportToDelete = ref(null)
 const profiles = ref([])
 const reports = ref([])
 const selectedProfileId = ref('')
 const selectedReportId = ref(null)
+const wallet = ref(null)
+const pricing = ref([])
+const entitlements = ref([])
+const currentSubscription = ref(null)
 
 const pagination = reactive({
   current_page: 1,
@@ -30,19 +45,41 @@ const selectedReport = computed(() =>
   reports.value.find((item) => Number(item.id) === Number(selectedReportId.value)) || null
 )
 
-const summary = computed(() => {
-  const total = reports.value.length
-  const latest = selectedReport.value || reports.value[0] || null
-  const averageFit = total
-    ? Math.round(reports.value.reduce((sum, item) => sum + Number(item.muc_do_phu_hop || 0), 0) / total)
-    : 0
+const walletStats = computed(() => ({
+  available: Number(wallet.value?.so_du_kha_dung || 0),
+  hold: Number(wallet.value?.so_du_tam_giu || 0),
+}))
 
-  return {
-    total,
-    averageFit,
-    latestRole: latest?.nghe_de_xuat || 'Chưa có',
-    latestModel: latest?.model_version || 'Nội bộ',
-  }
+const careerReportPrice = computed(() =>
+  Number(pricing.value.find((item) => item.feature_code === 'career_report_generation')?.don_gia || 0)
+)
+
+const careerReportEntitlement = computed(() =>
+  entitlements.value.find((item) => item.feature_code === 'career_report_generation') || null
+)
+
+const careerReportBillingLabel = computed(() => {
+  return getEntitlementActionLabel(careerReportEntitlement.value, {
+    actionLabel: 'Sinh Career Report',
+    price: careerReportPrice.value,
+    formatCurrency,
+  })
+})
+
+const careerReportWalletNote = computed(() => {
+  return getEntitlementCoverageNote(careerReportEntitlement.value, {
+    currentSubscription: currentSubscription.value,
+    featureLabel: getBillingFeatureLabel('career_report_generation'),
+    price: careerReportPrice.value,
+    formatCurrency,
+  })
+})
+
+const careerReportUsageHint = computed(() => {
+  return getEntitlementUsageHint(careerReportEntitlement.value, {
+    currentSubscription: currentSubscription.value,
+    successOutcomeText: 'báo cáo được tạo thành công',
+  })
 })
 
 const normalizeProfiles = (response) => {
@@ -73,38 +110,6 @@ const normalizeReports = (response) => {
   }
 }
 
-const parseSkillSuggestions = (value) => {
-  if (!value) return []
-
-  if (Array.isArray(value)) {
-    return value.flatMap((item) => {
-      if (typeof item === 'string') return item
-      return item?.label || item?.name || item?.ten_ky_nang || null
-    }).filter(Boolean)
-  }
-
-  if (typeof value === 'object') {
-    if (Array.isArray(value.items)) return parseSkillSuggestions(value.items)
-    if (typeof value.raw_text === 'string') {
-      return value.raw_text
-        .split(/[\n,;-]+/)
-        .map(item => item.trim())
-        .filter(Boolean)
-    }
-  }
-
-  if (typeof value === 'string') {
-    return value
-      .split(/[\n,;-]+/)
-      .map(item => item.trim())
-      .filter(Boolean)
-  }
-
-  return []
-}
-
-const reportSkills = computed(() => parseSkillSuggestions(selectedReport.value?.goi_y_ky_nang_bo_sung))
-
 const formattedReportBody = computed(() => {
   const raw = selectedReport.value?.bao_cao_chi_tiet || ''
   return raw
@@ -112,6 +117,9 @@ const formattedReportBody = computed(() => {
     .map(line => line.trim())
     .filter(Boolean)
 })
+
+const formatCurrency = (value) =>
+  `${new Intl.NumberFormat('vi-VN').format(Number(value || 0))} đ`
 
 const formatDate = (value) => {
   if (!value) return 'Chưa rõ'
@@ -154,6 +162,40 @@ const loadReports = async (page = 1) => {
   }
 }
 
+const loadBilling = async () => {
+  loadingBilling.value = true
+  try {
+    const [walletResponse, pricingResponse, entitlementsResponse] = await Promise.all([
+      walletService.getWallet(),
+      walletService.getPricing(),
+      walletService.getEntitlements(),
+    ])
+
+    wallet.value = walletResponse?.data?.wallet || null
+    pricing.value = pricingResponse?.data || []
+    currentSubscription.value = entitlementsResponse?.data?.current_subscription || null
+    entitlements.value = entitlementsResponse?.data?.entitlements || []
+  } catch (error) {
+    notify.apiError(error, 'Không thể tải dữ liệu ví cho Career Report.')
+  } finally {
+    loadingBilling.value = false
+  }
+}
+
+const handleBillingError = (error) => {
+  if (error?.code === 'WALLET_INSUFFICIENT_BALANCE') {
+    notify.warning('Số dư ví không đủ để sinh Career Report. Hãy nạp thêm tiền rồi thử lại.')
+    return true
+  }
+
+  if (error?.code === 'BILLING_DUPLICATE_REQUEST') {
+    notify.info('Yêu cầu sinh báo cáo trước đó vẫn đang xử lý. Vui lòng chờ thêm một chút.')
+    return true
+  }
+
+  return false
+}
+
 const generateReport = async () => {
   if (!selectedProfileId.value) {
     notify.warning('Bạn cần chọn một hồ sơ trước khi sinh Career Report.')
@@ -162,13 +204,46 @@ const generateReport = async () => {
 
   generating.value = true
   try {
-    await careerReportService.generateReport(selectedProfileId.value)
+    const response = await careerReportService.generateReport(selectedProfileId.value)
     notify.success('Đã sinh Career Report mới cho hồ sơ đã chọn.')
-    await loadReports(1)
+    await Promise.all([loadReports(1), loadBilling()])
+    if (response?.data?.id) {
+      selectedReportId.value = response.data.id
+    }
   } catch (error) {
+    if (handleBillingError(error)) return
     notify.apiError(error, 'Không thể sinh Career Report.')
   } finally {
     generating.value = false
+  }
+}
+
+const openDeleteModal = (report) => {
+  if (!report?.id) return
+  reportToDelete.value = report
+  showDeleteModal.value = true
+}
+
+const closeDeleteModal = () => {
+  if (deletingReportId.value) return
+  showDeleteModal.value = false
+  reportToDelete.value = null
+}
+
+const deleteReport = async () => {
+  if (!reportToDelete.value?.id) return
+
+  deletingReportId.value = reportToDelete.value.id
+  try {
+    await careerReportService.deleteReport(reportToDelete.value.id)
+    notify.success('Đã xóa Career Report khỏi lịch sử.')
+    showDeleteModal.value = false
+    reportToDelete.value = null
+    await loadReports(pagination.current_page)
+  } catch (error) {
+    notify.apiError(error, 'Không thể xóa Career Report.')
+  } finally {
+    deletingReportId.value = null
   }
 }
 
@@ -178,7 +253,7 @@ watch(selectedProfileId, async (value) => {
 })
 
 onMounted(async () => {
-  await loadProfiles()
+  await Promise.all([loadProfiles(), loadBilling()])
   if (selectedProfileId.value) {
     await loadReports(1)
   }
@@ -187,44 +262,45 @@ onMounted(async () => {
 
 <template>
   <div class="min-h-screen text-slate-900 dark:text-white">
-    <section class="mx-auto max-w-7xl px-6 py-8">
-      <div class="rounded-[30px] border border-blue-200 bg-gradient-to-r from-white via-blue-50 to-[#dce7ff] px-8 py-8 shadow-[0_28px_90px_rgba(148,163,184,0.18)] dark:border-blue-500/20 dark:bg-gradient-to-r dark:from-slate-900 dark:via-[#16264d] dark:to-[#1b49d4] dark:shadow-[0_28px_90px_rgba(14,21,45,0.45)]">
-        <div class="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-          <div class="max-w-3xl">
-            <p class="text-xs font-semibold uppercase tracking-[0.45em] text-blue-600/80 dark:text-blue-100/70">Career Report</p>
-            <h1 class="mt-3 text-4xl font-black tracking-tight text-slate-900 dark:text-white">Báo cáo định hướng nghề nghiệp</h1>
-            <p class="mt-3 max-w-2xl text-base leading-7 text-slate-600 dark:text-blue-50/80">
-              Sinh báo cáo riêng từ CV của bạn để xem mức độ phù hợp, nghề gợi ý và các kỹ năng nên ưu tiên bồi dưỡng tiếp.
-            </p>
-          </div>
-
-          <div class="grid min-w-[320px] grid-cols-2 gap-3 sm:grid-cols-4">
-            <div class="rounded-2xl border border-blue-200 bg-white/70 px-4 py-4 backdrop-blur dark:border-white/10 dark:bg-white/8">
-              <p class="text-xs uppercase tracking-[0.28em] text-blue-600/70 dark:text-blue-100/65">Tổng báo cáo</p>
-              <p class="mt-3 text-3xl font-black text-slate-900 dark:text-white">{{ summary.total }}</p>
-            </div>
-            <div class="rounded-2xl border border-blue-200 bg-white/70 px-4 py-4 backdrop-blur dark:border-white/10 dark:bg-white/8">
-              <p class="text-xs uppercase tracking-[0.28em] text-blue-600/70 dark:text-blue-100/65">Phù hợp TB</p>
-              <p class="mt-3 text-3xl font-black text-slate-900 dark:text-white">{{ summary.averageFit }}%</p>
-            </div>
-            <div class="rounded-2xl border border-blue-200 bg-white/70 px-4 py-4 backdrop-blur dark:border-white/10 dark:bg-white/8">
-              <p class="text-xs uppercase tracking-[0.28em] text-blue-600/70 dark:text-blue-100/65">Gợi ý gần nhất</p>
-              <p class="mt-3 text-lg font-black leading-6 text-slate-900 dark:text-white">{{ summary.latestRole }}</p>
-            </div>
-            <div class="rounded-2xl border border-blue-200 bg-white/70 px-4 py-4 backdrop-blur dark:border-white/10 dark:bg-white/8">
-              <p class="text-xs uppercase tracking-[0.28em] text-blue-600/70 dark:text-blue-100/65">Model</p>
-              <p class="mt-3 text-lg font-black leading-6 text-slate-900 dark:text-white">{{ summary.latestModel }}</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="mt-8 grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
+    <section class="mx-auto max-w-[1600px] px-6 py-6">
+      <div class="grid gap-6 xl:grid-cols-[340px_minmax(0,1fr)]">
         <aside class="space-y-6">
+          <section class="rounded-[28px] border border-emerald-200 bg-gradient-to-br from-emerald-50 via-white to-teal-50 p-6 shadow-[0_22px_60px_rgba(16,185,129,0.12)] dark:border-emerald-500/20 dark:bg-slate-900/85">
+            <div class="flex items-start justify-between gap-4">
+              <div>
+                <p class="text-xs font-semibold uppercase tracking-[0.3em] text-emerald-600/80 dark:text-emerald-200/70">AI Wallet</p>
+                <h2 class="mt-3 text-2xl font-bold text-slate-900 dark:text-white">
+                  {{ loadingBilling ? 'Đang tải số dư...' : formatCurrency(walletStats.available) }}
+                </h2>
+                <p class="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-400">
+                  {{ careerReportWalletNote }}
+                </p>
+              </div>
+              <RouterLink
+                :to="{ name: 'Wallet' }"
+                class="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-emerald-700"
+              >
+                <span class="material-symbols-outlined text-[18px]">account_balance_wallet</span>
+                Nạp ví
+              </RouterLink>
+            </div>
+
+            <div class="mt-5 grid grid-cols-2 gap-3">
+              <div class="rounded-2xl border border-white/70 bg-white/85 px-4 py-4 dark:border-white/10 dark:bg-slate-950/40">
+                <p class="text-xs uppercase tracking-[0.25em] text-slate-500">Khả dụng</p>
+                <p class="mt-2 text-xl font-black text-slate-900 dark:text-white">{{ formatCurrency(walletStats.available) }}</p>
+              </div>
+              <div class="rounded-2xl border border-white/70 bg-white/85 px-4 py-4 dark:border-white/10 dark:bg-slate-950/40">
+                <p class="text-xs uppercase tracking-[0.25em] text-slate-500">Tạm giữ</p>
+                <p class="mt-2 text-xl font-black text-slate-900 dark:text-white">{{ formatCurrency(walletStats.hold) }}</p>
+              </div>
+            </div>
+          </section>
+
           <section class="rounded-[28px] border border-slate-200 bg-white/95 p-6 shadow-[0_22px_60px_rgba(148,163,184,0.12)] dark:border-white/10 dark:bg-slate-900/85 dark:shadow-[0_22px_60px_rgba(15,23,42,0.32)]">
             <h2 class="text-2xl font-bold text-slate-900 dark:text-white">Sinh báo cáo mới</h2>
             <p class="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-400">
-              Chọn hồ sơ muốn phân tích rồi sinh báo cáo tư vấn nghề nghiệp bằng AI.
+              Chọn hồ sơ muốn phân tích rồi sinh báo cáo tư vấn nghề nghiệp bằng AI. {{ careerReportUsageHint }}
             </p>
 
             <div class="mt-5">
@@ -256,8 +332,9 @@ onMounted(async () => {
               @click="generateReport"
             >
               <span class="material-symbols-outlined">{{ generating ? 'hourglass_top' : 'auto_awesome' }}</span>
-              <span>{{ generating ? 'Đang sinh báo cáo...' : 'Sinh Career Report mới' }}</span>
+              <span>{{ generating ? 'Đang sinh báo cáo...' : careerReportBillingLabel }}</span>
             </button>
+
           </section>
 
           <section class="rounded-[28px] border border-slate-200 bg-white/95 p-6 shadow-[0_22px_60px_rgba(148,163,184,0.12)] dark:border-white/10 dark:bg-slate-900/85 dark:shadow-[0_22px_60px_rgba(15,23,42,0.32)]">
@@ -277,36 +354,52 @@ onMounted(async () => {
             </div>
 
             <div v-else class="space-y-3 pt-5">
-              <button
+              <div
                 v-for="report in reports"
                 :key="report.id"
-                type="button"
+                role="button"
+                tabindex="0"
                 class="w-full rounded-2xl border px-4 py-4 text-left transition"
                 :class="Number(selectedReportId) === Number(report.id)
                   ? 'border-blue-400/40 bg-blue-500/10'
                   : 'border-slate-200 bg-slate-50 hover:border-slate-300 dark:border-white/10 dark:bg-slate-950/40 dark:hover:border-white/20'"
                 @click="selectedReportId = report.id"
+                @keydown.enter.prevent="selectedReportId = report.id"
+                @keydown.space.prevent="selectedReportId = report.id"
               >
-                <div class="flex items-start justify-between gap-4">
-                  <div>
-                    <h3 class="text-lg font-bold text-slate-900 dark:text-white">{{ report.nghe_de_xuat || 'Chưa xác định' }}</h3>
-                    <p class="mt-2 text-sm text-slate-600 dark:text-slate-400">
+                <div class="flex items-start justify-between gap-3">
+                  <div class="min-w-0 flex-1">
+                    <h3 class="break-words text-base font-bold leading-6 text-slate-900 dark:text-white">{{ report.nghe_de_xuat || 'Chưa xác định' }}</h3>
+                    <p class="mt-2 break-words text-sm leading-5 text-slate-600 dark:text-slate-400">
                       {{ report.ho_so?.tieu_de_ho_so || `Hồ sơ #${report.ho_so_id}` }}
                     </p>
                   </div>
-                  <div class="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1 text-sm font-semibold text-emerald-700 dark:text-emerald-200">
+                  <div class="shrink-0 rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1 text-sm font-semibold text-emerald-700 dark:text-emerald-200">
                     {{ Math.round(Number(report.muc_do_phu_hop || 0)) }}%
                   </div>
                 </div>
-                <p class="mt-3 text-xs uppercase tracking-[0.3em] text-slate-500">{{ formatDate(report.created_at) }}</p>
-              </button>
+                <div class="mt-4 flex flex-wrap items-center justify-between gap-2">
+                  <p class="text-xs font-semibold text-slate-500 dark:text-slate-400">{{ formatDate(report.created_at) }}</p>
+                  <div class="flex items-center gap-2">
+                    <button
+                      type="button"
+                      class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-rose-50 text-rose-600 transition hover:bg-rose-100 disabled:opacity-60 dark:bg-rose-950/30 dark:text-rose-300 dark:hover:bg-rose-950/50"
+                      :disabled="deletingReportId === report.id"
+                      title="Xóa report"
+                      @click.stop="openDeleteModal(report)"
+                    >
+                      <span class="material-symbols-outlined text-[18px]">{{ deletingReportId === report.id ? 'hourglass_top' : 'delete' }}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           </section>
         </aside>
 
-        <section class="rounded-[28px] border border-slate-200 bg-white/95 p-6 shadow-[0_22px_60px_rgba(148,163,184,0.12)] dark:border-white/10 dark:bg-slate-900/85 dark:shadow-[0_22px_60px_rgba(15,23,42,0.32)]">
+        <section class="rounded-[28px] border border-slate-200 bg-white/95 p-8 shadow-[0_22px_60px_rgba(148,163,184,0.12)] dark:border-white/10 dark:bg-slate-900/85 dark:shadow-[0_22px_60px_rgba(15,23,42,0.32)]">
           <div v-if="selectedReport" class="space-y-6">
-            <div class="flex flex-col gap-4 border-b border-slate-200 pb-5 lg:flex-row lg:items-start lg:justify-between dark:border-white/10">
+            <div class="border-b border-slate-200 pb-5 dark:border-white/10">
               <div>
                 <p class="text-xs font-semibold uppercase tracking-[0.35em] text-blue-600/70 dark:text-blue-100/60">Career Insight</p>
                 <h2 class="mt-3 text-3xl font-black text-slate-900 dark:text-white">{{ selectedReport.nghe_de_xuat || 'Chưa xác định' }}</h2>
@@ -315,51 +408,14 @@ onMounted(async () => {
                   vào {{ formatDate(selectedReport.created_at) }}.
                 </p>
               </div>
-
-              <div class="flex flex-wrap gap-3">
-                <div class="rounded-2xl border border-slate-200 bg-slate-50/90 px-4 py-4 text-center dark:border-white/10 dark:bg-slate-950/50">
-                  <p class="text-[11px] uppercase tracking-[0.3em] text-slate-500 dark:text-slate-400">Mức độ phù hợp</p>
-                  <p class="mt-2 text-3xl font-black text-slate-900 dark:text-white">{{ Math.round(Number(selectedReport.muc_do_phu_hop || 0)) }}%</p>
-                </div>
-                <div class="rounded-2xl border border-slate-200 bg-slate-50/90 px-4 py-4 text-center dark:border-white/10 dark:bg-slate-950/50">
-                  <p class="text-[11px] uppercase tracking-[0.3em] text-slate-500 dark:text-slate-400">Model</p>
-                  <p class="mt-2 text-lg font-black text-slate-900 dark:text-white">{{ selectedReport.model_version || 'Nội bộ' }}</p>
-                </div>
-              </div>
             </div>
 
-            <div class="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
-              <div class="rounded-[24px] border border-slate-200 bg-slate-50/80 p-5 dark:border-white/10 dark:bg-slate-950/45">
-                <h3 class="text-xl font-bold text-slate-900 dark:text-white">Báo cáo chi tiết</h3>
-                <div v-if="formattedReportBody.length" class="mt-4 space-y-3 text-sm leading-7 text-slate-700 dark:text-slate-300">
-                  <p v-for="(line, index) in formattedReportBody" :key="`${selectedReport.id}-${index}`">{{ line }}</p>
-                </div>
-                <p v-else class="mt-4 text-sm leading-7 text-slate-600 dark:text-slate-400">Chưa có báo cáo chi tiết để hiển thị.</p>
+            <div class="rounded-[24px] border border-slate-200 bg-slate-50/80 p-7 dark:border-white/10 dark:bg-slate-950/45">
+              <h3 class="text-2xl font-bold text-slate-900 dark:text-white">Báo cáo chi tiết</h3>
+              <div v-if="formattedReportBody.length" class="mt-5 max-w-5xl space-y-4 text-base leading-8 text-slate-700 dark:text-slate-300">
+                <p v-for="(line, index) in formattedReportBody" :key="`${selectedReport.id}-${index}`">{{ line }}</p>
               </div>
-
-              <div class="space-y-4">
-                <div class="rounded-[24px] border border-slate-200 bg-slate-50/80 p-5 dark:border-white/10 dark:bg-slate-950/45">
-                  <h3 class="text-xl font-bold text-slate-900 dark:text-white">Kỹ năng nên ưu tiên</h3>
-                  <div v-if="reportSkills.length" class="mt-4 flex flex-wrap gap-2">
-                    <span
-                      v-for="skill in reportSkills"
-                      :key="skill"
-                      class="rounded-full border border-blue-400/20 bg-blue-500/10 px-3 py-2 text-sm font-semibold text-blue-700 dark:text-blue-100"
-                    >
-                      {{ skill }}
-                    </span>
-                  </div>
-                  <p v-else class="mt-4 text-sm leading-7 text-slate-600 dark:text-slate-400">Chưa có gợi ý kỹ năng cụ thể trong báo cáo này.</p>
-                </div>
-
-                <div class="rounded-[24px] border border-white/10 bg-gradient-to-br from-[#1c56f4] to-[#5a5ff6] p-5 shadow-[0_20px_48px_rgba(41,95,230,0.28)]">
-                  <p class="text-xs font-semibold uppercase tracking-[0.3em] text-blue-100/70">Next Step</p>
-                  <h3 class="mt-3 text-2xl font-black text-white">Dùng báo cáo này để nâng cấp hồ sơ</h3>
-                  <p class="mt-3 text-sm leading-7 text-blue-50/85">
-                    Sau khi xem xong, bạn có thể quay lại `Kỹ năng của tôi`, `CV của tôi` hoặc `Mock Interview` để luyện tập đúng hướng AI đang gợi ý.
-                  </p>
-                </div>
-              </div>
+              <p v-else class="mt-4 text-sm leading-7 text-slate-600 dark:text-slate-400">Chưa có báo cáo chi tiết để hiển thị.</p>
             </div>
           </div>
 
@@ -375,5 +431,42 @@ onMounted(async () => {
         </section>
       </div>
     </section>
+
+    <div v-if="showDeleteModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 dark:bg-black/70">
+      <div class="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900">
+        <div class="mb-5 flex items-center gap-3">
+          <span class="material-symbols-outlined rounded-xl bg-rose-50 p-2 text-2xl text-rose-600 dark:bg-rose-950/40">warning</span>
+          <div>
+            <h3 class="text-lg font-bold text-slate-900 dark:text-white">Xóa lịch sử báo cáo</h3>
+            <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Thao tác này chỉ xóa bản ghi report trong lịch sử của bạn.</p>
+          </div>
+        </div>
+
+        <div class="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-600 dark:border-slate-700 dark:bg-slate-950/50 dark:text-slate-300">
+          Bạn có chắc muốn xóa Career Report
+          <span class="font-bold text-slate-900 dark:text-white">"{{ reportToDelete?.nghe_de_xuat || 'chưa xác định' }}"</span>
+          được tạo lúc {{ formatDate(reportToDelete?.created_at) }}?
+        </div>
+
+        <div class="mt-6 flex gap-3">
+          <button
+            class="flex-1 rounded-lg border border-slate-300 px-4 py-2 font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+            :disabled="Boolean(deletingReportId)"
+            type="button"
+            @click="closeDeleteModal"
+          >
+            Hủy
+          </button>
+          <button
+            class="flex-1 rounded-lg bg-rose-600 px-4 py-2 font-semibold text-white transition-colors hover:bg-rose-700 disabled:opacity-60"
+            :disabled="Boolean(deletingReportId)"
+            type="button"
+            @click="deleteReport"
+          >
+            {{ deletingReportId ? 'Đang xóa...' : 'Xóa báo cáo' }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>

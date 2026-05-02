@@ -4,7 +4,7 @@ import { authService, profileService } from '@/services/api'
 import { useNotify } from '@/composables/useNotify'
 import { getStoredCandidate, updateStoredCandidate } from '@/utils/authStorage'
 import { formatDateVN } from '@/utils/dateTime'
-import { hasBuilderCv } from '@/utils/profileCvBuilder'
+import { hasBuilderCv, openCvPrintPreview } from '@/utils/profileCvBuilder'
 
 const notify = useNotify()
 
@@ -24,15 +24,16 @@ const currentCandidate = ref(getStoredCandidate())
 const selectedPersonalFieldKeys = ref([])
 const detailModalOpen = ref(false)
 const selectedProfileDetail = ref(null)
+const profileToDelete = ref(null)
 
 const educationOptions = [
-  { value: 'trung_hoc', label: 'Trung học' },
-  { value: 'trung_cap', label: 'Trung cấp' },
-  { value: 'cao_dang', label: 'Cao đẳng' },
-  { value: 'dai_hoc', label: 'Đại học' },
-  { value: 'thac_si', label: 'Thạc sĩ' },
-  { value: 'tien_si', label: 'Tiến sĩ' },
-  { value: 'khac', label: 'Khác' },
+  { value: 'Trung học', label: 'Trung học' },
+  { value: 'Trung cấp', label: 'Trung cấp' },
+  { value: 'Cao đẳng', label: 'Cao đẳng' },
+  { value: 'Đại học', label: 'Đại học' },
+  { value: 'Thạc sĩ', label: 'Thạc sĩ' },
+  { value: 'Tiến sĩ', label: 'Tiến sĩ' },
+  { value: 'Khác', label: 'Khác' },
 ]
 
 const form = reactive({
@@ -78,7 +79,7 @@ const statusMeta = (value) => {
 }
 
 const degreeLabel = (value) => {
-  return educationOptions.find((option) => option.value === value)?.label || 'Chưa cập nhật'
+  return educationOptions.find((option) => option.value === value || option.label === value)?.label || value || 'Chưa cập nhật'
 }
 
 const parseStatusMeta = (profile) => {
@@ -271,6 +272,17 @@ const openDetailModal = (profile) => {
   detailModalOpen.value = true
 }
 
+const downloadBuilderProfile = (profile) => {
+  const opened = openCvPrintPreview({
+    profile,
+    owner: currentCandidate.value,
+  })
+
+  if (!opened) {
+    notify.warning('Trình duyệt đang chặn cửa sổ tải xuống. Hãy cho phép popup và thử lại.')
+  }
+}
+
 const closeDetailModal = () => {
   detailModalOpen.value = false
   selectedProfileDetail.value = null
@@ -337,15 +349,24 @@ const toggleProfileStatus = async (profile) => {
   }
 }
 
-const deleteProfile = async (profile) => {
+const openDeleteProfileModal = (profile) => {
   if (deletingId.value) return
-  const confirmed = window.confirm(`Bạn có chắc muốn xóa hồ sơ "${profile.tieu_de_ho_so}" không?`)
-  if (!confirmed) return
+  profileToDelete.value = profile
+}
 
-  deletingId.value = profile.id
+const closeDeleteProfileModal = () => {
+  if (deletingId.value) return
+  profileToDelete.value = null
+}
+
+const deleteProfile = async () => {
+  if (!profileToDelete.value || deletingId.value) return
+
+  deletingId.value = profileToDelete.value.id
   try {
-    await profileService.deleteProfile(profile.id)
+    await profileService.deleteProfile(profileToDelete.value.id)
     notify.success('Đã xóa hồ sơ thành công.')
+    profileToDelete.value = null
     await fetchProfiles()
   } catch (error) {
     notify.apiError(error, 'Không thể xóa hồ sơ.')
@@ -590,15 +611,14 @@ onMounted(fetchProfiles)
           </div>
 
           <div class="flex flex-wrap items-center gap-2 shrink-0">
-            <a
-              v-if="profile.file_cv"
-              :href="cvFileUrl(profile.file_cv)"
+            <button
+              v-if="hasBuilderCv(profile)"
               class="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-              target="_blank"
-              rel="noopener noreferrer"
+              type="button"
+              @click="downloadBuilderProfile(profile)"
             >
-              <span class="material-symbols-outlined text-[18px]">download</span> Tải xuống
-            </a>
+              <span class="material-symbols-outlined text-[18px]">picture_as_pdf</span> Tải PDF
+            </button>
             <button
               class="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors"
               :class="statusMeta(profile.trang_thai).actionClass"
@@ -638,7 +658,7 @@ onMounted(fetchProfiles)
             <button
               class="flex items-center justify-center size-9 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
               type="button"
-              @click="deleteProfile(profile)"
+              @click="openDeleteProfileModal(profile)"
             >
               <span class="material-symbols-outlined text-[18px]">
                 {{ deletingId === profile.id ? 'hourglass_top' : 'delete' }}
@@ -780,6 +800,41 @@ onMounted(fetchProfiles)
     </div>
 
     <div
+      v-if="profileToDelete"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 px-4 py-6 backdrop-blur-sm"
+      @click.self="closeDeleteProfileModal"
+    >
+      <div class="w-full max-w-md rounded-[28px] border border-slate-200 bg-white p-6 shadow-2xl">
+        <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-red-50 text-red-600">
+          <span class="material-symbols-outlined">delete_forever</span>
+        </div>
+        <h3 class="mt-5 text-xl font-black text-slate-900">Xóa hồ sơ/CV?</h3>
+        <p class="mt-3 text-sm leading-6 text-slate-500">
+          Hồ sơ <span class="font-semibold text-slate-900">{{ profileToDelete.tieu_de_ho_so }}</span>
+          sẽ bị xóa khỏi danh sách CV của bạn. Hành động này không thể hoàn tác.
+        </p>
+        <div class="mt-6 flex justify-end gap-3">
+          <button
+            class="rounded-2xl border border-slate-200 px-5 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+            :disabled="Boolean(deletingId)"
+            type="button"
+            @click="closeDeleteProfileModal"
+          >
+            Hủy
+          </button>
+          <button
+            class="rounded-2xl bg-red-600 px-5 py-3 text-sm font-bold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+            :disabled="Boolean(deletingId)"
+            type="button"
+            @click="deleteProfile"
+          >
+            {{ deletingId ? 'Đang xóa...' : 'Xóa hồ sơ' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div
       v-if="detailModalOpen && selectedProfileDetail"
       class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 px-4 py-6 backdrop-blur-sm"
       @click.self="closeDetailModal"
@@ -846,17 +901,16 @@ onMounted(fetchProfiles)
             <div class="rounded-2xl border border-slate-200 px-4 py-4">
               <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">File CV</p>
               <div class="mt-3">
-                <a
-                  v-if="selectedProfileDetail.file_cv"
-                  :href="cvFileUrl(selectedProfileDetail.file_cv)"
+                <button
+                  v-if="hasBuilderCv(selectedProfileDetail)"
                   class="inline-flex items-center gap-2 rounded-xl bg-[#2463eb]/10 px-4 py-2.5 text-sm font-semibold text-[#2463eb] transition hover:bg-[#2463eb] hover:text-white"
-                  target="_blank"
-                  rel="noopener noreferrer"
+                  type="button"
+                  @click="downloadBuilderProfile(selectedProfileDetail)"
                 >
-                  <span class="material-symbols-outlined text-[18px]">download</span>
-                  Tải xuống CV
-                </a>
-                <p v-else class="text-sm text-slate-500">Hồ sơ này chưa có file CV.</p>
+                  <span class="material-symbols-outlined text-[18px]">picture_as_pdf</span>
+                  Tải PDF
+                </button>
+                <p v-else class="text-sm text-slate-500">Hồ sơ này không hỗ trợ tải xuống trực tiếp.</p>
               </div>
             </div>
           </div>

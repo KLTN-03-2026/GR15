@@ -12,8 +12,44 @@ const REVERB_SCHEME = (import.meta.env.VITE_REVERB_SCHEME || 'http').toLowerCase
 let echoInstance = null
 let currentToken = null
 let authListenersRegistered = false
+const statusListeners = new Set()
 
 const isRealtimeConfigured = () => Boolean(REVERB_APP_KEY && REVERB_HOST && REVERB_PORT)
+let connectionStatus = isRealtimeConfigured() ? 'idle' : 'disabled'
+
+const notifyStatusListeners = (status, detail = {}) => {
+  connectionStatus = status
+
+  statusListeners.forEach((listener) => {
+    try {
+      listener(status, detail)
+    } catch {
+      // UI listeners should not be able to break realtime connection handling.
+    }
+  })
+}
+
+const bindConnectionStatusEvents = (echo) => {
+  const connection = echo?.connector?.pusher?.connection
+  if (!connection?.bind) return
+
+  connection.bind('state_change', (states = {}) => {
+    const nextStatus = states.current || 'unknown'
+
+    if (['connecting', 'connected', 'unavailable', 'failed', 'disconnected'].includes(nextStatus)) {
+      notifyStatusListeners(nextStatus, states)
+      return
+    }
+
+    notifyStatusListeners('unknown', states)
+  })
+
+  connection.bind('connected', () => notifyStatusListeners('connected'))
+  connection.bind('unavailable', () => notifyStatusListeners('unavailable'))
+  connection.bind('failed', () => notifyStatusListeners('failed'))
+  connection.bind('disconnected', () => notifyStatusListeners('disconnected'))
+  connection.bind('error', (error) => notifyStatusListeners('error', { error }))
+}
 
 const getBackendOrigin = () => {
   if (typeof window === 'undefined') return ''
@@ -39,7 +75,10 @@ const registerAuthListeners = () => {
 }
 
 const createEcho = () => {
-  if (typeof window === 'undefined' || !isRealtimeConfigured()) return null
+  if (typeof window === 'undefined' || !isRealtimeConfigured()) {
+    notifyStatusListeners('disabled')
+    return null
+  }
 
   const token = getAuthToken()
 
@@ -54,6 +93,7 @@ const createEcho = () => {
   }
 
   window.Pusher = Pusher
+  notifyStatusListeners('connecting')
 
   echoInstance = new Echo({
     broadcaster: 'reverb',
@@ -72,6 +112,7 @@ const createEcho = () => {
     },
   })
 
+  bindConnectionStatusEvents(echoInstance)
   currentToken = token
   registerAuthListeners()
 
@@ -96,6 +137,22 @@ export const disconnectRealtime = () => {
   echoInstance.disconnect()
   echoInstance = null
   currentToken = null
+  notifyStatusListeners(isRealtimeConfigured() ? 'disconnected' : 'disabled')
 }
 
 export const realtimeEnabled = () => isRealtimeConfigured()
+
+export const getRealtimeStatus = () => connectionStatus
+
+export const subscribeRealtimeStatus = (listener) => {
+  if (typeof listener !== 'function') {
+    return () => {}
+  }
+
+  statusListeners.add(listener)
+  listener(connectionStatus)
+
+  return () => {
+    statusListeners.delete(listener)
+  }
+}

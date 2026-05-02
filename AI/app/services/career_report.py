@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 from collections import Counter
+import json
+from json import JSONDecodeError
+from urllib.error import URLError
+from urllib.request import Request, urlopen
 
 from app.core.config import settings
 from app.core.logger import get_logger
@@ -214,6 +218,8 @@ def generate_career_report(
         matching_profiles = matching_profiles or []
 
         skill_names = _extract_skill_names(cv_profile.get("parsed_skills"))
+        if not skill_names:
+            skill_names = _extract_skill_names(cv_profile.get("builder_skills"))
         category_counter = _count_skill_categories(skill_names)
         top_matches = _normalize_matching_profiles(matching_profiles)
 
@@ -222,7 +228,7 @@ def generate_career_report(
         nghe_de_xuat = recommended_roles[0] if recommended_roles else "Chưa xác định rõ vị trí phù hợp"
         muc_do_phu_hop = _calculate_fit_score(category_counter, top_matches)
         goi_y_ky_nang_bo_sung = _suggest_missing_skills(skill_names, top_matches, category_counter)
-        bao_cao_chi_tiet = _build_report_text(
+        reasoning_context = _build_reasoning_context(
             cv_profile=cv_profile,
             category_counter=category_counter,
             top_matches=top_matches,
@@ -232,6 +238,21 @@ def generate_career_report(
             muc_do_phu_hop=muc_do_phu_hop,
             goi_y_ky_nang_bo_sung=goi_y_ky_nang_bo_sung,
         )
+        report_outline = _build_report_outline(reasoning_context)
+        template_report = _build_report_text(
+            reasoning_context=reasoning_context,
+            report_outline=report_outline,
+        )
+
+        try:
+            llm_report = _generate_llm_report_text(reasoning_context, report_outline)
+            if llm_report:
+                bao_cao_chi_tiet = llm_report
+            else:
+                bao_cao_chi_tiet = template_report
+        except Exception as exc:
+            logger.warning("Career report LLM reasoning fallback to template: %s", exc)
+            bao_cao_chi_tiet = template_report
 
         return {
             "success": True,
@@ -389,7 +410,7 @@ def _canonicalize_suggested_skill(skill: str) -> str:
     return SUGGESTION_CANONICAL_MAP.get(normalized, value)
 
 
-def _build_report_text(
+def _build_reasoning_context(
     *,
     cv_profile: dict,
     category_counter: Counter,
@@ -399,73 +420,165 @@ def _build_report_text(
     nghe_de_xuat: str,
     muc_do_phu_hop: float,
     goi_y_ky_nang_bo_sung: list[str],
-) -> str:
+) -> dict:
     ho_ten = cv_profile.get("parsed_name") or cv_profile.get("ho_ten") or "Ứng viên"
-    kinh_nghiem_nam = cv_profile.get("kinh_nghiem_nam")
-    category_labels = [
-        CATEGORY_LABELS.get(category, category)
-        for category, _count in category_counter.most_common(3)
+    skill_names = _extract_skill_names(cv_profile.get("parsed_skills")) or _extract_skill_names(cv_profile.get("builder_skills"))
+    strength_categories = [
+        {
+            "category": category,
+            "label": CATEGORY_LABELS.get(category, category),
+            "evidence_count": count,
+        }
+        for category, count in category_counter.most_common(5)
     ]
 
+    return {
+        "candidate_profile": {
+            "ho_ten": ho_ten,
+            "tieu_de_ho_so": cv_profile.get("tieu_de_ho_so"),
+            "vi_tri_ung_tuyen_muc_tieu": cv_profile.get("vi_tri_ung_tuyen_muc_tieu"),
+            "ten_nganh_nghe_muc_tieu": cv_profile.get("ten_nganh_nghe_muc_tieu"),
+            "muc_tieu_nghe_nghiep": cv_profile.get("muc_tieu_nghe_nghiep"),
+            "mo_ta_ban_than": cv_profile.get("mo_ta_ban_than"),
+            "trinh_do": cv_profile.get("trinh_do"),
+            "kinh_nghiem_nam": cv_profile.get("kinh_nghiem_nam"),
+            "candidate_level": candidate_level,
+        },
+        "skills": {
+            "detected_skills": skill_names[:20],
+            "strength_categories": strength_categories,
+            "suggested_skill_gaps": goi_y_ky_nang_bo_sung,
+        },
+        "matching_evidence": {
+            "top_matching_jobs": top_matches[:5],
+            "average_top_match_score": round(sum(item["score"] for item in top_matches[:3]) / len(top_matches[:3]), 2) if top_matches[:3] else None,
+        },
+        "recommendation": {
+            "primary_role": nghe_de_xuat,
+            "fit_score": muc_do_phu_hop,
+            "recommended_roles": recommended_roles,
+            "method": "hybrid_rule_matching_evidence",
+        },
+    }
+
+
+def _build_report_outline(reasoning_context: dict) -> dict:
+    recommendation = reasoning_context["recommendation"]
+    skills = reasoning_context["skills"]
+    profile = reasoning_context["candidate_profile"]
+    matches = reasoning_context["matching_evidence"].get("top_matching_jobs") or []
+    candidate_level = profile.get("candidate_level") or "junior"
+
+    career_paths = [
+        {
+            "role": role,
+            "priority": index + 1,
+            "rationale": _path_rationale(role, index, matches, skills.get("strength_categories") or []),
+        }
+        for index, role in enumerate((recommendation.get("recommended_roles") or [])[:3])
+    ]
+
+    return {
+        "executive_summary": {
+            "primary_role": recommendation.get("primary_role"),
+            "fit_score": recommendation.get("fit_score"),
+            "candidate_level": candidate_level,
+            "confidence_basis": [
+                "Kỹ năng đã parse từ CV",
+                "Nhóm năng lực nổi bật theo skill catalog",
+                "Top job matching và kỹ năng còn thiếu",
+            ],
+        },
+        "career_paths": career_paths,
+        "skill_gap_analysis": {
+            "current_strengths": [item["label"] for item in (skills.get("strength_categories") or [])[:4]],
+            "priority_gaps": skills.get("suggested_skill_gaps") or [],
+        },
+        "development_roadmap": {
+            "next_30_days": _roadmap_items(candidate_level, skills.get("suggested_skill_gaps") or [], 0),
+            "next_60_days": _roadmap_items(candidate_level, skills.get("suggested_skill_gaps") or [], 1),
+            "next_90_days": _roadmap_items(candidate_level, skills.get("suggested_skill_gaps") or [], 2),
+        },
+        "application_strategy": {
+            "target_jobs": [
+                {
+                    "job_title": item.get("job_title"),
+                    "score": item.get("score"),
+                    "matched_skills": item.get("matched_skills") or [],
+                    "missing_skills": item.get("missing_skills") or [],
+                }
+                for item in matches[:3]
+            ],
+            "portfolio_suggestions": _portfolio_suggestions(recommendation.get("primary_role"), skills.get("suggested_skill_gaps") or []),
+        },
+    }
+
+
+def _build_report_text(*, reasoning_context: dict, report_outline: dict) -> str:
+    profile = reasoning_context["candidate_profile"]
+    recommendation = reasoning_context["recommendation"]
+    skills = reasoning_context["skills"]
+    matching = reasoning_context["matching_evidence"]
+    ho_ten = profile.get("ho_ten") or "Ứng viên"
+    muc_do_phu_hop = float(recommendation.get("fit_score") or 0)
+    nghe_de_xuat = recommendation.get("primary_role") or "Chưa xác định rõ vị trí phù hợp"
+    kinh_nghiem_nam = profile.get("kinh_nghiem_nam")
+
     intro = (
-        f"Báo cáo định hướng nghề nghiệp cho {ho_ten}: hiện hồ sơ có mức độ phù hợp khoảng {muc_do_phu_hop:.2f}/100 "
+        f"Báo cáo định hướng nghề nghiệp cho {ho_ten}: hồ sơ hiện đạt mức phù hợp khoảng {muc_do_phu_hop:.2f}/100 "
         f"với hướng nghề đề xuất chính là {nghe_de_xuat}."
     )
 
     if isinstance(kinh_nghiem_nam, (int, float)):
-        experience_line = f"Ứng viên hiện có khoảng {kinh_nghiem_nam:g} năm kinh nghiệm liên quan."
+        experience_line = f"Ứng viên hiện có khoảng {kinh_nghiem_nam:g} năm kinh nghiệm, được ước lượng ở cấp độ {profile.get('candidate_level')}."
     else:
-        experience_line = "Hồ sơ cho thấy ứng viên đã có nền tảng kinh nghiệm ban đầu phù hợp với nhóm công việc đề xuất."
+        experience_line = f"Hồ sơ được ước lượng ở cấp độ {profile.get('candidate_level')} dựa trên tiêu đề, kỹ năng và dữ liệu CV đã parse."
 
-    if category_labels:
-        category_line = "Các nhóm năng lực nổi bật gồm: " + ", ".join(category_labels) + "."
+    strengths = skills.get("strength_categories") or []
+    if strengths:
+        category_line = "Các nhóm năng lực nổi bật gồm: " + ", ".join(item["label"] for item in strengths[:3]) + "."
     else:
         category_line = "Hệ thống chưa nhận diện được nhóm năng lực nổi bật một cách thật rõ ràng."
 
-    level_line = f"Cấp độ hồ sơ hiện tại được ước lượng ở mức: {candidate_level}."
-
-    alternative_roles = [
-        role for role in recommended_roles[1:4]
-        if role != nghe_de_xuat
-    ]
-    if alternative_roles:
-        role_block = "Ngoài hướng chính, ứng viên cũng có thể cân nhắc thêm các vai trò:\n" + "\n".join(
-            f"- {role}" for role in alternative_roles
+    career_paths = report_outline.get("career_paths") or []
+    if len(career_paths) > 1:
+        role_block = "Các hướng nghề có thể cân nhắc:\n" + "\n".join(
+            f"- {item['role']}: {item['rationale']}" for item in career_paths
         )
     else:
         role_block = "Hiện tại hồ sơ đang tập trung khá rõ vào một hướng nghề chính."
 
+    top_matches = matching.get("top_matching_jobs") or []
     if top_matches:
-        top_match_lines = ["Một số vị trí đang có mức tương thích tốt:"]
+        top_match_lines = ["Một số vị trí trong hệ thống đang có mức tương thích tốt:"]
         for match in top_matches[:3]:
-            top_match_lines.append(
-                f"- {match['job_title']} ({match['score']:.2f}/100)"
-            )
+            top_match_lines.append(f"- {match['job_title']} ({match['score']:.2f}/100)")
         top_match_block = "\n".join(top_match_lines)
     else:
-        top_match_block = "Hiện chưa có đủ dữ liệu matching để đưa ra nhiều vị trí tương thích."
+        top_match_block = "Hiện chưa có đủ dữ liệu matching để đối chiếu với nhiều vị trí đang tuyển."
 
-    if goi_y_ky_nang_bo_sung:
-        skill_block = "Các kỹ năng nên ưu tiên bổ sung:\n" + "\n".join(
-            f"- {skill}" for skill in goi_y_ky_nang_bo_sung
-        )
+    gaps = skills.get("suggested_skill_gaps") or []
+    if gaps:
+        skill_block = "Các kỹ năng nên ưu tiên bổ sung:\n" + "\n".join(f"- {skill}" for skill in gaps)
     else:
-        skill_block = (
-            "Bộ kỹ năng hiện tại đã có nhiều điểm giao với các vị trí phù hợp; "
-            "ứng viên nên tiếp tục đào sâu vào các kỹ năng đang có để tăng sức cạnh tranh."
-        )
+        skill_block = "Bộ kỹ năng hiện tại đã có nhiều điểm giao với các vị trí phù hợp; ứng viên nên tiếp tục đào sâu kỹ năng hiện có."
 
-    development_plan = _build_development_plan(candidate_level, goi_y_ky_nang_bo_sung)
+    roadmap = report_outline.get("development_roadmap") or {}
+    development_plan = (
+        "Lộ trình 30/60/90 ngày:\n"
+        + "- 30 ngày: " + "; ".join(roadmap.get("next_30_days") or []) + "\n"
+        + "- 60 ngày: " + "; ".join(roadmap.get("next_60_days") or []) + "\n"
+        + "- 90 ngày: " + "; ".join(roadmap.get("next_90_days") or [])
+    )
 
     closing = (
-        "Khuyến nghị chung: nên tiếp tục ứng tuyển vào các vị trí có cùng nhóm kỹ năng với hồ sơ hiện tại, "
-        "đồng thời ưu tiên hoàn thiện những kỹ năng còn thiếu xuất hiện lặp lại ở các JD có mức phù hợp cao."
+        "Khuyến nghị chung: nên dùng báo cáo này như một bản định hướng có căn cứ từ dữ liệu CV và matching, "
+        "đồng thời cập nhật CV sau mỗi giai đoạn học tập/dự án để hệ thống tái đánh giá chính xác hơn."
     )
 
     return "\n\n".join([
         intro,
         experience_line,
-        level_line,
         category_line,
         role_block,
         top_match_block,
@@ -473,6 +586,281 @@ def _build_report_text(
         development_plan,
         closing,
     ])
+
+
+def _path_rationale(role: str, index: int, matches: list[dict], strengths: list[dict]) -> str:
+    if index == 0 and matches:
+        return f"Đây là hướng ưu tiên vì có job matching cao nhất và bám sát dữ liệu tuyển dụng hiện có ({matches[0].get('score', 0):.2f}/100)."
+    if strengths:
+        return "Hướng này phù hợp với nhóm năng lực nổi bật: " + ", ".join(item["label"] for item in strengths[:2]) + "."
+    return "Hướng này nên được xem như lựa chọn tham khảo khi ứng viên bổ sung thêm dữ liệu kỹ năng và kinh nghiệm."
+
+
+def _roadmap_items(candidate_level: str, gaps: list[str], stage: int) -> list[str]:
+    primary_gap = gaps[0] if gaps else "kỹ năng trọng tâm của hướng nghề đề xuất"
+    secondary_gap = gaps[1] if len(gaps) > 1 else primary_gap
+
+    if stage == 0:
+        return [
+            f"Đánh giá lại CV và chuẩn hóa mô tả kinh nghiệm theo hướng {candidate_level}.",
+            f"Học/củng cố nền tảng {primary_gap}.",
+            "Chọn 2-3 JD mục tiêu để đối chiếu yêu cầu kỹ năng.",
+        ]
+    if stage == 1:
+        return [
+            f"Xây một mini project hoặc case study thể hiện {primary_gap}.",
+            f"Bổ sung kỹ năng {secondary_gap} vào portfolio nếu phù hợp.",
+            "Cập nhật CV bằng số liệu, phạm vi công việc và kết quả đạt được.",
+        ]
+    return [
+        "Ứng tuyển thử vào nhóm vị trí có điểm matching cao nhất.",
+        "Luyện phỏng vấn theo các kỹ năng còn thiếu xuất hiện lặp lại trong JD.",
+        "Đo lại matching sau khi cập nhật CV để kiểm tra mức cải thiện.",
+    ]
+
+
+def _portfolio_suggestions(primary_role: str | None, gaps: list[str]) -> list[str]:
+    role = primary_role or "hướng nghề mục tiêu"
+    suggestions = [
+        f"Xây một dự án nhỏ mô phỏng công việc thực tế của {role}.",
+        "Viết README thể hiện bối cảnh, cách triển khai, kết quả và bài học.",
+    ]
+    if gaps:
+        suggestions.append("Ưu tiên đưa vào dự án các kỹ năng: " + ", ".join(gaps[:3]) + ".")
+    return suggestions
+
+
+def _generate_llm_report_text(reasoning_context: dict, report_outline: dict) -> str | None:
+    provider = (settings.career_report_provider or "template").lower().strip()
+    if provider in {"", "template", "rule", "rules"}:
+        return None
+
+    prompt = _build_llm_report_prompt(reasoning_context, report_outline)
+    if provider == "openai":
+        return _generate_openai_report(prompt)
+    if provider == "ollama":
+        return _generate_ollama_report(prompt)
+
+    logger.warning("Unknown CAREER_REPORT_PROVIDER=%s, fallback to template", provider)
+    return None
+
+
+def _build_llm_report_prompt(reasoning_context: dict, report_outline: dict) -> str:
+    return """
+Viết Career Report bằng tiếng Việt, ngắn gọn, có căn cứ từ JSON.
+
+Quy tắc bắt buộc:
+- KHÔNG viết tiêu đề "Báo cáo học thuật", "Mục lục", "Giới thiệu thông tin cá nhân", "Phân tích dữ liệu".
+- KHÔNG đánh số bắt đầu từ 1 hoặc 2 cho các phần bị bỏ.
+- Bắt đầu ngay bằng đúng dòng: Đề xuất ngành nghề chính
+- Sau đó chỉ dùng các mục sau:
+Đề xuất ngành nghề chính
+Lý do đề xuất
+Điểm mạnh và điểm cần cải thiện
+Lộ trình 30/60/90 ngày
+Chiến lược cập nhật CV và ứng tuyển
+- Không dùng markdown đậm/nghiêng, không dùng ký tự # hoặc code block.
+- Mỗi mục 2-5 gạch đầu dòng ngắn, thực tế. Tổng độ dài khoảng 450-700 từ.
+- Không bịa dữ liệu ngoài JSON; nếu thiếu dữ liệu thì nói ngắn gọn là dữ liệu còn hạn chế.
+
+JSON:
+""" + json.dumps(
+        _compact_llm_evidence(reasoning_context, report_outline),
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+
+
+def _compact_llm_evidence(reasoning_context: dict, report_outline: dict) -> dict:
+    profile = reasoning_context.get("candidate_profile") or {}
+    skills = reasoning_context.get("skills") or {}
+    recommendation = reasoning_context.get("recommendation") or {}
+    matching = reasoning_context.get("matching_evidence") or {}
+    summary = report_outline.get("executive_summary") or {}
+    skill_gap = report_outline.get("skill_gap_analysis") or {}
+    roadmap = report_outline.get("development_roadmap") or {}
+    strategy = report_outline.get("application_strategy") or {}
+
+    return {
+        "candidate": {
+            "title": profile.get("tieu_de_ho_so"),
+            "target_role": profile.get("vi_tri_ung_tuyen_muc_tieu"),
+            "target_industry": profile.get("ten_nganh_nghe_muc_tieu"),
+            "career_goal": profile.get("muc_tieu_nghe_nghiep"),
+            "education": profile.get("trinh_do"),
+            "years": profile.get("kinh_nghiem_nam"),
+            "level": profile.get("candidate_level"),
+        },
+        "recommendation": {
+            "primary_role": recommendation.get("primary_role") or summary.get("primary_role"),
+            "fit_score": recommendation.get("fit_score") or summary.get("fit_score"),
+            "alternative_roles": (recommendation.get("recommended_roles") or [])[1:3],
+        },
+        "evidence": {
+            "detected_skills": (skills.get("detected_skills") or [])[:12],
+            "strengths": (skill_gap.get("current_strengths") or [item.get("label") for item in skills.get("strength_categories", [])])[:5],
+            "skill_gaps": (skill_gap.get("priority_gaps") or skills.get("suggested_skill_gaps") or [])[:6],
+            "top_jobs": [
+                {
+                    "title": item.get("job_title"),
+                    "score": item.get("score"),
+                    "matched": (item.get("matched_skills") or [])[:4],
+                    "missing": (item.get("missing_skills") or [])[:4],
+                }
+                for item in (matching.get("top_matching_jobs") or [])[:3]
+            ],
+        },
+        "roadmap": roadmap,
+        "portfolio": strategy.get("portfolio_suggestions") or [],
+    }
+
+
+def _generate_openai_report(prompt: str) -> str:
+    if not settings.openai_api_key:
+        raise RuntimeError("Thiếu OPENAI_API_KEY để sinh Career Report bằng OpenAI.")
+
+    payload = {
+        "model": settings.openai_model,
+        "input": [
+            {
+                "role": "system",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": "Bạn viết báo cáo hướng nghiệp học thuật, cá nhân hóa, bám sát evidence, bằng tiếng Việt.",
+                    }
+                ],
+            },
+            {
+                "role": "user",
+                "content": [{"type": "input_text", "text": prompt}],
+            },
+        ],
+        "max_output_tokens": settings.career_report_max_tokens,
+    }
+
+    request = Request(
+        settings.openai_base_url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {settings.openai_api_key}",
+        },
+        method="POST",
+    )
+
+    try:
+        with urlopen(request, timeout=120) as response:
+            body = response.read().decode("utf-8")
+    except URLError as exc:
+        raise RuntimeError(f"Không gọi được OpenAI API cho Career Report: {exc}") from exc
+
+    data = json.loads(body)
+    content = _extract_openai_response_text(data).strip()
+    if not content:
+        raise RuntimeError("OpenAI không trả về nội dung Career Report.")
+    return _finalize_llm_report_text(content)
+
+
+def _generate_ollama_report(prompt: str) -> str:
+    payload = {
+        "model": settings.ollama_model,
+        "prompt": prompt,
+        "stream": False,
+        "keep_alive": settings.ollama_keep_alive,
+        "options": {
+            "temperature": 0.15,
+            "num_predict": settings.career_report_max_tokens,
+            "num_ctx": max(settings.ollama_num_ctx, 3072),
+            "num_thread": settings.ollama_num_thread,
+        },
+    }
+    request = Request(
+        settings.ollama_url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+
+    try:
+        with urlopen(request, timeout=120) as response:
+            body = response.read().decode("utf-8")
+    except URLError as exc:
+        raise RuntimeError(f"Không gọi được Ollama local cho Career Report: {exc}") from exc
+
+    try:
+        data = json.loads(body)
+    except JSONDecodeError as exc:
+        raise RuntimeError("Ollama trả về dữ liệu Career Report không hợp lệ.") from exc
+
+    if data.get("error"):
+        raise RuntimeError(f"Ollama báo lỗi khi sinh Career Report: {data['error']}")
+
+    content = (data.get("response") or "").strip()
+    if not content:
+        raise RuntimeError("Ollama không trả về nội dung Career Report.")
+    return _finalize_llm_report_text(content)
+
+
+def _extract_openai_response_text(payload: dict) -> str:
+    output = payload.get("output") or []
+    parts: list[str] = []
+    for item in output:
+        for content in item.get("content", []):
+            if content.get("type") in {"output_text", "text"} and content.get("text"):
+                parts.append(content["text"])
+    if parts:
+        return "\n".join(parts)
+    return payload.get("output_text") or ""
+
+
+def _sanitize_report_text(text: str) -> str:
+    return (
+        text.replace("**", "")
+        .replace("__", "")
+        .replace("`", "")
+        .replace("#", "")
+        .strip()
+    )
+
+
+def _finalize_llm_report_text(text: str) -> str:
+    cleaned = _sanitize_report_text(text)
+    lowered = cleaned.lower()
+    start_markers = [
+        "đề xuất ngành nghề chính",
+        "de xuat nganh nghe chinh",
+        "đề xuất nghề chính",
+        "de xuat nghe chinh",
+    ]
+
+    for marker in start_markers:
+        index = lowered.find(marker)
+        if index >= 0:
+            cleaned = cleaned[index:].strip()
+            break
+
+    forbidden_prefixes = (
+        "báo cáo học thuật",
+        "bao cao hoc thuat",
+        "mục lục",
+        "muc luc",
+        "1. giới thiệu",
+        "1. gioi thieu",
+        "2. phân tích",
+        "2. phan tich",
+    )
+    lines = [
+        line.strip()
+        for line in cleaned.splitlines()
+        if line.strip() and not line.strip().lower().startswith(forbidden_prefixes)
+    ]
+    cleaned = "\n\n".join(lines)
+
+    if not cleaned.lower().startswith("đề xuất"):
+        cleaned = "Đề xuất ngành nghề chính\n\n" + cleaned
+
+    return cleaned
 
 
 def _resolve_candidate_level(cv_profile: dict) -> str:

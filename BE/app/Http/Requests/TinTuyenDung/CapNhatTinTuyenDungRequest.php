@@ -22,7 +22,9 @@ class CapNhatTinTuyenDungRequest extends FormRequest
             'hinh_thuc_lam_viec' => ['nullable', 'string', 'in:' . implode(',', TinTuyenDung::HINH_THUC_LIST)],
             'cap_bac' => ['nullable', 'string', 'max:50'],
             'so_luong_tuyen' => ['nullable', 'integer', 'min:1'],
-            'muc_luong' => ['nullable', 'integer', 'min:0'],
+            'muc_luong_tu' => ['nullable', 'integer', 'min:0'],
+            'muc_luong_den' => ['nullable', 'integer', 'min:0', 'gte:muc_luong_tu'],
+            'don_vi_luong' => ['nullable', 'string', 'max:50'],
             'kinh_nghiem_yeu_cau' => ['nullable', 'string', 'max:100'],
             'ngay_het_han' => ['nullable', 'date'],
             'trang_thai' => ['nullable', 'integer', 'in:0,1'],
@@ -49,12 +51,24 @@ class CapNhatTinTuyenDungRequest extends FormRequest
         }
     }
 
+    public function withValidator($validator): void
+    {
+        $validator->after(function ($validator): void {
+            if ($this->filled('muc_luong_den') && !$this->filled('muc_luong_tu')) {
+                $validator->errors()->add('muc_luong_tu', 'Vui lòng nhập lương đầu tiên trước khi nhập lương cao nhất.');
+            }
+        });
+    }
+
     public function messages(): array
     {
         return [
             'nganh_nghes.min' => 'Vui lòng chọn ít nhất 1 ngành nghề.',
             'nganh_nghes.*.exists' => 'Ngành nghề không tồn tại.',
             'so_luong_tuyen.min' => 'Số lượng tuyển phải lớn hơn 0.',
+            'muc_luong_tu.min' => 'Lương thấp nhất không được nhỏ hơn 0.',
+            'muc_luong_den.min' => 'Lương cao nhất không được nhỏ hơn 0.',
+            'muc_luong_den.gte' => 'Lương cao nhất phải lớn hơn hoặc bằng lương thấp nhất.',
         ];
     }
 }

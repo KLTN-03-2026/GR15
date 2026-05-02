@@ -25,7 +25,18 @@ const props = defineProps({
 const containerRef = ref(null)
 const open = ref(false)
 
-const { items, loading, error, unreadCount, refresh, markAsRead, markAllAsRead } = useNotifications(props.role)
+const {
+  items,
+  loading,
+  error,
+  unreadCount,
+  realtimeStatus,
+  realtimeStatusLabel,
+  isRealtimeConnected,
+  refresh,
+  markAsRead,
+  markAllAsRead,
+} = useNotifications(props.role)
 
 const titleMap = {
   candidate: 'Thông báo ứng tuyển',
@@ -34,6 +45,12 @@ const titleMap = {
 }
 
 const panelTitle = computed(() => titleMap[props.role] || 'Thông báo')
+const realtimeStatusTone = computed(() => {
+  if (isRealtimeConnected.value) return 'bg-emerald-500'
+  if (['connecting', 'idle'].includes(realtimeStatus.value)) return 'bg-amber-400'
+  if (realtimeStatus.value === 'disabled') return 'bg-slate-300 dark:bg-slate-600'
+  return 'bg-rose-500'
+})
 
 const closePanel = () => {
   open.value = false
@@ -99,6 +116,10 @@ onUnmounted(() => {
             <p class="text-xs text-slate-400">
               {{ unreadCount > 0 ? `${unreadCount} thông báo chưa đọc` : 'Mọi cập nhật gần đây của bạn' }}
             </p>
+            <div class="mt-2 inline-flex items-center gap-2 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-500 dark:bg-slate-800 dark:text-slate-300">
+              <span class="h-2 w-2 rounded-full" :class="realtimeStatusTone"></span>
+              {{ realtimeStatusLabel }}
+            </div>
           </div>
           <div class="flex items-center gap-1">
             <button

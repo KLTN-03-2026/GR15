@@ -151,6 +151,7 @@ def _build_user_prompt(question: str, context: dict, history: list[dict]) -> str
         + question
         + f"\n\nÝ định câu hỏi đã được hệ thống phân loại là: {resolved_intent}."
         + "\nHãy bám sát đúng ý định này và trả lời theo dạng ngắn gọn, có xuống dòng rõ ràng nếu cần."
+        + "\nNếu ý định là career_path_simulator, hãy sinh lộ trình 30/60/90 ngày dựa trên hồ sơ, skill gap, job gần nhất và mốc kiểm tra rõ ràng."
     )
 
 
@@ -196,9 +197,12 @@ def _compact_context(context: dict) -> dict:
         "candidate_profile": {
             "ho_ten": candidate.get("ho_ten"),
             "tieu_de_ho_so": candidate.get("tieu_de_ho_so"),
+            "vi_tri_ung_tuyen_muc_tieu": candidate.get("vi_tri_ung_tuyen_muc_tieu"),
+            "ten_nganh_nghe_muc_tieu": candidate.get("ten_nganh_nghe_muc_tieu"),
             "kinh_nghiem_nam": candidate.get("kinh_nghiem_nam"),
             "trinh_do": candidate.get("trinh_do"),
             "parsed_skills": (candidate.get("parsed_skills") or [])[:8],
+            "builder_skills": (candidate.get("builder_skills") or [])[:8],
         },
         "career_report": {
             "nghe_de_xuat": report.get("nghe_de_xuat"),

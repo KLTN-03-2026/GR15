@@ -2,64 +2,106 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Exceptions\BillingException;
 use App\Http\Controllers\Controller;
 use App\Models\AiChatMessage;
 use App\Models\AiChatSession;
 use App\Models\HoSo;
 use App\Models\KetQuaMatching;
+use App\Models\SuDungTinhNangAi;
 use App\Models\TinTuyenDung;
 use App\Models\TuVanNgheNghiep;
 use App\Services\Ai\AiClientService;
+use App\Services\Billing\FeatureAccessService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class AiChatMessageController extends Controller
 {
-    public function store(Request $request, AiClientService $aiClient): JsonResponse
+    public function store(
+        Request $request,
+        AiClientService $aiClient,
+        FeatureAccessService $featureAccessService
+    ): JsonResponse
     {
+        /** @var SuDungTinhNangAi|null $billingUsage */
+        $billingUsage = null;
+
         $validated = $this->validateMessagePayload($request);
         $session = $this->resolveActiveSession($request->user()->id, (int) $validated['session_id']);
 
-        $userMessage = AiChatMessage::create([
-            'session_id' => $session->id,
-            'role' => 'user',
-            'content' => $validated['message'],
-            'metadata' => null,
-            'created_at' => now(),
-        ]);
+        try {
+            $billingUsage = $featureAccessService->beginUsage(
+                $request->user(),
+                'chatbot_message',
+                'ai_chat_session',
+                $session->id,
+                [
+                    'session_id' => $session->id,
+                    'mode' => 'sync',
+                    'message_length' => mb_strlen((string) $validated['message']),
+                ],
+                $this->resolveIdempotencyKey($request, $session->id),
+            );
 
-        $history = $this->buildHistory($session->id);
-        $context = $this->buildContext($request->user()->id, $session, (string) $validated['message']);
-        $response = $aiClient->careerChat(
-            $session->id,
-            $validated['message'],
-            $history,
-            $context,
-            (bool) ($validated['force_model'] ?? false)
-        );
+            $userMessage = AiChatMessage::create([
+                'session_id' => $session->id,
+                'role' => 'user',
+                'content' => $validated['message'],
+                'metadata' => null,
+                'created_at' => now(),
+            ]);
 
-        $assistantData = $response['data'] ?? [];
-        $assistantMessage = AiChatMessage::create([
-            'session_id' => $session->id,
-            'role' => 'assistant',
-            'content' => (string) ($assistantData['answer'] ?? ''),
-            'metadata' => [
-                'provider' => $assistantData['provider'] ?? null,
-                'guardrail_triggered' => $assistantData['guardrail_triggered'] ?? false,
-                'model_version' => $response['model_version'] ?? null,
-                'intent' => $assistantData['intent'] ?? null,
-            ],
-            'created_at' => now(),
-        ]);
-        $this->refreshSessionSummary(
-            $session,
-            $context,
-            (string) $validated['message'],
-            $assistantMessage->content,
-            $assistantData['intent'] ?? null
-        );
+            $history = $this->buildHistory($session->id);
+            $context = $this->buildContext($request->user()->id, $session, (string) $validated['message']);
+            $response = $aiClient->careerChat(
+                $session->id,
+                $validated['message'],
+                $history,
+                $context,
+                (bool) ($validated['force_model'] ?? false)
+            );
+
+            $assistantData = $response['data'] ?? [];
+            $assistantMessage = AiChatMessage::create([
+                'session_id' => $session->id,
+                'role' => 'assistant',
+                'content' => (string) ($assistantData['answer'] ?? ''),
+                'metadata' => [
+                    'provider' => $assistantData['provider'] ?? null,
+                    'guardrail_triggered' => $assistantData['guardrail_triggered'] ?? false,
+                    'model_version' => $response['model_version'] ?? null,
+                    'intent' => $assistantData['intent'] ?? null,
+                ],
+                'created_at' => now(),
+            ]);
+            $this->refreshSessionSummary(
+                $session,
+                $context,
+                (string) $validated['message'],
+                $assistantMessage->content,
+                $assistantData['intent'] ?? null
+            );
+            $billingUsage = $featureAccessService->commitUsage($billingUsage, [
+                'assistant_message_id' => $assistantMessage->id,
+            ]);
+        } catch (BillingException $exception) {
+            return response()->json([
+                'success' => false,
+                'code' => $exception->errorCode,
+                'message' => $exception->getMessage(),
+                ...$exception->context,
+            ], $exception->status);
+        } catch (\Throwable $exception) {
+            if ($billingUsage) {
+                $this->safeFailUsage($featureAccessService, $billingUsage, $exception->getMessage());
+            }
+
+            throw $exception;
+        }
 
         return response()->json([
             'success' => true,
@@ -71,18 +113,52 @@ class AiChatMessageController extends Controller
         ], 201);
     }
 
-    public function stream(Request $request, AiClientService $aiClient): StreamedResponse
+    public function stream(
+        Request $request,
+        AiClientService $aiClient,
+        FeatureAccessService $featureAccessService
+    ): StreamedResponse|JsonResponse
     {
+        /** @var SuDungTinhNangAi|null $billingUsage */
+        $billingUsage = null;
+
         $validated = $this->validateMessagePayload($request);
         $session = $this->resolveActiveSession($request->user()->id, (int) $validated['session_id']);
 
-        $userMessage = AiChatMessage::create([
-            'session_id' => $session->id,
-            'role' => 'user',
-            'content' => $validated['message'],
-            'metadata' => null,
-            'created_at' => now(),
-        ]);
+        try {
+            $billingUsage = $featureAccessService->beginUsage(
+                $request->user(),
+                'chatbot_message',
+                'ai_chat_session',
+                $session->id,
+                [
+                    'session_id' => $session->id,
+                    'mode' => 'stream',
+                    'message_length' => mb_strlen((string) $validated['message']),
+                ],
+                $this->resolveIdempotencyKey($request, $session->id),
+            );
+        } catch (BillingException $exception) {
+            return response()->json([
+                'success' => false,
+                'code' => $exception->errorCode,
+                'message' => $exception->getMessage(),
+                ...$exception->context,
+            ], $exception->status);
+        }
+
+        try {
+            $userMessage = AiChatMessage::create([
+                'session_id' => $session->id,
+                'role' => 'user',
+                'content' => $validated['message'],
+                'metadata' => null,
+                'created_at' => now(),
+            ]);
+        } catch (\Throwable $exception) {
+            $this->safeFailUsage($featureAccessService, $billingUsage, $exception->getMessage());
+            throw $exception;
+        }
 
         $history = $this->buildHistory($session->id);
         $context = $this->buildContext($request->user()->id, $session, (string) $validated['message']);
@@ -94,61 +170,49 @@ class AiChatMessageController extends Controller
             $validated,
             $history,
             $context,
-            $aiClient
+            $aiClient,
+            $featureAccessService,
+            $billingUsage
         ): void {
             $donePayload = null;
             $partialAnswer = '';
             $streamMeta = [];
 
             try {
-                $aiClient->careerChatStream(
-                    $session->id,
-                    $validated['message'],
-                    $history,
-                    $context,
-                    (bool) ($validated['force_model'] ?? false),
-                    function (string $event, array $payload) use (&$donePayload, &$partialAnswer, &$streamMeta, $userMessagePayload): void {
-                        if ($event === 'done') {
-                            $donePayload = $payload;
-                            return;
+                try {
+                    $aiClient->careerChatStream(
+                        $session->id,
+                        $validated['message'],
+                        $history,
+                        $context,
+                        (bool) ($validated['force_model'] ?? false),
+                        function (string $event, array $payload) use (&$donePayload, &$partialAnswer, &$streamMeta, $userMessagePayload): void {
+                            if ($event === 'done') {
+                                $donePayload = $payload;
+                                return;
+                            }
+
+                            if ($event === 'meta') {
+                                $streamMeta = $payload;
+                                $payload['user_message'] = $userMessagePayload;
+                            }
+
+                            if ($event === 'chunk' && !empty($payload['content'])) {
+                                $partialAnswer .= (string) $payload['content'];
+                            }
+
+                            echo $this->sseEvent($event, $payload);
+                            @ob_flush();
+                            @flush();
                         }
-
-                        if ($event === 'meta') {
-                            $streamMeta = $payload;
-                            $payload['user_message'] = $userMessagePayload;
-                        }
-
-                        if ($event === 'chunk' && !empty($payload['content'])) {
-                            $partialAnswer .= (string) $payload['content'];
-                        }
-
-                        echo $this->sseEvent($event, $payload);
-                        @ob_flush();
-                        @flush();
-                    }
-                );
-            } catch (\Throwable $e) {
-                $donePayload = $this->fallbackToNonStream(
-                    $aiClient,
-                    $session->id,
-                    $validated['message'],
-                    $history,
-                    $context,
-                    (bool) ($validated['force_model'] ?? false)
-                );
-            }
-
-            if (!is_array($donePayload) || empty($donePayload['answer'])) {
-                $fallbackAnswer = $this->normalizeAssistantAnswer($partialAnswer);
-                if ($fallbackAnswer !== '') {
-                    $donePayload = [
-                        'answer' => $fallbackAnswer,
-                        'model_version' => $streamMeta['model_version'] ?? null,
-                        'provider' => $streamMeta['provider'] ?? null,
-                        'guardrail_triggered' => $streamMeta['guardrail_triggered'] ?? false,
-                        'intent' => $streamMeta['intent'] ?? null,
-                    ];
-                } else {
+                    );
+                } catch (\Throwable $e) {
+                    $aiClient->recordFallback(
+                        'career_chat_stream',
+                        $e->getMessage(),
+                        ['session_id' => $session->id],
+                        ['fallback_mode' => 'non_stream']
+                    );
                     $donePayload = $this->fallbackToNonStream(
                         $aiClient,
                         $session->id,
@@ -157,46 +221,80 @@ class AiChatMessageController extends Controller
                         $context,
                         (bool) ($validated['force_model'] ?? false)
                     );
-                    if (!is_array($donePayload) || empty($donePayload['answer'])) {
-                        $donePayload = $this->buildGracefulStreamFallbackPayload(
-                            (string) $validated['message'],
-                            $streamMeta
+                }
+
+                if (!is_array($donePayload) || empty($donePayload['answer'])) {
+                    $fallbackAnswer = $this->normalizeAssistantAnswer($partialAnswer);
+                    if ($fallbackAnswer !== '') {
+                        $donePayload = [
+                            'answer' => $fallbackAnswer,
+                            'model_version' => $streamMeta['model_version'] ?? null,
+                            'provider' => $streamMeta['provider'] ?? null,
+                            'guardrail_triggered' => $streamMeta['guardrail_triggered'] ?? false,
+                            'intent' => $streamMeta['intent'] ?? null,
+                        ];
+                    } else {
+                        $donePayload = $this->fallbackToNonStream(
+                            $aiClient,
+                            $session->id,
+                            $validated['message'],
+                            $history,
+                            $context,
+                            (bool) ($validated['force_model'] ?? false)
                         );
+                        if (!is_array($donePayload) || empty($donePayload['answer'])) {
+                            $donePayload = $this->buildGracefulStreamFallbackPayload(
+                                (string) $validated['message'],
+                                $streamMeta
+                            );
+                        }
                     }
                 }
-            }
 
-            $assistantMessage = AiChatMessage::create([
-                'session_id' => $session->id,
-                'role' => 'assistant',
-                'content' => (string) ($donePayload['answer'] ?? ''),
-                'metadata' => [
+                $assistantMessage = AiChatMessage::create([
+                    'session_id' => $session->id,
+                    'role' => 'assistant',
+                    'content' => (string) ($donePayload['answer'] ?? ''),
+                    'metadata' => [
+                        'provider' => $donePayload['provider'] ?? null,
+                        'guardrail_triggered' => $donePayload['guardrail_triggered'] ?? false,
+                        'model_version' => $donePayload['model_version'] ?? null,
+                        'intent' => $donePayload['intent'] ?? null,
+                        'stream_mode' => 'provider_sse',
+                    ],
+                    'created_at' => now(),
+                ]);
+                $this->refreshSessionSummary(
+                    $session,
+                    $context,
+                    (string) $validated['message'],
+                    $assistantMessage->content,
+                    $donePayload['intent'] ?? null
+                );
+                $featureAccessService->commitUsage($billingUsage, [
+                    'assistant_message_id' => $assistantMessage->id,
+                    'stream_fallback_used' => (($donePayload['provider'] ?? null) === 'graceful_stream_fallback'),
+                ]);
+
+                echo $this->sseEvent('done', [
+                    'assistant_message' => $assistantMessage->toArray(),
+                    'model_version' => $donePayload['model_version'] ?? null,
                     'provider' => $donePayload['provider'] ?? null,
                     'guardrail_triggered' => $donePayload['guardrail_triggered'] ?? false,
-                    'model_version' => $donePayload['model_version'] ?? null,
                     'intent' => $donePayload['intent'] ?? null,
-                    'stream_mode' => 'provider_sse',
-                ],
-                'created_at' => now(),
-            ]);
-            $this->refreshSessionSummary(
-                $session,
-                $context,
-                (string) $validated['message'],
-                $assistantMessage->content,
-                $donePayload['intent'] ?? null
-            );
+                    'answer' => $assistantMessage->content,
+                ]);
+                @ob_flush();
+                @flush();
+            } catch (\Throwable $exception) {
+                $this->safeFailUsage($featureAccessService, $billingUsage, $exception->getMessage());
 
-            echo $this->sseEvent('done', [
-                'assistant_message' => $assistantMessage->toArray(),
-                'model_version' => $donePayload['model_version'] ?? null,
-                'provider' => $donePayload['provider'] ?? null,
-                'guardrail_triggered' => $donePayload['guardrail_triggered'] ?? false,
-                'intent' => $donePayload['intent'] ?? null,
-                'answer' => $assistantMessage->content,
-            ]);
-            @ob_flush();
-            @flush();
+                echo $this->sseEvent('error', [
+                    'message' => $exception->getMessage(),
+                ]);
+                @ob_flush();
+                @flush();
+            }
         }, 200, [
             'Content-Type' => 'text/event-stream',
             'Cache-Control' => 'no-cache',
@@ -228,8 +326,16 @@ class AiChatMessageController extends Controller
                             'ho_ten' => $hoSo->nguoiDung?->ho_ten,
                             'parsed_name' => $hoSo->parsing?->parsed_name,
                             'tieu_de_ho_so' => $hoSo->tieu_de_ho_so,
+                            'vi_tri_ung_tuyen_muc_tieu' => $hoSo->vi_tri_ung_tuyen_muc_tieu,
+                            'ten_nganh_nghe_muc_tieu' => $hoSo->ten_nganh_nghe_muc_tieu,
                             'kinh_nghiem_nam' => $hoSo->kinh_nghiem_nam,
                             'trinh_do' => $hoSo->trinh_do,
+                            'muc_tieu_nghe_nghiep' => $hoSo->muc_tieu_nghe_nghiep,
+                            'builder_skills' => collect($hoSo->ky_nang_json ?? [])
+                                ->map(fn ($item) => is_array($item) ? ($item['ten'] ?? $item['name'] ?? $item['skill_name'] ?? null) : $item)
+                                ->filter()
+                                ->values()
+                                ->all(),
                             'parsed_skills' => collect($hoSo->parsing?->parsed_skills_json ?? [])
                                 ->map(fn ($item) => is_array($item) ? ($item['skill_name'] ?? null) : $item)
                                 ->filter()
@@ -353,6 +459,16 @@ class AiChatMessageController extends Controller
                 'intent' => $item->metadata['intent'] ?? null,
             ])
             ->all();
+    }
+
+    private function resolveIdempotencyKey(Request $request, int $sessionId): string
+    {
+        $headerKey = trim((string) $request->header('X-Idempotency-Key', ''));
+        if ($headerKey !== '') {
+            return $headerKey;
+        }
+
+        return 'chatbot:' . $request->user()->id . ':' . $sessionId . ':' . Str::uuid();
     }
 
     public function index(Request $request, int $sessionId): JsonResponse
@@ -741,6 +857,18 @@ class AiChatMessageController extends Controller
         }
 
         return trim(implode(' ', $parts));
+    }
+
+    private function safeFailUsage(
+        FeatureAccessService $featureAccessService,
+        SuDungTinhNangAi $usage,
+        string $reason
+    ): void {
+        try {
+            $featureAccessService->failUsage($usage, $reason);
+        } catch (\Throwable) {
+            // Không làm hỏng response chính nếu rollback billing gặp lỗi.
+        }
     }
 
     private function summarizeIntentLabel(string $message): ?string

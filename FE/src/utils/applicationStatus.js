@@ -12,6 +12,13 @@ export const FINAL_APPLICATION_STATUSES = [
   APPLICATION_STATUS.REJECTED,
 ]
 
+export const OFFER_STATUS = {
+  NOT_SENT: 0,
+  SENT: 1,
+  ACCEPTED: 2,
+  DECLINED: 3,
+}
+
 export const APPLICATION_STATUS_OPTIONS = [
   { value: APPLICATION_STATUS.PENDING, label: 'Đang chờ' },
   { value: APPLICATION_STATUS.REVIEWED, label: 'Đã xem' },
@@ -67,3 +74,33 @@ export const getApplicationStatusLabel = (status) => getApplicationStatusMeta(st
 
 export const isFinalApplicationStatus = (status) =>
   FINAL_APPLICATION_STATUSES.includes(Number(status))
+
+export const getOfferStatusMeta = (status) => {
+  switch (Number(status)) {
+    case OFFER_STATUS.SENT:
+      return {
+        label: 'Đã gửi offer',
+        classes: 'bg-blue-500/10 text-blue-700 dark:text-blue-300',
+        dot: 'bg-blue-500',
+      }
+    case OFFER_STATUS.ACCEPTED:
+      return {
+        label: 'Đã nhận việc',
+        classes: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+        dot: 'bg-emerald-500',
+      }
+    case OFFER_STATUS.DECLINED:
+      return {
+        label: 'Từ chối offer',
+        classes: 'bg-rose-500/10 text-rose-700 dark:text-rose-300',
+        dot: 'bg-rose-500',
+      }
+    case OFFER_STATUS.NOT_SENT:
+    default:
+      return {
+        label: 'Chưa gửi offer',
+        classes: 'bg-slate-500/10 text-slate-600 dark:text-slate-300',
+        dot: 'bg-slate-400',
+      }
+  }
+}

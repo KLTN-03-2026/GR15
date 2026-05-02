@@ -25,8 +25,8 @@ class KyNangFactory extends Factory
 
         return [
             'ten_ky_nang' => $ten,
-            'so_chung_chi' => $this->faker->numberBetween(0, 5),
-            'hinh_anh' => null,
+            'mo_ta' => $this->faker->sentence(),
+            'icon' => null,
         ];
     }
 }

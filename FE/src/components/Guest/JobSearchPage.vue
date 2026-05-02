@@ -4,6 +4,7 @@ import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { jobService, savedJobService } from '@/services/api'
 import { useNotify } from '@/composables/useNotify'
 import { getAuthToken, getStoredCandidate } from '@/utils/authStorage'
+import { VIETNAM_PROVINCES_34 } from '@/constants/vietnamProvinces'
 
 const route = useRoute()
 const router = useRouter()
@@ -47,12 +48,6 @@ const hasActiveFilters = computed(() =>
 
 const hasSemanticResults = computed(() => semanticResults.value.length > 0)
 const showAllIndustries = ref(false)
-const locationSuggestions = [
-  { label: 'Hà Nội', value: 'Hà Nội' },
-  { label: 'TP.HCM', value: 'TP. Hồ Chí Minh' },
-  { label: 'Đà Nẵng', value: 'Đà Nẵng' },
-  { label: 'Remote', value: 'Remote' },
-]
 const pageSizeOptions = [6, 9, 12, 15]
 
 const visibleIndustries = computed(() =>
@@ -82,9 +77,7 @@ const formatSalary = (job) => {
   if (job.muc_luong_tu && job.muc_luong_den) {
     return `${formatCurrency(job.muc_luong_tu)} - ${formatCurrency(job.muc_luong_den)}`
   }
-  if (job.muc_luong) {
-    return formatCurrency(job.muc_luong)
-  }
+  if (job.muc_luong_tu) return formatCurrency(job.muc_luong_tu)
   return 'Thỏa thuận'
 }
 
@@ -253,10 +246,6 @@ const selectIndustry = (industryId) => {
   filters.nganh_nghe_id = String(filters.nganh_nghe_id) === nextValue ? '' : nextValue
 }
 
-const applyLocationSuggestion = (locationValue) => {
-  filters.dia_diem = filters.dia_diem === locationValue ? '' : locationValue
-}
-
 const isSaved = (jobId) => savedJobIds.value.has(Number(jobId))
 
 const toggleSavedJob = async (jobId) => {
@@ -412,28 +401,17 @@ watch(
 
             <section class="border-b border-dashed border-slate-200 pb-6">
               <h3 class="text-[15px] font-extrabold text-slate-800">Khu vực làm việc</h3>
-              <div class="mt-4 flex flex-wrap gap-2">
-                <button
-                  v-for="location in locationSuggestions"
-                  :key="location.value"
-                  class="rounded-full border px-3 py-2 text-sm font-semibold transition"
-                  :class="filters.dia_diem === location.value
-                    ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
-                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'"
-                  type="button"
-                  @click="applyLocationSuggestion(location.value)"
-                >
-                  {{ location.label }}
-                </button>
-              </div>
               <div class="relative mt-4">
                 <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">location_on</span>
-                <input
+                <select
                   v-model="filters.dia_diem"
                   class="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-12 pr-4 text-sm text-slate-700 outline-none transition focus:border-emerald-500 focus:bg-white"
-                  placeholder="Nhập tỉnh thành hoặc hình thức remote..."
-                  type="text"
-                />
+                >
+                  <option value="">Tất cả tỉnh/thành</option>
+                  <option v-for="province in VIETNAM_PROVINCES_34" :key="province" :value="province">
+                    {{ province }}
+                  </option>
+                </select>
               </div>
             </section>
 
@@ -577,6 +555,12 @@ watch(
                       >
                         {{ result.job.tieu_de }}
                       </RouterLink>
+                      <span
+                        v-if="result.job?.is_featured"
+                        class="rounded-full bg-amber-400/15 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-amber-700"
+                      >
+                        Featured
+                      </span>
                       <span class="rounded-full bg-blue-600 px-3 py-1 text-xs font-bold text-white">
                         {{ formatPercent(result.final_score) }} match
                       </span>
@@ -735,12 +719,20 @@ watch(
               <div class="min-w-0 flex-1">
                 <div class="flex flex-wrap items-start justify-between gap-4">
                   <div class="min-w-0">
-                    <RouterLink
-                      :to="{ name: 'JobDetail', params: { id: job.id } }"
-                      class="text-xl font-bold text-slate-900 transition group-hover:text-blue-600"
-                    >
-                      {{ job.tieu_de }}
-                    </RouterLink>
+                    <div class="flex flex-wrap items-center gap-3">
+                      <RouterLink
+                        :to="{ name: 'JobDetail', params: { id: job.id } }"
+                        class="text-xl font-bold text-slate-900 transition group-hover:text-blue-600"
+                      >
+                        {{ job.tieu_de }}
+                      </RouterLink>
+                      <span
+                        v-if="job.is_featured"
+                        class="rounded-full bg-amber-400/15 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-amber-700"
+                      >
+                        Featured
+                      </span>
+                    </div>
                     <p class="mt-2 text-sm font-semibold text-blue-600">
                       {{ job.cong_ty?.ten_cong_ty || 'Công ty đang cập nhật' }}
                     </p>

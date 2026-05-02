@@ -16,6 +16,7 @@ class PhanHoiOfferRequest extends FormRequest
     {
         return [
             'action' => ['required', 'string', Rule::in(['accept', 'decline'])],
+            'ghi_chu_phan_hoi_offer' => ['nullable', 'string', 'max:2000'],
         ];
     }
 

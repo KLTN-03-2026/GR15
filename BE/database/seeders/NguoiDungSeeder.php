@@ -23,8 +23,52 @@ class NguoiDungSeeder extends Seeder
             'gioi_tinh' => 'nam',
             'dia_chi' => '27 Nguyễn Huệ, Quận 1, TP. Hồ Chí Minh',
             'vai_tro' => NguoiDung::VAI_TRO_ADMIN,
+            'cap_admin' => NguoiDung::CAP_ADMIN_SUPER_ADMIN,
             'trang_thai' => 1,
         ]);
+
+        $adminThuongCoDinh = [
+            [
+                'ho_ten' => 'Lê Anh Khoa',
+                'email' => 'admin.ops1@kltn.com',
+                'so_dien_thoai' => '0902345678',
+                'ngay_sinh' => '1992-03-11',
+                'gioi_tinh' => 'nam',
+                'dia_chi' => '88 Cách Mạng Tháng 8, Quận 10, TP. Hồ Chí Minh',
+            ],
+            [
+                'ho_ten' => 'Ngô Thị Bảo Ngân',
+                'email' => 'admin.ops2@kltn.com',
+                'so_dien_thoai' => '0903456789',
+                'ngay_sinh' => '1994-08-26',
+                'gioi_tinh' => 'nu',
+                'dia_chi' => '15 Trần Hưng Đạo, Hải Châu, Đà Nẵng',
+            ],
+            [
+                'ho_ten' => 'Phạm Đức Hưng',
+                'email' => 'admin.ops3@kltn.com',
+                'so_dien_thoai' => '0904567891',
+                'ngay_sinh' => '1991-12-08',
+                'gioi_tinh' => 'nam',
+                'dia_chi' => '41 Kim Mã, Ba Đình, Hà Nội',
+            ],
+        ];
+
+        foreach ($adminThuongCoDinh as $adminThuong) {
+            NguoiDung::create([
+                'ho_ten' => $adminThuong['ho_ten'],
+                'email' => $adminThuong['email'],
+                'email_verified_at' => now(),
+                'mat_khau' => Hash::make('Admin@123'),
+                'so_dien_thoai' => $adminThuong['so_dien_thoai'],
+                'ngay_sinh' => $adminThuong['ngay_sinh'],
+                'gioi_tinh' => $adminThuong['gioi_tinh'],
+                'dia_chi' => $adminThuong['dia_chi'],
+                'vai_tro' => NguoiDung::VAI_TRO_ADMIN,
+                'cap_admin' => NguoiDung::CAP_ADMIN_ADMIN,
+                'trang_thai' => 1,
+            ]);
+        }
 
         $nhaTuyenDungCoDinh = [
             [
@@ -163,12 +207,13 @@ class NguoiDungSeeder extends Seeder
         $this->command->table(
             ['Nhóm', 'Số lượng', 'Ghi chú'],
             [
-                ['Admin', '1', 'admin@kltn.com / Admin@123'],
+                ['Super Admin', '1', 'admin@kltn.com / Admin@123'],
+                ['Admin thường', '3', 'admin.ops1/2/3@kltn.com / Admin@123'],
                 ['Nhà tuyển dụng hoạt động', '3 cố định + 6 factory', 'Mật khẩu: NTD@123456 hoặc password123'],
                 ['Nhà tuyển dụng bị khóa', '1', 'tuyen.dung.khoa@kltn.com'],
                 ['Ứng viên hoạt động', '5 cố định + 8 factory', 'Mật khẩu: UV@123456 hoặc password123'],
                 ['Ứng viên bị khóa', '1', 'ung.vien.khoa@kltn.com'],
-                ['Tổng cộng', '25', 'Phân bố theo nhiều tỉnh thành'],
+                ['Tổng cộng', '28', 'Phân bố theo nhiều tỉnh thành'],
             ]
         );
     }

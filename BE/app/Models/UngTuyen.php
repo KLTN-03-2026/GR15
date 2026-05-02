@@ -21,12 +21,22 @@ class UngTuyen extends Model
         'thu_xin_viec',
         'thu_xin_viec_ai',
         'ngay_hen_phong_van',
+        'vong_phong_van_hien_tai',
         'trang_thai_tham_gia_phong_van',
         'thoi_gian_phan_hoi_phong_van',
+        'thoi_gian_gui_nhac_lich',
         'hinh_thuc_phong_van',
         'nguoi_phong_van',
         'link_phong_van',
         'ket_qua_phong_van',
+        'rubric_danh_gia_phong_van',
+        'thoi_gian_gui_offer',
+        'trang_thai_offer',
+        'thoi_gian_phan_hoi_offer',
+        'han_phan_hoi_offer',
+        'ghi_chu_offer',
+        'ghi_chu_phan_hoi_offer',
+        'link_offer',
         'ghi_chu',
         'thoi_gian_ung_tuyen'
     ];
@@ -68,12 +78,29 @@ class UngTuyen extends Model
         self::PHONG_VAN_KHONG_THAM_GIA,
     ];
 
+    public const OFFER_CHUA_GUI = 0;
+    public const OFFER_DA_GUI = 1;
+    public const OFFER_DA_CHAP_NHAN = 2;
+    public const OFFER_TU_CHOI = 3;
+
+    public const OFFER_TRANG_THAI_LIST = [
+        self::OFFER_CHUA_GUI,
+        self::OFFER_DA_GUI,
+        self::OFFER_DA_CHAP_NHAN,
+        self::OFFER_TU_CHOI,
+    ];
+
     protected $casts = [
         'thoi_gian_ung_tuyen' => 'datetime',
         'thoi_gian_rut_don' => 'datetime',
         'ngay_hen_phong_van' => 'datetime',
         'thoi_gian_phan_hoi_phong_van' => 'datetime',
+        'thoi_gian_gui_nhac_lich' => 'datetime',
+        'thoi_gian_gui_offer' => 'datetime',
+        'thoi_gian_phan_hoi_offer' => 'datetime',
+        'han_phan_hoi_offer' => 'datetime',
         'trang_thai' => 'integer',
+        'trang_thai_offer' => 'integer',
         'hr_phu_trach_id' => 'integer',
         'da_rut_don' => 'boolean',
         'trang_thai_tham_gia_phong_van' => 'integer',
@@ -98,5 +125,15 @@ class UngTuyen extends Model
     public function hrPhuTrach()
     {
         return $this->belongsTo(NguoiDung::class, 'hr_phu_trach_id');
+    }
+
+    public function interviewRounds()
+    {
+        return $this->hasMany(InterviewRound::class, 'ung_tuyen_id')->orderBy('thu_tu');
+    }
+
+    public function onboardingPlan()
+    {
+        return $this->hasOne(OnboardingPlan::class, 'ung_tuyen_id');
     }
 }

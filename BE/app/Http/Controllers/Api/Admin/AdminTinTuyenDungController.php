@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\TinTuyenDung\TaoTinTuyenDungRequest;
 use App\Http\Requests\TinTuyenDung\CapNhatTinTuyenDungRequest;
 use App\Models\TinTuyenDung;
+use App\Services\AuditLogService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -14,6 +15,35 @@ use Illuminate\Http\Request;
  */
 class AdminTinTuyenDungController extends Controller
 {
+    private function jobAuditSnapshot(TinTuyenDung $tin): array
+    {
+        return $tin->only([
+            'id',
+            'cong_ty_id',
+            'tieu_de',
+            'trang_thai',
+            'hr_phu_trach_id',
+            'ngay_het_han',
+            'so_luong_tuyen',
+            'muc_luong_tu',
+            'muc_luong_den',
+            'don_vi_luong',
+            'dia_diem_lam_viec',
+        ]);
+    }
+
+    private function normalizeSalaryPayload(array $data): array
+    {
+        $salaryFrom = array_key_exists('muc_luong_tu', $data) ? $data['muc_luong_tu'] : null;
+        $salaryTo = array_key_exists('muc_luong_den', $data) ? $data['muc_luong_den'] : null;
+
+        if ($salaryFrom !== null || $salaryTo !== null || (array_key_exists('muc_luong_tu', $data) && array_key_exists('muc_luong_den', $data))) {
+            $data['don_vi_luong'] = $data['don_vi_luong'] ?? 'VND/tháng';
+        }
+
+        return $data;
+    }
+
     /**
      * Danh sách tất cả tin
      */
@@ -58,7 +88,7 @@ class AdminTinTuyenDungController extends Controller
      */
     public function store(TaoTinTuyenDungRequest $request): JsonResponse
     {
-        $data = $request->validated();
+        $data = $this->normalizeSalaryPayload($request->validated());
         
         $cong_ty_id = $request->input('cong_ty_id');
         if (!$cong_ty_id) {
@@ -73,6 +103,19 @@ class AdminTinTuyenDungController extends Controller
 
         $tin = TinTuyenDung::create($data);
         $tin->nganhNghes()->attach($nganhNgheIds);
+        app(AuditLogService::class)->logModelAction(
+            actor: $request->user(),
+            action: 'admin_job_created',
+            description: "Admin tạo tin tuyển dụng {$tin->tieu_de}.",
+            target: $tin,
+            company: $tin->congTy,
+            after: [
+                ...$this->jobAuditSnapshot($tin),
+                'nganh_nghe_ids' => $nganhNgheIds,
+            ],
+            metadata: ['scope' => 'admin_job'],
+            request: $request,
+        );
 
         return response()->json([
             'success' => true,
@@ -106,7 +149,12 @@ class AdminTinTuyenDungController extends Controller
     public function update(CapNhatTinTuyenDungRequest $request, int $id): JsonResponse
     {
         $tin = TinTuyenDung::findOrFail($id);
-        $data = $request->validated();
+        $data = $this->normalizeSalaryPayload($request->validated());
+        $before = [
+            ...$this->jobAuditSnapshot($tin),
+            'nganh_nghe_ids' => $tin->nganhNghes()->pluck('nganh_nghes.id')->all(),
+        ];
+        $nganhNgheIds = $data['nganh_nghes'] ?? null;
 
         if (isset($data['nganh_nghes'])) {
             $tin->nganhNghes()->sync($data['nganh_nghes']);
@@ -114,6 +162,21 @@ class AdminTinTuyenDungController extends Controller
         }
 
         $tin->update($data);
+        $tinAfter = $tin->fresh();
+        app(AuditLogService::class)->logModelAction(
+            actor: $request->user(),
+            action: 'admin_job_updated',
+            description: "Admin cập nhật tin tuyển dụng {$tinAfter->tieu_de}.",
+            target: $tinAfter,
+            company: $tinAfter->congTy,
+            before: $before,
+            after: [
+                ...$this->jobAuditSnapshot($tinAfter),
+                'nganh_nghe_ids' => $nganhNgheIds ?? $tinAfter->nganhNghes()->pluck('nganh_nghes.id')->all(),
+            ],
+            metadata: ['scope' => 'admin_job'],
+            request: $request,
+        );
 
         return response()->json([
             'success' => true,
@@ -128,9 +191,20 @@ class AdminTinTuyenDungController extends Controller
     public function doiTrangThai(int $id): JsonResponse
     {
         $tin = TinTuyenDung::findOrFail($id);
+        $before = $this->jobAuditSnapshot($tin);
         
         $tin->trang_thai = $tin->trang_thai == 1 ? 0 : 1;
         $tin->save();
+        app(AuditLogService::class)->logModelAction(
+            actor: auth()->user(),
+            action: 'admin_job_status_toggled',
+            description: "Admin chuyển trạng thái tin tuyển dụng {$tin->tieu_de}.",
+            target: $tin,
+            company: $tin->congTy,
+            before: $before,
+            after: $this->jobAuditSnapshot($tin),
+            metadata: ['scope' => 'admin_job'],
+        );
 
         return response()->json([
             'success' => true,
@@ -153,7 +227,16 @@ class AdminTinTuyenDungController extends Controller
             ], 422);
         }
 
+        $before = $this->jobAuditSnapshot($tin);
         $tin->delete();
+        app(AuditLogService::class)->logModelAction(
+            actor: auth()->user(),
+            action: 'admin_job_deleted',
+            description: "Admin xoá tin tuyển dụng {$before['tieu_de']}.",
+            target: $tin,
+            before: $before,
+            metadata: ['scope' => 'admin_job'],
+        );
 
         return response()->json([
             'success' => true,

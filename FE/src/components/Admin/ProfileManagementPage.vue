@@ -41,13 +41,13 @@ const stats = reactive({
 
 const educationOptions = [
   { value: '', label: 'Tất cả trình độ' },
-  { value: 'trung_hoc', label: 'Trung học' },
-  { value: 'trung_cap', label: 'Trung cấp' },
-  { value: 'cao_dang', label: 'Cao đẳng' },
-  { value: 'dai_hoc', label: 'Đại học' },
-  { value: 'thac_si', label: 'Thạc sĩ' },
-  { value: 'tien_si', label: 'Tiến sĩ' },
-  { value: 'khac', label: 'Khác' },
+  { value: 'Trung học', label: 'Trung học' },
+  { value: 'Trung cấp', label: 'Trung cấp' },
+  { value: 'Cao đẳng', label: 'Cao đẳng' },
+  { value: 'Đại học', label: 'Đại học' },
+  { value: 'Thạc sĩ', label: 'Thạc sĩ' },
+  { value: 'Tiến sĩ', label: 'Tiến sĩ' },
+  { value: 'Khác', label: 'Khác' },
 ]
 
 const sortOptions = [
@@ -92,11 +92,11 @@ const summaryCards = computed(() => [
 ])
 
 const educationBadges = computed(() => {
-  const order = ['dai_hoc', 'cao_dang', 'thac_si', 'tien_si', 'trung_cap', 'trung_hoc', 'khac']
+  const order = ['Đại học', 'Cao đẳng', 'Thạc sĩ', 'Tiến sĩ', 'Trung cấp', 'Trung học', 'Khác']
   return order
     .map((key) => ({
       key,
-      label: educationOptions.find((item) => item.value === key)?.label || key,
+      label: educationOptions.find((item) => item.value === key || item.label === key)?.label || key,
       value: stats.education?.[key] || 0,
     }))
     .filter((item) => item.value > 0)
@@ -119,7 +119,7 @@ const statusMeta = (status) => {
 }
 
 const formatEducation = (value) => {
-  return educationOptions.find((item) => item.value === value)?.label || 'Chưa cập nhật'
+  return educationOptions.find((item) => item.value === value || item.label === value)?.label || value || 'Chưa cập nhật'
 }
 
 const formatDateTime = (value) => {

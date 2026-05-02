@@ -3,12 +3,14 @@ import { computed, onMounted, ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { useNotify } from '@/composables/useNotify'
 import { jobService } from '@/services/api'
+import { VIETNAM_PROVINCES_34 } from '@/constants/vietnamProvinces'
 
 const router = useRouter()
 const notify = useNotify()
 
 const searchMode = ref('quick')
 const quickQuery = ref('')
+const quickLocation = ref('')
 const semanticQuery = ref('')
 
 const featuredJobs = ref([])
@@ -20,14 +22,15 @@ const loadingLanding = ref(false)
 const placeholderText = computed(() =>
   searchMode.value === 'semantic'
     ? 'Ví dụ: backend Laravel remote, ưu tiên REST API và MySQL'
-    : 'Kỹ năng, ngành nghề hoặc địa điểm...',
+    : 'Kỹ năng hoặc ngành nghề...',
 )
 
 const scoreFeaturedJob = (job) => {
-  const hasSalary = Number(job?.muc_luong || 0) || (Number(job?.muc_luong_tu || 0) && Number(job?.muc_luong_den || 0)) ? 1 : 0
+  const featuredBoost = job?.is_featured ? 5000000000000 : 0
+  const hasSalary = Number(job?.muc_luong_tu || 0) ? 1 : 0
   const views = Number(job?.luot_xem || 0)
   const createdAt = job?.created_at ? new Date(job.created_at).getTime() : 0
-  return (hasSalary * 2000000000000) + (views * 1000000) + createdAt
+  return featuredBoost + (hasSalary * 2000000000000) + (views * 1000000) + createdAt
 }
 
 const sortedFeaturedJobs = computed(() =>
@@ -46,7 +49,6 @@ const extractList = (response) => {
 const formatSalary = (job) => {
   const salaryFrom = Number(job?.muc_luong_tu || 0)
   const salaryTo = Number(job?.muc_luong_den || 0)
-  const salary = Number(job?.muc_luong || 0)
   const formatMillion = (value) => {
     const million = value / 1000000
     return Number.isInteger(million)
@@ -58,8 +60,8 @@ const formatSalary = (job) => {
     return `${formatMillion(salaryFrom)} - ${formatMillion(salaryTo)} triệu`
   }
 
-  if (salary) {
-    return `${formatMillion(salary)} triệu`
+  if (salaryFrom) {
+    return `${formatMillion(salaryFrom)} triệu`
   }
 
   return 'Thỏa thuận'
@@ -143,12 +145,13 @@ const loadLandingData = async () => {
 
 const handleHeroSearch = () => {
   const value = searchMode.value === 'semantic' ? semanticQuery.value.trim() : quickQuery.value.trim()
+  const location = quickLocation.value.trim()
 
-  if (!value) {
+  if (!value && !(searchMode.value === 'quick' && location)) {
     notify.warning(
       searchMode.value === 'semantic'
         ? 'Hãy nhập mô tả công việc bạn muốn tìm bằng AI.'
-        : 'Hãy nhập từ khóa hoặc địa điểm để tìm việc.',
+        : 'Hãy nhập từ khóa hoặc chọn tỉnh/thành để tìm việc.',
     )
     return
   }
@@ -157,7 +160,10 @@ const handleHeroSearch = () => {
     path: '/jobs',
     query: searchMode.value === 'semantic'
       ? { semantic_q: value }
-      : { search: value },
+      : {
+          ...(value ? { search: value } : {}),
+          ...(location ? { dia_diem: location } : {}),
+        },
   })
 }
 
@@ -228,6 +234,19 @@ onMounted(() => {
                 type="text"
                 @keyup.enter="handleHeroSearch"
               />
+            </div>
+
+            <div v-if="searchMode === 'quick'" class="flex min-w-0 items-center rounded-2xl bg-slate-50 px-4 md:w-60 dark:bg-slate-950">
+              <span class="material-symbols-outlined text-slate-400">location_on</span>
+              <select
+                v-model="quickLocation"
+                class="w-full border-none bg-transparent py-4 text-sm font-semibold text-slate-700 shadow-none outline-none ring-0 focus:border-transparent focus:outline-none focus:ring-0 focus:ring-offset-0 dark:text-white"
+              >
+                <option value="">Tất cả tỉnh/thành</option>
+                <option v-for="province in VIETNAM_PROVINCES_34" :key="province" :value="province">
+                  {{ province }}
+                </option>
+              </select>
             </div>
 
             <button
@@ -386,6 +405,13 @@ onMounted(() => {
           </div>
 
           <div class="relative mt-5">
+            <span
+              v-if="job.is_featured"
+              class="mb-3 inline-flex items-center gap-1.5 rounded-full bg-amber-400/15 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-amber-600 dark:text-amber-300"
+            >
+              <span class="material-symbols-outlined text-[14px]">rocket_launch</span>
+              Featured
+            </span>
             <h3 class="line-clamp-2 text-[1.05rem] font-black leading-6 tracking-tight text-slate-900 transition-colors group-hover:text-[#2463eb] dark:text-white">
               {{ job.tieu_de }}
             </h3>

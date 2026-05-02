@@ -74,6 +74,18 @@ onBeforeUnmount(() => {
         <span class="material-symbols-outlined">insights</span>
         <span v-if="!collapsed" class="text-sm">Career Report</span>
       </RouterLink>
+      <RouterLink to="/wallet" active-class="active-nav" class="nav-link flex items-center gap-3 rounded-lg px-3 py-2 text-slate-600 transition-colors font-medium hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800" :class="collapsed ? 'justify-center' : ''" :title="collapsed ? 'Ví AI' : ''">
+        <span class="material-symbols-outlined">account_balance_wallet</span>
+        <span v-if="!collapsed" class="text-sm">Ví AI</span>
+      </RouterLink>
+      <RouterLink to="/plans" active-class="active-nav" class="nav-link flex items-center gap-3 rounded-lg px-3 py-2 text-slate-600 transition-colors font-medium hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800" :class="collapsed ? 'justify-center' : ''" :title="collapsed ? 'Gói Pro' : ''">
+        <span class="material-symbols-outlined">workspace_premium</span>
+        <span v-if="!collapsed" class="text-sm">Gói Pro</span>
+      </RouterLink>
+      <RouterLink to="/payments" active-class="active-nav" class="nav-link flex items-center gap-3 rounded-lg px-3 py-2 text-slate-600 transition-colors font-medium hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800" :class="collapsed ? 'justify-center' : ''" :title="collapsed ? 'Lịch sử thanh toán' : ''">
+        <span class="material-symbols-outlined">receipt_long</span>
+        <span v-if="!collapsed" class="text-sm">Lịch sử thanh toán</span>
+      </RouterLink>
       <RouterLink to="/applications" active-class="active-nav" class="nav-link flex items-center gap-3 rounded-lg px-3 py-2 text-slate-600 transition-colors font-medium hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800" :class="collapsed ? 'justify-center' : ''" :title="collapsed ? 'Việc đã ứng tuyển' : ''">
         <span class="material-symbols-outlined">send</span>
         <span v-if="!collapsed" class="text-sm">Việc đã ứng tuyển</span>

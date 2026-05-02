@@ -1,7 +1,8 @@
 <script setup>
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import { jobService, mockInterviewService, profileService } from '@/services/api'
+import { jobService, mockInterviewService, profileService, walletService } from '@/services/api'
 import { useNotify } from '@/composables/useNotify'
+import { getCompactAiQuotaText } from '@/utils/billing'
 
 const emit = defineEmits(['refresh-overview'])
 
@@ -9,9 +10,11 @@ const notify = useNotify()
 
 const profiles = ref([])
 const jobs = ref([])
+const entitlements = ref([])
 const loadingBootstrap = ref(false)
 const loadingMockSessions = ref(false)
 const loadingMockMessages = ref(false)
+const loadingAiQuota = ref(false)
 const creatingMockSession = ref(false)
 const answeringMock = ref(false)
 const generatingMockReport = ref(false)
@@ -47,6 +50,17 @@ const activeMockSession = computed(() =>
 const mockSessionOptions = computed(() => mockSessions.value.slice(0, 6))
 const hasMockMessages = computed(() => mockMessages.value.length > 0)
 const mockCanAnswer = computed(() => Boolean(activeMockSessionId.value && mockAnswerInput.value.trim() && !answeringMock.value))
+const mockEntitlement = computed(() =>
+  entitlements.value.find((item) => item.feature_code === 'mock_interview_session') || null
+)
+const mockAiQuotaText = computed(() =>
+  loadingAiQuota.value
+    ? 'Đang tải...'
+    : getCompactAiQuotaText(mockEntitlement.value, {
+      unit: 'lượt',
+      inactiveLabel: 'Dùng ví AI',
+    })
+)
 const mockStatusTone = computed(() =>
   mockStreaming.value
     ? 'bg-violet-500/15 text-violet-200 border-violet-500/30'
@@ -186,6 +200,18 @@ const fetchBootstrapData = async () => {
   }
 }
 
+const fetchAiEntitlements = async () => {
+  loadingAiQuota.value = true
+  try {
+    const response = await walletService.getEntitlements()
+    entitlements.value = response?.data?.entitlements || []
+  } catch (error) {
+    notify.apiError(error, 'Không tải được hạn mức AI.')
+  } finally {
+    loadingAiQuota.value = false
+  }
+}
+
 const fetchMockSessions = async () => {
   loadingMockSessions.value = true
   try {
@@ -258,7 +284,7 @@ const createMockSession = async () => {
     const session = response?.data?.session
     notify.created('Phiên mock interview')
     emit('refresh-overview')
-    await fetchMockSessions()
+    await Promise.all([fetchMockSessions(), fetchAiEntitlements()])
     if (session?.id) {
       await selectMockSession(session.id)
       collapseMockSidebar()
@@ -451,7 +477,7 @@ const deleteMockSession = async () => {
 }
 
 onMounted(async () => {
-  await Promise.all([fetchBootstrapData(), fetchMockSessions()])
+  await Promise.all([fetchBootstrapData(), fetchMockSessions(), fetchAiEntitlements()])
 })
 
 watch(
@@ -463,360 +489,273 @@ watch(
 </script>
 
 <template>
-  <section
-    class="grid grid-cols-1 gap-6"
-    :class="mockSidebarCollapsed ? 'xl:grid-cols-[minmax(0,1fr)]' : 'xl:grid-cols-[360px_minmax(0,1fr)]'"
-  >
-    <aside
-      class="space-y-6"
-      :class="mockSidebarCollapsed ? 'hidden xl:hidden' : ''"
-    >
-      <section class="rounded-2xl border border-slate-200 bg-white/95 p-5 shadow-sm shadow-slate-950/5 dark:border-slate-800 dark:bg-slate-900/85">
-        <div class="flex items-center justify-between">
-          <div>
-            <h2 class="text-lg font-bold text-slate-900 dark:text-white">Tạo phiên mock interview</h2>
-            <p class="mt-1 text-sm text-slate-600 dark:text-slate-400">Chọn hồ sơ, job mục tiêu và số câu phỏng vấn.</p>
-          </div>
-          <div class="flex items-center gap-2">
-            <button
-              class="hidden rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-100 xl:inline-flex dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-              type="button"
-              @click="collapseMockSidebar"
-            >
-              Thu gọn
-            </button>
-            <span class="material-symbols-outlined rounded-xl bg-violet-500/10 p-3 text-violet-300">school</span>
-          </div>
-        </div>
+  <section class="grid min-h-[calc(100vh-5rem)] grid-cols-1 overflow-hidden bg-[#f8f4f1] xl:grid-cols-[400px_minmax(0,1fr)]">
+    <aside class="flex min-h-0 flex-col border-r border-slate-200 bg-white">
+      <div class="border-b border-slate-200 p-5">
+        <button
+          class="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#f45112] px-5 py-4 text-sm font-black text-white shadow-[0_16px_34px_rgba(244,81,18,0.22)] transition hover:bg-[#e6470e] disabled:cursor-not-allowed disabled:opacity-70"
+          :disabled="creatingMockSession || loadingBootstrap"
+          type="button"
+          @click="createMockSession"
+        >
+          <span class="material-symbols-outlined text-[20px]">add</span>
+          {{ creatingMockSession ? 'Đang tạo...' : 'Phiên phỏng vấn mới' }}
+        </button>
 
-        <div class="mt-5 space-y-4">
+        <div class="mt-4 space-y-3 rounded-2xl border border-orange-100 bg-orange-50/50 p-4">
           <label class="block">
-            <span class="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">Tiêu đề phiên</span>
+            <span class="mb-1.5 block text-xs font-black uppercase tracking-[0.18em] text-slate-500">Tiêu đề phiên phỏng vấn</span>
             <input
               v-model="mockSessionForm.title"
-              class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-500 focus:border-violet-500 dark:border-slate-700 dark:bg-slate-950/80 dark:text-white"
-              placeholder="Ví dụ: Mock interview Backend Laravel"
+              class="w-full rounded-xl border border-orange-100 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-[#f45112]"
+              placeholder="Ví dụ: Mock interview React"
               type="text"
             >
           </label>
-
           <label class="block">
-            <span class="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">Hồ sơ ứng viên</span>
+            <span class="mb-1.5 block text-xs font-black uppercase tracking-[0.18em] text-slate-500">Hồ sơ dùng để phỏng vấn</span>
             <select
               v-model="mockSessionForm.related_ho_so_id"
-              class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-violet-500 dark:border-slate-700 dark:bg-slate-950/80 dark:text-white"
+              class="w-full rounded-xl border border-orange-100 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[#f45112]"
             >
               <option value="">Chọn hồ sơ công khai</option>
               <option v-for="profile in availableProfiles" :key="profile.id" :value="String(profile.id)">
                 {{ profile.tieu_de_ho_so }}
               </option>
             </select>
-            <p v-if="!availableProfiles.length" class="mt-2 text-xs leading-5 text-amber-600 dark:text-amber-300">
-              Bạn chưa có CV công khai. Hãy vào mục <strong class="text-slate-900 dark:text-white">CV của tôi</strong> để bật công khai ít nhất một hồ sơ trước khi luyện phỏng vấn.
-            </p>
           </label>
-
           <label class="block">
-            <span class="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">Tin tuyển dụng liên quan</span>
+            <span class="mb-1.5 block text-xs font-black uppercase tracking-[0.18em] text-slate-500">Tin tuyển dụng mục tiêu</span>
             <select
               v-model="mockSessionForm.related_tin_tuyen_dung_id"
-              class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-violet-500 dark:border-slate-700 dark:bg-slate-950/80 dark:text-white"
+              class="w-full rounded-xl border border-orange-100 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[#f45112]"
             >
-              <option value="">Không chọn</option>
+              <option value="">Không chọn tin tuyển dụng</option>
               <option v-for="job in jobs" :key="job.id" :value="String(job.id)">
                 {{ job.tieu_de }}
               </option>
             </select>
           </label>
-
           <label class="block">
-            <span class="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">Số câu hỏi</span>
+            <span class="mb-1.5 block text-xs font-black uppercase tracking-[0.18em] text-slate-500">Số câu hỏi phỏng vấn</span>
             <input
               v-model.number="mockSessionForm.question_count"
-              class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-500 focus:border-violet-500 dark:border-slate-700 dark:bg-slate-950/80 dark:text-white"
-              max="7"
-              min="3"
+              class="w-full rounded-xl border border-orange-100 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[#f45112]"
+              min="1"
               type="number"
             >
           </label>
-
-          <button
-            class="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-500 px-4 py-3 text-sm font-bold text-white shadow-lg shadow-violet-600/20 transition hover:from-violet-500 hover:to-fuchsia-400 disabled:cursor-not-allowed disabled:opacity-60"
-            :disabled="creatingMockSession || loadingBootstrap"
-            type="button"
-            @click="createMockSession"
-          >
-            <span class="material-symbols-outlined text-lg">mic</span>
-            {{ creatingMockSession ? 'Đang tạo phiên...' : 'Tạo phiên phỏng vấn mới' }}
-          </button>
         </div>
-      </section>
+      </div>
 
-      <section class="rounded-2xl border border-slate-200 bg-white/95 p-5 shadow-sm shadow-slate-950/5 dark:border-slate-800 dark:bg-slate-900/85">
-        <div class="flex items-center justify-between">
-          <div>
-            <h2 class="text-lg font-bold text-slate-900 dark:text-white">Phiên gần đây</h2>
-            <p class="mt-1 text-sm text-slate-600 dark:text-slate-400">Tiếp tục luyện từ các phiên đang hoạt động.</p>
-          </div>
-          <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-            {{ mockSessions.length }} phiên
-          </span>
+      <div class="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+        <div class="mb-3 flex items-center justify-between">
+          <p class="text-xs font-black uppercase tracking-[0.28em] text-slate-400">Gần đây</p>
+          <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-500">{{ mockSessions.length }}</span>
         </div>
-
-        <div v-if="loadingMockSessions" class="mt-5 space-y-3">
-          <div v-for="index in 4" :key="index" class="h-20 animate-pulse rounded-xl bg-slate-200 dark:bg-slate-800" />
+        <div v-if="loadingMockSessions" class="space-y-3">
+          <div v-for="index in 5" :key="index" class="h-20 animate-pulse rounded-2xl bg-slate-100" />
         </div>
-
-        <div v-else-if="!mockSessionOptions.length" class="mt-5 rounded-xl border border-dashed border-slate-300 bg-slate-50/70 px-4 py-5 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-950/50 dark:text-slate-400">
-          Chưa có phiên mock interview nào. Tạo phiên đầu tiên để bắt đầu luyện tập cùng AI.
+        <div v-else-if="!mockSessionOptions.length" class="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-5 text-sm leading-6 text-slate-500">
+          Chưa có phiên phỏng vấn nào. Tạo phiên đầu tiên để luyện cùng AI.
         </div>
-
-        <div v-else class="mt-5 space-y-3">
+        <div v-else class="space-y-1">
           <button
             v-for="session in mockSessionOptions"
             :key="session.id"
             type="button"
-            class="w-full rounded-2xl border px-4 py-4 text-left transition"
+            class="w-full rounded-2xl px-4 py-4 text-left transition"
             :class="session.id === activeMockSessionId
-              ? 'border-violet-500/40 bg-violet-500/10 shadow-lg shadow-violet-900/10'
-              : 'border-slate-200 bg-slate-50 hover:border-slate-300 dark:border-slate-800 dark:bg-slate-950/70 dark:hover:border-slate-700 dark:hover:bg-slate-900'"
+              ? 'border border-orange-200 bg-orange-50 text-[#f45112]'
+              : 'text-slate-700 hover:bg-slate-50'"
             @click="selectMockSession(session.id)"
           >
             <div class="flex items-start justify-between gap-3">
-              <div class="min-w-0">
-                <p class="truncate text-sm font-semibold text-slate-900 dark:text-white">{{ session.title || 'Mock Interview' }}</p>
-                <p class="mt-1 text-xs text-slate-500">{{ formatDateTime(session.updated_at) }}</p>
-              </div>
-              <span class="rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide"
-                :class="session.id === activeMockSessionId ? 'bg-violet-500/20 text-violet-700 dark:text-violet-200' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'">
-                Mock
-              </span>
+              <p class="min-w-0 truncate text-sm font-black">{{ session.title || 'Mock Interview' }}</p>
+              <span class="shrink-0 text-xs text-slate-400">{{ formatDateTime(session.updated_at) }}</span>
             </div>
-            <p class="mt-3 text-sm leading-6 text-slate-600 dark:text-slate-400">
-              {{ mockPreview(session) }}
-            </p>
+            <p class="mt-2 line-clamp-2 text-sm italic leading-6 text-slate-500">"{{ mockPreview(session) }}"</p>
           </button>
         </div>
-      </section>
+      </div>
+
+      <div class="space-y-3 border-t border-slate-200 p-5">
+        <div class="rounded-xl bg-slate-50 px-4 py-3 text-sm font-medium text-slate-500">
+          <span class="material-symbols-outlined mr-2 align-[-4px] text-[18px]">info</span>
+          Hạn mức AI: {{ mockAiQuotaText }}
+        </div>
+        <div class="rounded-xl bg-slate-50 px-4 py-3 text-sm font-medium text-slate-500">
+          <span class="material-symbols-outlined mr-2 align-[-4px] text-[18px]">fact_check</span>
+          {{ mockProgress.answeredCount }}/{{ mockProgress.maxQuestions || '--' }} câu đã trả lời
+        </div>
+      </div>
     </aside>
 
-    <section ref="mockPanel" class="space-y-6">
-      <section class="rounded-2xl border border-slate-200 bg-white/95 p-6 shadow-sm shadow-slate-950/5 dark:border-slate-800 dark:bg-slate-900/85">
-        <div class="flex flex-col gap-4 border-b border-slate-200 pb-5 md:flex-row md:items-center md:justify-between dark:border-slate-800">
-          <div>
-            <h2 class="text-xl font-bold text-slate-900 dark:text-white">
-              {{ activeMockSession?.title || 'Mock Interview' }}
-            </h2>
-            <p class="mt-2 text-sm text-slate-600 dark:text-slate-400">
-              {{ activeMockSession
-                ? 'Trả lời theo đúng ngữ cảnh hồ sơ hiện tại để AI đánh giá và sinh báo cáo cuối phiên.'
-                : 'Tạo hoặc chọn một phiên mock interview để bắt đầu luyện phỏng vấn.' }}
-            </p>
-          </div>
-
-        <div class="flex flex-wrap items-center gap-3">
-          <button
-            v-if="mockSidebarCollapsed"
-            class="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-            type="button"
-            @click="expandMockSidebar"
+    <main ref="mockPanel" class="flex min-h-0 flex-col">
+      <header class="flex h-20 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-8">
+        <div class="inline-flex rounded-2xl bg-slate-100 p-1">
+          <RouterLink
+            :to="{ name: 'AICenterChatbot' }"
+            class="rounded-xl px-5 py-3 text-sm font-semibold text-slate-500 transition hover:text-slate-900"
           >
-            Hiện cột trái
-          </button>
-          <span class="inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold" :class="mockStatusTone">
-            <span
-              v-if="mockStreaming"
-              class="h-2 w-2 animate-pulse rounded-full bg-violet-300 shadow-[0_0_12px_rgba(196,181,253,0.9)]"
-            />
-            {{ mockStreamStatus }}
-          </span>
-          <label class="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-950/70 dark:text-slate-300">
-            <input v-model="streamEnabled" class="accent-violet-500" type="checkbox">
-            Dùng stream SSE
-            </label>
+            Tư vấn lộ trình
+          </RouterLink>
+          <span class="rounded-xl bg-white px-5 py-3 text-sm font-black text-[#f45112] shadow-sm">Phỏng vấn giả lập</span>
+        </div>
+        <div class="flex items-center gap-3">
+          <span class="inline-flex h-2.5 w-2.5 rounded-full bg-emerald-400"></span>
+          <span class="text-xs font-bold uppercase tracking-[0.28em] text-slate-500">AI Agent Online</span>
+        </div>
+      </header>
+
+      <div ref="mockMessagesContainer" class="min-h-0 flex-1 overflow-y-auto px-8 py-7">
+        <div v-if="activeMockSessionId" class="mb-6 rounded-2xl border border-slate-200 bg-white p-5">
+          <div class="flex items-center justify-between gap-4">
+            <div>
+              <p class="text-sm font-black text-slate-900">Tiến độ phỏng vấn</p>
+              <p class="mt-1 text-xs text-slate-500">
+                Đã trả lời {{ mockProgress.answeredCount }}/{{ mockProgress.maxQuestions || '--' }} câu · {{ latestMockQuestionMeta.interview_stage_label || 'Đang luyện tập' }}
+              </p>
+            </div>
             <button
-              class="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+              class="rounded-xl bg-slate-950 px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
               :disabled="!activeMockSessionId || generatingMockReport"
               type="button"
               @click="generateMockReport"
             >
-              {{ generatingMockReport ? 'Đang sinh báo cáo...' : 'Sinh báo cáo' }}
+              {{ generatingMockReport ? 'Đang sinh...' : 'Kết thúc & Xuất báo cáo' }}
             </button>
+          </div>
+          <div class="mt-4 h-2.5 overflow-hidden rounded-full bg-slate-100">
+            <div class="h-full rounded-full bg-[#f45112]" :style="{ width: `${mockProgress.percent}%` }" />
+          </div>
+        </div>
+
+        <div v-if="loadingMockMessages" class="space-y-5">
+          <div v-for="index in 4" :key="index" class="h-24 animate-pulse rounded-[24px] bg-white" />
+        </div>
+        <div v-else-if="!activeMockSessionId" class="flex h-full items-center justify-center text-center text-sm leading-7 text-slate-500">
+          Tạo hoặc chọn một phiên phỏng vấn để nhận câu hỏi đầu tiên từ AI.
+        </div>
+        <div v-else-if="!hasMockMessages" class="flex min-h-[360px] items-center justify-center text-center text-sm leading-7 text-slate-500">
+          Phiên này chưa có nội dung. Hãy tạo phiên mới hoặc tải lại danh sách phiên.
+        </div>
+        <div v-else class="space-y-8">
+          <article
+            v-for="message in mockMessages.filter((item) => !item.metadata?.hidden_in_ui)"
+            :key="message.id"
+            class="flex gap-5"
+            :class="message.role === 'user' ? 'justify-end' : 'justify-start'"
+          >
+            <div v-if="message.role === 'assistant'" class="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#f45112] text-white shadow-[0_12px_24px_rgba(244,81,18,0.2)]">
+              <span class="material-symbols-outlined">smart_toy</span>
+            </div>
+            <div class="max-w-[82%]">
+              <div class="mb-2 flex items-center gap-2" :class="message.role === 'user' ? 'justify-end' : ''">
+                <span class="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                  {{ message.role === 'user' ? 'Bạn' : 'SmartJob AI' }}
+                </span>
+              </div>
+              <div
+                class="rounded-[24px] px-7 py-5 text-base leading-8 shadow-sm"
+                :class="message.role === 'user'
+                  ? 'rounded-tr-none bg-[#f45112] text-white shadow-[0_18px_36px_rgba(244,81,18,0.22)]'
+                  : 'rounded-tl-none border border-slate-200 bg-white text-slate-900'"
+              >
+                <div
+                  v-if="message.role === 'assistant' && message.metadata?.streaming && !message.content"
+                  class="inline-flex items-center gap-2 text-slate-500"
+                >
+                  <span>Đang soạn câu hỏi</span>
+                  <span class="inline-flex gap-1">
+                    <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-[#f45112]" />
+                    <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-[#f45112] [animation-delay:150ms]" />
+                    <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-[#f45112] [animation-delay:300ms]" />
+                  </span>
+                </div>
+                <p v-else class="whitespace-pre-wrap">{{ message.content }}</p>
+              </div>
+            </div>
+            <div v-if="message.role === 'user'" class="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-slate-200 text-slate-700">
+              <span class="material-symbols-outlined">person</span>
+            </div>
+          </article>
+
+          <section v-if="generatingMockReport && streamingReportText" class="rounded-[24px] border border-orange-200 bg-white p-6">
+            <p class="text-sm font-black text-slate-900">Đang stream báo cáo...</p>
+            <p class="mt-3 whitespace-pre-wrap text-sm leading-7 text-slate-600">{{ streamingReportText }}</p>
+          </section>
+
+          <section v-else-if="mockReport" class="rounded-[24px] border border-orange-200 bg-white p-6">
+            <p class="text-sm font-black text-slate-900">Báo cáo phiên phỏng vấn</p>
+            <div class="mt-4 grid gap-3 md:grid-cols-4">
+              <div class="rounded-2xl bg-orange-50 p-4">
+                <p class="text-xs font-bold text-slate-500">Tổng điểm</p>
+                <p class="mt-2 text-2xl font-black text-[#f45112]">{{ Math.round(Number(mockReport.tong_diem || 0)) }}/100</p>
+              </div>
+              <div class="rounded-2xl bg-slate-50 p-4">
+                <p class="text-xs font-bold text-slate-500">Kỹ thuật</p>
+                <p class="mt-2 text-xl font-black text-slate-900">{{ Math.round(Number(mockReport.diem_ky_thuat || 0)) }}</p>
+              </div>
+              <div class="rounded-2xl bg-slate-50 p-4">
+                <p class="text-xs font-bold text-slate-500">Giao tiếp</p>
+                <p class="mt-2 text-xl font-black text-slate-900">{{ Math.round(Number(mockReport.diem_giao_tiep || 0)) }}</p>
+              </div>
+              <div class="rounded-2xl bg-slate-50 p-4">
+                <p class="text-xs font-bold text-slate-500">Phù hợp JD</p>
+                <p class="mt-2 text-xl font-black text-slate-900">{{ Math.round(Number(mockReport.diem_phu_hop_jd || 0)) }}</p>
+              </div>
+            </div>
+            <p class="mt-5 whitespace-pre-wrap text-sm leading-7 text-slate-600">
+              {{ mockReport.de_xuat_cai_thien_text || mockReport.cau_tra_loi_can_cai_thien_nhat || 'Báo cáo chi tiết đang được cập nhật.' }}
+            </p>
+          </section>
+        </div>
+      </div>
+
+      <footer class="shrink-0 border-t border-slate-200 bg-white px-10 py-6">
+        <div class="flex items-center gap-4 rounded-2xl bg-slate-100 px-6 py-4">
+          <textarea
+            ref="mockComposerInput"
+            v-model="mockAnswerInput"
+            class="max-h-32 min-h-[44px] flex-1 resize-none bg-transparent text-base leading-7 text-slate-900 outline-none placeholder:text-slate-400"
+            placeholder="Nhập câu trả lời của bạn tại đây..."
+            @keydown.enter.exact.prevent="submitMockAnswer"
+          />
+          <button
+            class="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-[#f45112] text-white shadow-[0_12px_24px_rgba(244,81,18,0.24)] transition hover:bg-[#e6470e] disabled:cursor-not-allowed disabled:opacity-50"
+            :disabled="!mockCanAnswer"
+            type="button"
+            @click="submitMockAnswer"
+          >
+            <span class="material-symbols-outlined">{{ answeringMock ? 'hourglass_top' : 'send' }}</span>
+          </button>
+        </div>
+        <div class="mt-4 flex flex-wrap items-center justify-between gap-3">
+          <label class="inline-flex items-center gap-2 text-sm font-medium text-slate-500">
+            <input v-model="streamEnabled" class="accent-[#f45112]" type="checkbox">
+            Stream SSE
+          </label>
+          <div class="flex gap-3">
             <button
-              class="rounded-xl border border-red-500/30 px-4 py-2.5 text-sm font-semibold text-red-300 transition hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-60"
+              class="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
               :disabled="!activeMockSessionId"
               type="button"
               @click="deleteMockSession"
             >
               Xóa phiên
             </button>
+            <button
+              class="rounded-xl bg-slate-950 px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
+              :disabled="!activeMockSessionId || generatingMockReport"
+              type="button"
+              @click="generateMockReport"
+            >
+              Kết thúc & Xuất báo cáo
+            </button>
           </div>
         </div>
-
-        <div v-if="activeMockSessionId" class="mt-5 rounded-2xl border border-slate-200 bg-slate-50/80 p-5 dark:border-slate-800 dark:bg-slate-950/70">
-          <div class="flex items-center justify-between">
-            <div>
-              <p class="text-sm font-semibold text-slate-900 dark:text-white">Tiến độ phỏng vấn</p>
-              <p class="mt-1 text-xs text-slate-500 dark:text-slate-500">
-                Đã trả lời {{ mockProgress.answeredCount }}/{{ mockProgress.maxQuestions || '--' }} câu · Câu hiện tại {{ mockProgress.currentQuestion }}/{{ mockProgress.maxQuestions || '--' }}
-              </p>
-            </div>
-            <span class="rounded-full bg-violet-500/10 px-3 py-1 text-xs font-semibold text-violet-700 dark:text-violet-200">
-              {{ latestMockQuestionMeta.interview_stage_label || 'Đang luyện tập' }}
-            </span>
-          </div>
-          <div class="mt-4 h-2.5 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
-            <div
-              class="h-full rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500"
-              :style="{ width: `${mockProgress.percent}%` }"
-            />
-          </div>
-        </div>
-
-        <div class="mt-6 rounded-2xl border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-950/70">
-          <div v-if="loadingMockMessages" class="space-y-4">
-            <div v-for="index in 4" :key="index" class="h-16 animate-pulse rounded-2xl bg-slate-200 dark:bg-slate-800" />
-          </div>
-
-          <div v-else-if="!activeMockSessionId" class="flex min-h-[360px] items-center justify-center rounded-2xl border border-dashed border-slate-300 px-8 text-center text-sm leading-7 text-slate-600 dark:border-slate-700 dark:text-slate-400">
-            Tạo hoặc chọn một phiên mock interview để nhận câu hỏi đầu tiên từ AI.
-          </div>
-
-          <div v-else class="space-y-4">
-            <div v-if="!hasMockMessages" class="flex min-h-[320px] items-center justify-center rounded-2xl border border-dashed border-slate-300 px-8 text-center text-sm leading-7 text-slate-600 dark:border-slate-700 dark:text-slate-400">
-              Phiên này chưa có nội dung. Hãy tạo phiên mới hoặc tải lại danh sách phiên để nhận câu hỏi đầu tiên.
-            </div>
-
-            <div v-else ref="mockMessagesContainer" class="max-h-[520px] space-y-4 overflow-y-auto pr-1">
-              <article
-                v-for="message in mockMessages.filter((item) => !item.metadata?.hidden_in_ui)"
-                :key="message.id"
-                class="max-w-[88%] rounded-2xl border px-4 py-3"
-                :class="messageBubbleClass(message.role)"
-              >
-                <div class="mb-2 flex items-center gap-2">
-                  <span class="text-xs font-semibold uppercase tracking-wide opacity-80">
-                    {{ message.role === 'user' ? 'Bạn' : 'Người phỏng vấn AI' }}
-                  </span>
-                  <span
-                    v-if="message.role === 'assistant'"
-                    class="rounded-full bg-slate-200 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-violet-700 dark:bg-slate-800/80 dark:text-violet-200"
-                  >
-                    {{ getInterviewQuestionLabel(message) }}
-                  </span>
-                  <span
-                    v-if="message.role === 'assistant'"
-                    class="rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide"
-                    :class="getMockProviderTone(message.metadata?.generation_provider)"
-                  >
-                    {{ getMockProviderLabel(message.metadata?.generation_provider) }}
-                  </span>
-                </div>
-                <div
-                  v-if="message.role === 'assistant' && message.metadata?.streaming && !message.content"
-                  class="inline-flex items-center gap-2 text-sm leading-7 text-slate-600 dark:text-slate-300"
-                >
-                  <span>Đang soạn câu hỏi</span>
-                  <span class="inline-flex gap-1">
-                    <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-violet-300 [animation-delay:0ms]" />
-                    <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-violet-300 [animation-delay:150ms]" />
-                    <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-violet-300 [animation-delay:300ms]" />
-                  </span>
-                </div>
-                <p v-else class="whitespace-pre-wrap text-sm leading-7">{{ message.content }}</p>
-              </article>
-            </div>
-          </div>
-        </div>
-
-        <div class="mt-5 flex flex-col gap-3 lg:flex-row">
-          <textarea
-            ref="mockComposerInput"
-            v-model="mockAnswerInput"
-            class="min-h-[112px] flex-1 rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-sm leading-7 text-white outline-none transition placeholder:text-slate-500 focus:border-violet-500"
-            placeholder="Nhập câu trả lời của bạn cho câu hỏi phỏng vấn hiện tại..."
-          />
-          <button
-            class="rounded-2xl bg-gradient-to-r from-violet-600 to-fuchsia-500 px-6 py-4 text-sm font-bold text-white shadow-lg shadow-violet-600/20 transition hover:from-violet-500 hover:to-fuchsia-400 disabled:cursor-not-allowed disabled:opacity-60 lg:w-[180px]"
-            :disabled="!mockCanAnswer"
-            type="button"
-            @click="submitMockAnswer"
-          >
-            {{ answeringMock ? 'Đang gửi...' : 'Trả lời' }}
-          </button>
-        </div>
-      </section>
-
-      <section class="rounded-2xl border border-slate-800 bg-slate-900/85 p-6 shadow-sm">
-        <div class="flex items-center justify-between">
-          <div>
-            <h2 class="text-lg font-bold text-white">Báo cáo gần nhất của phiên</h2>
-            <p class="mt-1 text-sm text-slate-400">Bản tóm tắt nhanh để bạn biết cần ưu tiên cải thiện gì ngay.</p>
-          </div>
-          <span class="material-symbols-outlined rounded-xl bg-violet-500/10 p-3 text-violet-300">assignment</span>
-        </div>
-
-        <div v-if="generatingMockReport && streamingReportText" class="mt-5 rounded-2xl border border-slate-800 bg-slate-950/70 p-5">
-          <p class="text-sm font-semibold text-white">Đang stream báo cáo...</p>
-          <p class="mt-3 whitespace-pre-wrap text-sm leading-7 text-slate-300">{{ streamingReportText }}</p>
-        </div>
-
-        <div v-else-if="!mockReport" class="mt-5 rounded-2xl border border-dashed border-slate-700 bg-slate-950/50 px-4 py-5 text-sm leading-7 text-slate-400">
-          Chưa có báo cáo cho phiên này. Hoàn thành phiên phỏng vấn rồi bấm <strong class="text-white">Sinh báo cáo</strong> để hệ thống tổng hợp điểm mạnh, điểm yếu và kế hoạch cải thiện.
-        </div>
-
-        <div v-else class="mt-5 space-y-5">
-          <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
-            <div class="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
-              <p class="text-sm text-slate-400">Tổng điểm</p>
-              <p class="mt-2 text-3xl font-bold text-white">{{ Math.round(Number(mockReport.tong_diem || 0)) }}/100</p>
-            </div>
-            <div class="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
-              <p class="text-sm text-slate-400">Kỹ thuật</p>
-              <p class="mt-2 text-2xl font-bold text-white">{{ Math.round(Number(mockReport.diem_ky_thuat || 0)) }}</p>
-            </div>
-            <div class="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
-              <p class="text-sm text-slate-400">Giao tiếp</p>
-              <p class="mt-2 text-2xl font-bold text-white">{{ Math.round(Number(mockReport.diem_giao_tiep || 0)) }}</p>
-            </div>
-            <div class="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
-              <p class="text-sm text-slate-400">Phù hợp JD</p>
-              <p class="mt-2 text-2xl font-bold text-white">{{ Math.round(Number(mockReport.diem_phu_hop_jd || 0)) }}</p>
-            </div>
-          </div>
-
-          <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <div class="rounded-2xl border border-slate-800 bg-slate-950/70 p-5">
-              <p class="text-sm font-semibold text-white">3 việc cần làm ngay</p>
-              <ul class="mt-4 space-y-3 text-sm leading-7 text-slate-300">
-                <li
-                  v-for="(item, index) in (mockReport.metadata?.structured_improvement?.priority_actions || mockReport.uu_tien_cai_thien || []).slice(0, 3)"
-                  :key="`${index}-${item}`"
-                  class="flex gap-3"
-                >
-                  <span class="mt-2 h-1.5 w-1.5 rounded-full bg-violet-400"></span>
-                  <span>{{ item }}</span>
-                </li>
-              </ul>
-            </div>
-
-            <div class="rounded-2xl border border-slate-800 bg-slate-950/70 p-5">
-              <p class="text-sm font-semibold text-white">Điểm cần cải thiện nhất</p>
-              <p class="mt-4 text-lg font-bold text-violet-200">{{ mockReport.diem_yeu_nhat || mockReport.metadata?.weakest_dimension || 'Đang cập nhật' }}</p>
-              <p class="mt-3 text-sm leading-7 text-slate-400">
-                {{ mockReport.cau_tra_loi_can_cai_thien_nhat || 'Hệ thống chưa ghi nhận câu trả lời yếu nhất cho phiên này.' }}
-              </p>
-            </div>
-          </div>
-
-          <div class="rounded-2xl border border-slate-800 bg-slate-950/70 p-5">
-            <p class="text-sm font-semibold text-white">Tóm tắt cải thiện</p>
-            <p class="mt-3 whitespace-pre-wrap text-sm leading-7 text-slate-300">
-              {{ mockReport.de_xuat_cai_thien_text || 'Báo cáo chi tiết đang được cập nhật.' }}
-            </p>
-          </div>
-        </div>
-      </section>
-    </section>
+      </footer>
+    </main>
   </section>
 </template>

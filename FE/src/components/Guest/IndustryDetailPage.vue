@@ -50,10 +50,9 @@ const openJobsCount = computed(() => industryJobs.value.length)
 const formatSalary = (job) => {
   const from = Number(job?.muc_luong_tu || 0)
   const to = Number(job?.muc_luong_den || 0)
-  const single = Number(job?.muc_luong || 0)
 
   if (from && to) return `${from.toLocaleString('vi-VN')} - ${to.toLocaleString('vi-VN')} đ`
-  if (single) return `${single.toLocaleString('vi-VN')} đ`
+  if (from) return `${from.toLocaleString('vi-VN')} đ`
   return 'Thỏa thuận'
 }
 

@@ -2,21 +2,27 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Exceptions\BillingException;
 use App\Http\Controllers\Controller;
 use App\Models\HoSo;
 use App\Models\KetQuaMatching;
+use App\Models\SuDungTinhNangAi;
 use App\Models\TinTuyenDung;
 use App\Models\UngTuyen;
 use App\Services\Ai\AiClientService;
+use App\Services\Billing\FeatureAccessService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use RuntimeException;
+use Throwable;
 
 class CoverLetterController extends Controller
 {
     public function __construct(
-        private readonly AiClientService $aiClientService
+        private readonly AiClientService $aiClientService,
+        private readonly FeatureAccessService $featureAccessService,
     ) {
     }
 
@@ -27,6 +33,9 @@ class CoverLetterController extends Controller
 
     public function generate(Request $request): JsonResponse
     {
+        /** @var SuDungTinhNangAi|null $billingUsage */
+        $billingUsage = null;
+
         $request->validate([
             'ho_so_id' => ['required', 'integer', 'exists:ho_sos,id'],
             'tin_tuyen_dung_id' => ['required', 'integer', 'exists:tin_tuyen_dungs,id'],
@@ -115,7 +124,34 @@ class CoverLetterController extends Controller
             'explanation' => null,
         ];
 
+        $ungTuyenDaNop = UngTuyen::query()
+            ->where('tin_tuyen_dung_id', (int) $request->tin_tuyen_dung_id)
+            ->whereHas('hoSo', function ($query) use ($request) {
+                $query->withTrashed()->where('nguoi_dung_id', $request->user()->id);
+            })
+            ->whereNotNull('thoi_gian_ung_tuyen')
+            ->first();
+
+        if ($ungTuyenDaNop) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Bạn đã nộp hồ sơ vào tin này rồi, không thể tạo thêm thư xin việc mới.',
+            ], 422);
+        }
+
         try {
+            $billingUsage = $this->featureAccessService->beginUsage(
+                $request->user(),
+                'cover_letter_generation',
+                'ung_tuyen',
+                null,
+                [
+                    'ho_so_id' => $hoSo->id,
+                    'tin_tuyen_dung_id' => $tin->id,
+                ],
+                $this->resolveIdempotencyKey($request, $hoSo->id, $tin->id),
+            );
+
             $result = $this->aiClientService->generateCoverLetter(
                 $hoSo->id,
                 $tin->id,
@@ -125,21 +161,6 @@ class CoverLetterController extends Controller
             );
             $data = $result['data'] ?? [];
             $draft = $data['thu_xin_viec_ai'] ?? $data['content'] ?? null;
-
-            $ungTuyenDaNop = UngTuyen::query()
-                ->where('tin_tuyen_dung_id', (int) $request->tin_tuyen_dung_id)
-                ->whereHas('hoSo', function ($query) use ($request) {
-                    $query->withTrashed()->where('nguoi_dung_id', $request->user()->id);
-                })
-                ->whereNotNull('thoi_gian_ung_tuyen')
-                ->first();
-
-            if ($ungTuyenDaNop) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Bạn đã nộp hồ sơ vào tin này rồi, không thể tạo thêm thư xin việc mới.',
-                ], 422);
-            }
 
             $ungTuyen = UngTuyen::query()
                 ->where('tin_tuyen_dung_id', (int) $request->tin_tuyen_dung_id)
@@ -160,7 +181,22 @@ class CoverLetterController extends Controller
                 $ungTuyen->trang_thai = UngTuyen::TRANG_THAI_CHO_DUYET;
             }
             $ungTuyen->save();
+
+            $billingUsage = $this->featureAccessService->commitUsage($billingUsage, [
+                'ung_tuyen_id' => $ungTuyen->id,
+            ]);
+        } catch (BillingException $e) {
+            return response()->json([
+                'success' => false,
+                'code' => $e->errorCode,
+                'message' => $e->getMessage(),
+                ...$e->context,
+            ], $e->status);
         } catch (RuntimeException $e) {
+            if ($billingUsage) {
+                $this->safeFailUsage($billingUsage, $e->getMessage());
+            }
+
             $message = $e->getMessage();
 
             if (str_contains($message, 'matching_profile')) {
@@ -171,6 +207,12 @@ class CoverLetterController extends Controller
                 'success' => false,
                 'message' => $message,
             ], 502);
+        } catch (Throwable $e) {
+            if ($billingUsage) {
+                $this->safeFailUsage($billingUsage, $e->getMessage());
+            }
+
+            throw $e;
         }
 
         return response()->json([
@@ -179,6 +221,7 @@ class CoverLetterController extends Controller
             'data' => [
                 'ung_tuyen_id' => $ungTuyen->id,
                 'thu_xin_viec_ai' => $ungTuyen->thu_xin_viec_ai,
+                'billing_usage_id' => $billingUsage?->id,
             ],
         ]);
     }
@@ -238,5 +281,24 @@ class CoverLetterController extends Controller
                 'thu_xin_viec_ai' => $ungTuyen->thu_xin_viec_ai,
             ],
         ]);
+    }
+
+    private function resolveIdempotencyKey(Request $request, int $hoSoId, int $tinTuyenDungId): string
+    {
+        $headerKey = trim((string) $request->header('X-Idempotency-Key', ''));
+        if ($headerKey !== '') {
+            return $headerKey;
+        }
+
+        return 'cover-letter:' . $request->user()->id . ':' . $hoSoId . ':' . $tinTuyenDungId . ':' . Str::uuid();
+    }
+
+    private function safeFailUsage(SuDungTinhNangAi $usage, string $reason): void
+    {
+        try {
+            $this->featureAccessService->failUsage($usage, $reason);
+        } catch (Throwable) {
+            // Không làm hỏng response chính nếu rollback billing gặp lỗi.
+        }
     }
 }

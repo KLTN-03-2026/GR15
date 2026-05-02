@@ -6,11 +6,16 @@ use App\Events\CompanyFollowerCountUpdated;
 use App\Http\Controllers\Controller;
 use App\Models\CongTy;
 use App\Models\TinTuyenDung;
+use App\Services\AuditLogService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class UngVienTheoDoiCongTyController extends Controller
 {
+    public function __construct(private readonly AuditLogService $auditLogService)
+    {
+    }
+
     private function dispatchFollowerCountUpdate(CongTy $congTy): void
     {
         try {
@@ -57,20 +62,21 @@ class UngVienTheoDoiCongTyController extends Controller
 
         $data = $query->paginate((int) $request->get('per_page', 15));
 
-        $data->getCollection()->transform(function (CongTy $congTy) use ($recentJobsLimit) {
+        $userId = (int) $user->id;
+
+        $data->getCollection()->transform(function (CongTy $congTy) use ($recentJobsLimit, $userId) {
             $payload = $congTy->toArray();
             $payload['logo_url'] = $congTy->logo
                 ? url('/api/v1/cong-ty-logo?path=' . urlencode($congTy->logo))
                 : null;
             $payload['da_theo_doi'] = true;
             $payload['theo_doi_luc'] = optional($congTy->pivot?->created_at)->toISOString();
-            $payload['tin_tuyen_dungs'] = $congTy->tinTuyenDungs()
+            $jobs = $congTy->tinTuyenDungs()
                 ->select([
                     'id',
                     'tieu_de',
                     'dia_diem_lam_viec',
                     'hinh_thuc_lam_viec',
-                    'muc_luong',
                     'muc_luong_tu',
                     'muc_luong_den',
                     'ngay_het_han',
@@ -87,8 +93,12 @@ class UngVienTheoDoiCongTyController extends Controller
                 })
                 ->orderByRaw('COALESCE(reactivated_at, published_at, created_at) DESC')
                 ->limit($recentJobsLimit)
-                ->get()
-                ->toArray();
+                ->get();
+
+            $payload['tin_tuyen_dungs'] = $jobs
+                ->map(fn (TinTuyenDung $job) => $job->toArray())
+                ->values()
+                ->all();
 
             return $payload;
         });
@@ -99,7 +109,7 @@ class UngVienTheoDoiCongTyController extends Controller
         ]);
     }
 
-    public function toggle(int $congTyId): JsonResponse
+    public function toggle(Request $request, int $congTyId): JsonResponse
     {
         $congTy = CongTy::where('trang_thai', CongTy::TRANG_THAI_HOAT_DONG)->findOrFail($congTyId);
 
@@ -114,6 +124,20 @@ class UngVienTheoDoiCongTyController extends Controller
         $soNguoiTheoDoi = (int) $congTy->nguoiDungTheoDois()->count();
 
         $this->dispatchFollowerCountUpdate($congTy);
+        $this->auditLogService->logModelAction(
+            actor: $user,
+            action: $daTheoDoi ? 'candidate_company_followed' : 'candidate_company_unfollowed',
+            description: ($daTheoDoi ? 'Ứng viên theo dõi ' : 'Ứng viên bỏ theo dõi ') . $congTy->ten_cong_ty . '.',
+            target: $congTy,
+            company: $congTy,
+            after: [
+                'cong_ty_id' => $congTy->id,
+                'da_theo_doi' => $daTheoDoi,
+                'so_nguoi_theo_doi' => $soNguoiTheoDoi,
+            ],
+            metadata: ['scope' => 'candidate_follow'],
+            request: $request,
+        );
 
         return response()->json([
             'success' => true,

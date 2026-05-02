@@ -1,8 +1,13 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
-import { applicationService, profileService, savedJobService } from '@/services/api'
+import { applicationService, profileService, reEngagementService, savedJobService, walletService } from '@/services/api'
 import { useNotify } from '@/composables/useNotify'
+import {
+  getBillingFeatureLabel,
+  getEntitlementActionLabel,
+  getEntitlementCoverageNote,
+} from '@/utils/billing'
 
 const notify = useNotify()
 const router = useRouter()
@@ -12,7 +17,10 @@ const removingJobId = ref(null)
 const applyingJobId = ref(null)
 const generatingCoverLetter = ref(false)
 const loadingProfiles = ref(false)
+const loadingBillingContext = ref(false)
 const jobs = ref([])
+const reEngagementLoading = ref(false)
+const reEngagementInsights = ref(null)
 const profiles = ref([])
 const sortOption = ref('newest')
 const applyModalOpen = ref(false)
@@ -21,6 +29,10 @@ const selectedProfileId = ref('')
 const coverLetter = ref('')
 const generatedCoverLetterId = ref(null)
 const generatedCoverLetter = ref('')
+const wallet = ref(null)
+const pricing = ref([])
+const entitlements = ref([])
+const currentSubscription = ref(null)
 const pagination = reactive({
   current_page: 1,
   last_page: 1,
@@ -38,6 +50,19 @@ const sortedJobs = computed(() => {
   return items.sort((a, b) => new Date(b.pivot?.created_at || 0) - new Date(a.pivot?.created_at || 0))
 })
 
+const hasReEngagementInsights = computed(() => {
+  const data = reEngagementInsights.value || {}
+  return Boolean(
+    (data.expiring_saved_jobs || []).length ||
+    (data.stale_saved_jobs || []).length ||
+    (data.similar_jobs || []).length
+  )
+})
+
+const expiringSavedJobs = computed(() => (reEngagementInsights.value?.expiring_saved_jobs || []).slice(0, 3))
+const staleSavedJobs = computed(() => (reEngagementInsights.value?.stale_saved_jobs || []).slice(0, 3))
+const similarJobs = computed(() => (reEngagementInsights.value?.similar_jobs || []).slice(0, 4))
+
 const formatCurrency = (value) => {
   if (value === null || value === undefined || value === '') return 'Thỏa thuận'
   return new Intl.NumberFormat('vi-VN').format(Number(value)) + ' đ'
@@ -47,9 +72,7 @@ const formatSalary = (job) => {
   if (job.muc_luong_tu && job.muc_luong_den) {
     return `${formatCurrency(job.muc_luong_tu)} - ${formatCurrency(job.muc_luong_den)}`
   }
-  if (job.muc_luong) {
-    return formatCurrency(job.muc_luong)
-  }
+  if (job.muc_luong_tu) return formatCurrency(job.muc_luong_tu)
   return 'Thỏa thuận'
 }
 
@@ -59,6 +82,29 @@ const formatSavedDate = (value) => {
   return `Lưu ${date.toLocaleDateString('vi-VN')}`
 }
 
+const formatDeadline = (value) => {
+  if (!value) return 'Chưa có hạn'
+  const date = new Date(value)
+  return date.toLocaleDateString('vi-VN')
+}
+
+const formatReEngagementReason = (job) => {
+  if (job.reason_type === 'expiring_saved_job') {
+    const days = Number(job.days_until_deadline ?? 0)
+    return days <= 0 ? 'Hết hạn hôm nay' : `Còn ${days} ngày`
+  }
+
+  if (job.reason_type === 'stale_saved_job') {
+    return 'Đã lưu lâu, chưa ứng tuyển'
+  }
+
+  if (job.reason_type === 'similar_to_saved_jobs') {
+    return `Tương đồng ${job.match_score || 0}/100`
+  }
+
+  return 'Gợi ý từ hệ thống'
+}
+
 const getAcceptedCount = (job) => Number(job?.so_luong_da_nhan || 0)
 const getRemainingSlots = (job) => Number(job?.so_luong_con_lai || 0)
 const isQuotaFull = (job) => Boolean(job?.da_tuyen_du) || (Number(job?.so_luong_tuyen || 0) > 0 && getRemainingSlots(job) <= 0)
@@ -66,6 +112,31 @@ const isQuotaFull = (job) => Boolean(job?.da_tuyen_du) || (Number(job?.so_luong_
 const selectedProfile = computed(() =>
   profiles.value.find((profile) => Number(profile.id) === Number(selectedProfileId.value)) || null
 )
+
+const walletAvailable = computed(() => Number(wallet.value?.so_du_kha_dung || 0))
+const coverLetterPrice = computed(() =>
+  Number(pricing.value.find((item) => item.feature_code === 'cover_letter_generation')?.don_gia || 0)
+)
+const coverLetterEntitlement = computed(() =>
+  entitlements.value.find((item) => item.feature_code === 'cover_letter_generation') || null
+)
+
+const coverLetterBillingLabel = computed(() => {
+  return getEntitlementActionLabel(coverLetterEntitlement.value, {
+    actionLabel: 'Sinh thư AI',
+    price: coverLetterPrice.value,
+    formatCurrency,
+  })
+})
+
+const coverLetterWalletNote = computed(() => {
+  return getEntitlementCoverageNote(coverLetterEntitlement.value, {
+    currentSubscription: currentSubscription.value,
+    featureLabel: getBillingFeatureLabel('cover_letter_generation'),
+    price: coverLetterPrice.value,
+    formatCurrency,
+  })
+})
 
 const fetchSavedJobs = async (page = 1) => {
   loading.value = true
@@ -94,6 +165,18 @@ const fetchSavedJobs = async (page = 1) => {
   }
 }
 
+const fetchReEngagementInsights = async () => {
+  reEngagementLoading.value = true
+  try {
+    const response = await reEngagementService.getInsights({ similar_limit: 6 })
+    reEngagementInsights.value = response?.data || null
+  } catch (error) {
+    reEngagementInsights.value = null
+  } finally {
+    reEngagementLoading.value = false
+  }
+}
+
 const toggleSaved = async (jobId) => {
   if (removingJobId.value) return
   removingJobId.value = jobId
@@ -102,6 +185,7 @@ const toggleSaved = async (jobId) => {
     notify.info('Đã bỏ lưu tin tuyển dụng.')
     jobs.value = jobs.value.filter((job) => Number(job.id) !== Number(jobId))
     pagination.total = Math.max(0, pagination.total - 1)
+    fetchReEngagementInsights()
   } catch (error) {
     notify.apiError(error, 'Không thể cập nhật tin đã lưu.')
   } finally {
@@ -138,13 +222,37 @@ const loadProfiles = async () => {
   }
 }
 
+const loadBillingContext = async () => {
+  loadingBillingContext.value = true
+  try {
+    const [walletResponse, pricingResponse, entitlementsResponse] = await Promise.all([
+      walletService.getWallet(),
+      walletService.getPricing(),
+      walletService.getEntitlements(),
+    ])
+
+    wallet.value = walletResponse?.data?.wallet || null
+    pricing.value = pricingResponse?.data || []
+    currentSubscription.value = entitlementsResponse?.data?.current_subscription || null
+    entitlements.value = entitlementsResponse?.data?.entitlements || []
+  } catch (error) {
+    wallet.value = null
+    pricing.value = []
+    currentSubscription.value = null
+    entitlements.value = []
+    notify.apiError(error, 'Không tải được dữ liệu ví AI.')
+  } finally {
+    loadingBillingContext.value = false
+  }
+}
+
 const openApplyModal = async (job) => {
   if (isQuotaFull(job)) {
     notify.warning('Tin tuyển dụng này đã đủ chỉ tiêu tuyển dụng.')
     return
   }
 
-  await loadProfiles()
+  await Promise.all([loadProfiles(), loadBillingContext()])
 
   if (!profiles.value.length) {
     notify.warning('Bạn cần tạo ít nhất một hồ sơ/CV trước khi ứng tuyển.')
@@ -234,8 +342,17 @@ const generateCoverLetter = async () => {
     coverLetter.value = draft
 
     notify.success('Đã sinh thư ứng tuyển bằng AI. Bạn có thể chỉnh sửa trước khi nộp.')
+    await loadBillingContext()
   } catch (error) {
     if (await handleExistingApplicationError(error)) {
+      return
+    }
+    if (error?.code === 'WALLET_INSUFFICIENT_BALANCE') {
+      notify.warning('Số dư ví không đủ để sinh Cover Letter AI. Hãy nạp thêm tiền rồi thử lại.')
+      return
+    }
+    if (error?.code === 'BILLING_DUPLICATE_REQUEST') {
+      notify.info('Yêu cầu sinh thư trước đó vẫn đang xử lý. Vui lòng chờ thêm một chút.')
       return
     }
     notify.apiError(error, 'Không thể sinh thư ứng tuyển AI cho tin này.')
@@ -246,6 +363,7 @@ const generateCoverLetter = async () => {
 
 onMounted(() => {
   fetchSavedJobs()
+  fetchReEngagementInsights()
 })
 
 watch(selectedProfileId, (nextValue, previousValue) => {
@@ -289,6 +407,92 @@ watch(selectedProfileId, (nextValue, previousValue) => {
       <p class="text-sm text-slate-600 dark:text-slate-300">
         Bạn đang lưu <strong class="text-blue-600">{{ pagination.total }}</strong> tin tuyển dụng. Bấm biểu tượng bookmark để bỏ lưu.
       </p>
+    </div>
+
+    <div
+      v-if="reEngagementLoading || hasReEngagementInsights"
+      class="mb-8 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900"
+    >
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 class="text-lg font-bold text-slate-900 dark:text-white">Nhắc bạn quay lại đúng lúc</h2>
+          <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">
+            Hệ thống theo dõi tin đã lưu, hạn ứng tuyển và job tương tự để bạn không bỏ lỡ cơ hội phù hợp.
+          </p>
+        </div>
+        <button
+          class="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+          :disabled="reEngagementLoading"
+          type="button"
+          @click="fetchReEngagementInsights"
+        >
+          <span class="material-symbols-outlined text-[18px]">{{ reEngagementLoading ? 'progress_activity' : 'refresh' }}</span>
+          Làm mới
+        </button>
+      </div>
+
+      <div v-if="reEngagementLoading" class="mt-5 grid gap-3 md:grid-cols-3">
+        <div v-for="index in 3" :key="`reengagement-loading-${index}`" class="h-28 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800" />
+      </div>
+
+      <div v-else class="mt-5 grid gap-4 xl:grid-cols-3">
+        <section v-if="expiringSavedJobs.length" class="rounded-xl border border-amber-100 bg-amber-50/70 p-4 dark:border-amber-500/20 dark:bg-amber-500/10">
+          <div class="flex items-center gap-2 text-sm font-bold text-amber-800 dark:text-amber-200">
+            <span class="material-symbols-outlined text-[20px]">timer</span>
+            Sắp hết hạn
+          </div>
+          <div class="mt-3 space-y-3">
+            <RouterLink
+              v-for="job in expiringSavedJobs"
+              :key="`expiring-${job.id}`"
+              :to="{ name: 'JobDetail', params: { id: job.id } }"
+              class="block rounded-lg bg-white/80 p-3 text-sm transition hover:bg-white dark:bg-slate-950/60 dark:hover:bg-slate-950"
+            >
+              <span class="font-semibold text-slate-900 dark:text-white">{{ job.tieu_de }}</span>
+              <span class="mt-1 block text-xs text-amber-700 dark:text-amber-300">{{ formatReEngagementReason(job) }} · hạn {{ formatDeadline(job.ngay_het_han) }}</span>
+            </RouterLink>
+          </div>
+        </section>
+
+        <section v-if="staleSavedJobs.length" class="rounded-xl border border-sky-100 bg-sky-50/70 p-4 dark:border-sky-500/20 dark:bg-sky-500/10">
+          <div class="flex items-center gap-2 text-sm font-bold text-sky-800 dark:text-sky-200">
+            <span class="material-symbols-outlined text-[20px]">history</span>
+            Cần xem lại
+          </div>
+          <div class="mt-3 space-y-3">
+            <RouterLink
+              v-for="job in staleSavedJobs"
+              :key="`stale-${job.id}`"
+              :to="{ name: 'JobDetail', params: { id: job.id } }"
+              class="block rounded-lg bg-white/80 p-3 text-sm transition hover:bg-white dark:bg-slate-950/60 dark:hover:bg-slate-950"
+            >
+              <span class="font-semibold text-slate-900 dark:text-white">{{ job.tieu_de }}</span>
+              <span class="mt-1 block text-xs text-sky-700 dark:text-sky-300">{{ formatReEngagementReason(job) }}</span>
+            </RouterLink>
+          </div>
+        </section>
+
+        <section v-if="similarJobs.length" class="rounded-xl border border-emerald-100 bg-emerald-50/70 p-4 dark:border-emerald-500/20 dark:bg-emerald-500/10">
+          <div class="flex items-center gap-2 text-sm font-bold text-emerald-800 dark:text-emerald-200">
+            <span class="material-symbols-outlined text-[20px]">travel_explore</span>
+            Job tương tự
+          </div>
+          <div class="mt-3 space-y-3">
+            <RouterLink
+              v-for="job in similarJobs"
+              :key="`similar-${job.id}`"
+              :to="{ name: 'JobDetail', params: { id: job.id } }"
+              class="block rounded-lg bg-white/80 p-3 text-sm transition hover:bg-white dark:bg-slate-950/60 dark:hover:bg-slate-950"
+            >
+              <span class="font-semibold text-slate-900 dark:text-white">{{ job.tieu_de }}</span>
+              <span class="mt-1 block text-xs text-emerald-700 dark:text-emerald-300">{{ formatReEngagementReason(job) }}</span>
+              <span v-if="job.match_reasons?.length" class="mt-1 block text-xs text-slate-500 dark:text-slate-400">
+                {{ job.match_reasons.slice(0, 2).join(' · ') }}
+              </span>
+            </RouterLink>
+          </div>
+        </section>
+      </div>
     </div>
 
     <div v-if="loading" class="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -499,6 +703,26 @@ watch(selectedProfileId, (nextValue, previousValue) => {
               </p>
             </div>
 
+            <div class="rounded-2xl border border-emerald-100 bg-emerald-50/70 px-4 py-4 text-sm text-slate-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-slate-200">
+              <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p class="text-xs font-black uppercase tracking-[0.22em] text-emerald-700 dark:text-emerald-200">AI Wallet</p>
+                  <p class="mt-2 font-semibold text-slate-900 dark:text-white">
+                    {{ loadingBillingContext ? 'Đang tải số dư ví...' : `Khả dụng ${formatCurrency(walletAvailable)}` }}
+                  </p>
+                  <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    {{ coverLetterWalletNote }}
+                  </p>
+                </div>
+                <RouterLink
+                  :to="{ name: 'Wallet' }"
+                  class="inline-flex items-center justify-center rounded-xl border border-emerald-200 bg-white px-4 py-2 text-sm font-bold text-emerald-700 transition hover:bg-emerald-50 dark:border-emerald-500/20 dark:bg-slate-950 dark:text-emerald-200 dark:hover:bg-slate-900"
+                >
+                  Nạp ví AI
+                </RouterLink>
+              </div>
+            </div>
+
             <div>
               <div class="mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300">Thư giới thiệu / Cover Letter</label>
@@ -509,7 +733,7 @@ watch(selectedProfileId, (nextValue, previousValue) => {
                   @click="generateCoverLetter"
                 >
                   <span class="material-symbols-outlined text-[18px]">auto_awesome</span>
-                  {{ generatingCoverLetter ? 'Đang sinh thư AI...' : 'Sinh thư AI' }}
+                  {{ generatingCoverLetter ? 'Đang sinh thư AI...' : coverLetterBillingLabel }}
                 </button>
               </div>
               <textarea

@@ -40,11 +40,11 @@ class AdminMarketDashboardController extends Controller
 
         $activeJobCount = (clone $activeJobsQuery)->count();
         $applicationCount = UngTuyen::query()->count();
-        $averageSalary = (int) round((clone $activeJobsQuery)->whereNotNull('muc_luong')->avg('muc_luong') ?? 0);
+        $averageSalary = (int) round((clone $activeJobsQuery)->whereNotNull('muc_luong_tu')->avg('muc_luong_tu') ?? 0);
         $salaryValues = (clone $activeJobsQuery)
-            ->whereNotNull('muc_luong')
-            ->orderBy('muc_luong')
-            ->pluck('muc_luong')
+            ->whereNotNull('muc_luong_tu')
+            ->orderBy('muc_luong_tu')
+            ->pluck('muc_luong_tu')
             ->values();
 
         return [
@@ -96,7 +96,7 @@ class AdminMarketDashboardController extends Controller
             ->select(
                 'nn.ten_nganh as name',
                 DB::raw('COUNT(DISTINCT ttd.id) as job_count'),
-                DB::raw('ROUND(AVG(ttd.muc_luong)) as average_salary')
+                DB::raw('ROUND(AVG(ttd.muc_luong_tu)) as average_salary')
             )
             ->groupBy('nn.id', 'nn.ten_nganh')
             ->orderByDesc('job_count')
@@ -161,14 +161,14 @@ class AdminMarketDashboardController extends Controller
         return collect($ranges)->map(function (array $range) {
             $query = TinTuyenDung::query()
                 ->where('trang_thai', TinTuyenDung::TRANG_THAI_HOAT_DONG)
-                ->whereNotNull('muc_luong');
+                ->whereNotNull('muc_luong_tu');
 
             if ($range['min'] !== null) {
-                $query->where('muc_luong', '>=', $range['min']);
+                $query->where('muc_luong_tu', '>=', $range['min']);
             }
 
             if ($range['max'] !== null) {
-                $query->where('muc_luong', '<=', $range['max']);
+                $query->where('muc_luong_tu', '<=', $range['max']);
             }
 
             return [

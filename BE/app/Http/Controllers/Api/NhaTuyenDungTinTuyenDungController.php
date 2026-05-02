@@ -3,14 +3,19 @@
 namespace App\Http\Controllers\Api;
 
 use App\Events\FollowedCompanyJobActivated;
+use App\Exceptions\BillingException;
 use App\Http\Controllers\Api\Concerns\ResolvesEmployerCompany;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\TinTuyenDung\TaoTinTuyenDungRequest;
 use App\Http\Requests\TinTuyenDung\CapNhatTinTuyenDungRequest;
 use App\Models\CongTy;
 use App\Models\TinTuyenDung;
+use App\Services\AppNotificationService;
+use App\Services\AuditLogService;
+use App\Services\Billing\FeatureAccessService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Throwable;
 
 /**
  * NhaTuyenDungTinTuyenDungController - Quyền: Nhà Tuyển Dụng
@@ -18,6 +23,64 @@ use Illuminate\Http\Request;
 class NhaTuyenDungTinTuyenDungController extends Controller
 {
     use ResolvesEmployerCompany;
+
+    public function __construct(
+        private readonly AuditLogService $auditLogService,
+        private readonly AppNotificationService $appNotificationService,
+        private readonly FeatureAccessService $featureAccessService,
+    ) {
+    }
+
+    private function jobAuditSnapshot(TinTuyenDung $tin): array
+    {
+        return $tin->only([
+            'id',
+            'cong_ty_id',
+            'tieu_de',
+            'trang_thai',
+            'hr_phu_trach_id',
+            'ngay_het_han',
+            'so_luong_tuyen',
+            'muc_luong_tu',
+            'muc_luong_den',
+            'don_vi_luong',
+            'dia_diem_lam_viec',
+            'featured_activated_at',
+            'featured_until',
+        ]);
+    }
+
+    private function featuredJobOptions(): array
+    {
+        return (array) config('billing.featured_job_options', []);
+    }
+
+    private function resolveFeaturedOption(string $featureCode): ?array
+    {
+        $option = $this->featuredJobOptions()[$featureCode] ?? null;
+
+        if (!is_array($option) || (int) ($option['days'] ?? 0) <= 0) {
+            return null;
+        }
+
+        return $option;
+    }
+
+    private function normalizeSalaryPayload(array $data): array
+    {
+        $salaryFrom = array_key_exists('muc_luong_tu', $data) ? $data['muc_luong_tu'] : null;
+        $salaryTo = array_key_exists('muc_luong_den', $data) ? $data['muc_luong_den'] : null;
+
+        if ($salaryFrom !== null && $salaryTo !== null) {
+            $data['don_vi_luong'] = $data['don_vi_luong'] ?? 'VND/tháng';
+        } elseif ($salaryFrom !== null) {
+            $data['don_vi_luong'] = $data['don_vi_luong'] ?? 'VND/tháng';
+        } elseif (array_key_exists('muc_luong_tu', $data) && array_key_exists('muc_luong_den', $data)) {
+            $data['don_vi_luong'] = $data['don_vi_luong'] ?? 'VND/tháng';
+        }
+
+        return $data;
+    }
 
     private function resolveValidHrPhuTrachId(?int $memberId, CongTy $congTy, int $fallbackUserId): int
     {
@@ -77,6 +140,31 @@ class NhaTuyenDungTinTuyenDungController extends Controller
         } catch (\Throwable $exception) {
             report($exception);
         }
+
+        $recipientIds = $event->recipientIds();
+
+        if (!$recipientIds) {
+            return;
+        }
+
+        $payload = $event->notificationPayload();
+        $job = $payload['job'] ?? [];
+        $company = $payload['company'] ?? [];
+
+        $this->appNotificationService->createForUsers(
+            $recipientIds,
+            (string) ($payload['type'] ?? 'followed_company_job'),
+            (string) (($payload['activity_type'] ?? '') === FollowedCompanyJobActivated::TYPE_REOPENED
+                ? 'Công ty bạn theo dõi vừa mở lại tin tuyển dụng'
+                : 'Công ty bạn theo dõi vừa đăng tin tuyển dụng mới'),
+            (string) ($payload['message'] ?? 'Công ty bạn theo dõi vừa có cập nhật tuyển dụng.'),
+            isset($job['id']) ? "/jobs/{$job['id']}" : '/followed-companies',
+            [
+                'company' => $company,
+                'job' => $job,
+                'source' => 'followed_company_job_activity',
+            ],
+        );
     }
 
     /**
@@ -124,7 +212,10 @@ class NhaTuyenDungTinTuyenDungController extends Controller
             $query->where('hr_phu_trach_id', $hrPhuTrachId);
         }
 
-        $data = $query->orderBy('created_at', 'desc')->paginate((int) $request->get('per_page', 15));
+        $data = $query
+            ->orderFeaturedFirst()
+            ->orderBy('created_at', 'desc')
+            ->paginate((int) $request->get('per_page', 15));
 
         return response()->json([
             'success' => true,
@@ -145,23 +236,41 @@ class NhaTuyenDungTinTuyenDungController extends Controller
             ], 403);
         }
 
-        $data = $request->validated();
+        $data = $this->normalizeSalaryPayload($request->validated());
         $nganhNgheIds = $data['nganh_nghes'];
         unset($data['nganh_nghes']);
 
         $data['cong_ty_id'] = $congTyId;
         $congTy = $this->getCurrentEmployerCompany();
-        $data['hr_phu_trach_id'] = $this->resolveValidHrPhuTrachId(
-            isset($data['hr_phu_trach_id']) ? (int) $data['hr_phu_trach_id'] : null,
-            $congTy,
-            (int) auth()->id(),
-        );
+        $user = $this->getAuthenticatedEmployer();
+
+        if (!$this->coTheQuanLyTatCaBanGhiEmployer($user, $congTy)) {
+            $data['hr_phu_trach_id'] = (int) auth()->id();
+        } else {
+            $data['hr_phu_trach_id'] = $this->resolveValidHrPhuTrachId(
+                isset($data['hr_phu_trach_id']) ? (int) $data['hr_phu_trach_id'] : null,
+                $congTy,
+                (int) auth()->id(),
+            );
+        }
 
         $tin = TinTuyenDung::create($data);
         $tin->nganhNghes()->attach($nganhNgheIds);
         $tin->load(['nganhNghes:id,ten_nganh', 'hrPhuTrach:id,ho_ten,email']);
 
         $this->broadcastJobActivityIfNeeded($tin);
+        $this->auditLogService->logModelAction(
+            actor: $user,
+            action: 'employer_job_created',
+            description: "Tạo tin tuyển dụng {$tin->tieu_de}.",
+            target: $tin,
+            company: $congTy,
+            after: [
+                ...$this->jobAuditSnapshot($tin),
+                'nganh_nghe_ids' => $nganhNgheIds,
+            ],
+            metadata: ['scope' => 'employer_job'],
+        );
 
         return response()->json([
             'success' => true,
@@ -177,9 +286,17 @@ class NhaTuyenDungTinTuyenDungController extends Controller
     {
         $congTyId = $this->getCongTyId();
         $tin = TinTuyenDung::where('cong_ty_id', $congTyId)->findOrFail($id);
+        $congTy = $this->getCurrentEmployerCompany();
+        $user = $this->getAuthenticatedEmployer();
+        $this->abortIfCannotManageJobRecord($user, $congTy, $tin);
         $wasPubliclyActive = $this->isPubliclyActive($tin);
 
-        $data = $request->validated();
+        $data = $this->normalizeSalaryPayload($request->validated());
+        $before = [
+            ...$this->jobAuditSnapshot($tin),
+            'nganh_nghe_ids' => $tin->nganhNghes()->pluck('nganh_nghes.id')->all(),
+        ];
+        $nganhNgheIds = $data['nganh_nghes'] ?? null;
 
         if (isset($data['nganh_nghes'])) {
             $tin->nganhNghes()->sync($data['nganh_nghes']);
@@ -187,18 +304,34 @@ class NhaTuyenDungTinTuyenDungController extends Controller
         }
 
         if (array_key_exists('hr_phu_trach_id', $data)) {
-            $congTy = $this->getCurrentEmployerCompany();
-            $data['hr_phu_trach_id'] = $this->resolveValidHrPhuTrachId(
-                $data['hr_phu_trach_id'] ? (int) $data['hr_phu_trach_id'] : null,
-                $congTy,
-                (int) auth()->id(),
-            );
+            if (!$this->coTheQuanLyTatCaBanGhiEmployer($user, $congTy)) {
+                $data['hr_phu_trach_id'] = (int) auth()->id();
+            } else {
+                $data['hr_phu_trach_id'] = $this->resolveValidHrPhuTrachId(
+                    $data['hr_phu_trach_id'] ? (int) $data['hr_phu_trach_id'] : null,
+                    $congTy,
+                    (int) auth()->id(),
+                );
+            }
         }
 
         $tin->update($data);
         $tin = $tin->fresh()->load(['nganhNghes:id,ten_nganh', 'hrPhuTrach:id,ho_ten,email']);
 
         $this->broadcastJobActivityIfNeeded($tin, $wasPubliclyActive);
+        $this->auditLogService->logModelAction(
+            actor: $user,
+            action: 'employer_job_updated',
+            description: "Cập nhật tin tuyển dụng {$tin->tieu_de}.",
+            target: $tin,
+            company: $congTy,
+            before: $before,
+            after: [
+                ...$this->jobAuditSnapshot($tin),
+                'nganh_nghe_ids' => $nganhNgheIds ?? $tin->nganhNghes()->pluck('nganh_nghes.id')->all(),
+            ],
+            metadata: ['scope' => 'employer_job'],
+        );
 
         return response()->json([
             'success' => true,
@@ -239,6 +372,145 @@ class NhaTuyenDungTinTuyenDungController extends Controller
         ]);
     }
 
+    public function sponsor(Request $request, int $id): JsonResponse
+    {
+        if (!TinTuyenDung::supportsFeaturedListing()) {
+            return response()->json([
+                'success' => false,
+                'code' => 'FEATURED_LISTING_UNAVAILABLE',
+                'message' => 'Môi trường hiện tại chưa hoàn tất migration featured listing. Vui lòng chạy migrate trước khi kích hoạt.',
+            ], 503);
+        }
+
+        $validated = $request->validate([
+            'feature_code' => ['required', 'string'],
+        ]);
+
+        $congTyId = $this->getCongTyId();
+        $tin = TinTuyenDung::where('cong_ty_id', $congTyId)->findOrFail($id);
+        $congTy = $this->getCurrentEmployerCompany();
+        $user = $this->getAuthenticatedEmployer();
+        $this->abortIfCannotManageJobRecord($user, $congTy, $tin);
+
+        $featureCode = (string) $validated['feature_code'];
+        $option = $this->resolveFeaturedOption($featureCode);
+
+        if (!$option) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gói featured job không hợp lệ.',
+            ], 422);
+        }
+
+        if ((int) $tin->trang_thai !== TinTuyenDung::TRANG_THAI_HOAT_DONG) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Chỉ có thể đẩy nổi bật cho tin đang hoạt động.',
+            ], 422);
+        }
+
+        if ($tin->ngay_het_han && $tin->ngay_het_han->isPast()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Tin tuyển dụng đã hết hạn nên không thể đẩy nổi bật.',
+            ], 422);
+        }
+
+        $usage = null;
+        $before = $this->jobAuditSnapshot($tin);
+
+        try {
+            $usage = $this->featureAccessService->beginUsage(
+                $user,
+                $featureCode,
+                'tin_tuyen_dung',
+                $tin->id,
+                [
+                    'scope' => 'featured_job',
+                    'cong_ty_id' => $congTy?->id,
+                    'duration_days' => (int) $option['days'],
+                ],
+                $request->header('X-Idempotency-Key'),
+            );
+
+            $featuredActivatedAt = now();
+            $featuredBase = $tin->featured_until && $tin->featured_until->isFuture()
+                ? $tin->featured_until->copy()
+                : $featuredActivatedAt->copy();
+            $featuredUntil = $featuredBase->copy()->addDays((int) $option['days']);
+
+            $tin->forceFill([
+                'featured_activated_at' => $featuredActivatedAt,
+                'featured_until' => $featuredUntil,
+            ])->save();
+
+            $tin = $tin->fresh([
+                'nganhNghes:id,ten_nganh',
+                'hrPhuTrach:id,ho_ten,email',
+            ]);
+
+            $this->auditLogService->logModelAction(
+                actor: $user,
+                action: 'employer_job_featured_purchased',
+                description: "Kích hoạt gói nổi bật cho tin tuyển dụng {$tin->tieu_de}.",
+                target: $tin,
+                company: $congTy,
+                before: $before,
+                after: $this->jobAuditSnapshot($tin),
+                metadata: [
+                    'scope' => 'employer_job_featured',
+                    'feature_code' => $featureCode,
+                    'duration_days' => (int) $option['days'],
+                    'featured_until' => $featuredUntil->toISOString(),
+                ],
+                request: $request,
+            );
+
+            $usage = $this->featureAccessService->commitUsage($usage, [
+                'scope' => 'featured_job',
+                'duration_days' => (int) $option['days'],
+                'featured_until' => $featuredUntil->toISOString(),
+            ]);
+        } catch (BillingException $exception) {
+            if ($usage) {
+                $this->featureAccessService->failUsage($usage, $exception->getMessage(), [
+                    'scope' => 'featured_job',
+                    'feature_code' => $featureCode,
+                ]);
+            }
+
+            return response()->json([
+                'success' => false,
+                'code' => $exception->errorCode,
+                'message' => $exception->getMessage(),
+                ...$exception->context,
+            ], $exception->status);
+        } catch (Throwable $exception) {
+            if ($usage) {
+                $this->featureAccessService->failUsage($usage, $exception->getMessage(), [
+                    'scope' => 'featured_job',
+                    'feature_code' => $featureCode,
+                ]);
+            }
+
+            throw $exception;
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Đã kích hoạt featured listing cho tin tuyển dụng.',
+            'data' => [
+                'job' => $tin,
+                'billing' => [
+                    'feature_code' => $featureCode,
+                    'usage_id' => $usage?->id,
+                    'featured_until' => $tin->featured_until?->toISOString(),
+                    'duration_days' => (int) $option['days'],
+                ],
+            ],
+        ]);
+    }
+
     /**
      * Bật / tắt hiển thị (đổi trạng thái).
      */
@@ -246,13 +518,27 @@ class NhaTuyenDungTinTuyenDungController extends Controller
     {
         $congTyId = $this->getCongTyId();
         $tin = TinTuyenDung::where('cong_ty_id', $congTyId)->findOrFail($id);
+        $user = $this->getAuthenticatedEmployer();
+        $congTy = $this->getCurrentEmployerCompany();
+        $this->abortIfCannotManageJobRecord($user, $congTy, $tin);
         $wasPubliclyActive = $this->isPubliclyActive($tin);
+        $before = $this->jobAuditSnapshot($tin);
 
         $tin->trang_thai = $tin->trang_thai == 1 ? 0 : 1;
         $tin->save();
         $tin = $tin->fresh();
 
         $this->broadcastJobActivityIfNeeded($tin, $wasPubliclyActive);
+        $this->auditLogService->logModelAction(
+            actor: $user,
+            action: 'employer_job_status_toggled',
+            description: "Đổi trạng thái tin tuyển dụng {$tin->tieu_de}.",
+            target: $tin,
+            company: $congTy,
+            before: $before,
+            after: $this->jobAuditSnapshot($tin),
+            metadata: ['scope' => 'employer_job'],
+        );
 
         return response()->json([
             'success' => true,
@@ -268,6 +554,9 @@ class NhaTuyenDungTinTuyenDungController extends Controller
     {
         $congTyId = $this->getCongTyId();
         $tin = TinTuyenDung::where('cong_ty_id', $congTyId)->findOrFail($id);
+        $user = $this->getAuthenticatedEmployer();
+        $congTy = $this->getCurrentEmployerCompany();
+        $this->abortIfCannotManageJobRecord($user, $congTy, $tin);
 
         if ($tin->ungTuyens()->whereNotNull('thoi_gian_ung_tuyen')->exists()) {
             return response()->json([
@@ -276,7 +565,17 @@ class NhaTuyenDungTinTuyenDungController extends Controller
             ], 422);
         }
 
+        $before = $this->jobAuditSnapshot($tin);
         $tin->delete();
+        $this->auditLogService->logModelAction(
+            actor: $user,
+            action: 'employer_job_deleted',
+            description: "Xóa tin tuyển dụng {$before['tieu_de']}.",
+            target: $tin,
+            company: $congTy,
+            before: $before,
+            metadata: ['scope' => 'employer_job'],
+        );
 
         return response()->json([
             'success' => true,

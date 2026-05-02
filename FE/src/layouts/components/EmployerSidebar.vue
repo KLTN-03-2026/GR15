@@ -1,8 +1,10 @@
 <script setup>
 import AppLogo from '@/components/AppLogo.vue'
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { RouterLink } from 'vue-router'
 import { getStoredEmployer } from '@/utils/authStorage'
+import { useEmployerCompanyPermissions } from '@/composables/useEmployerCompanyPermissions'
+import { useNotify } from '@/composables/useNotify'
 
 defineProps({
   collapsed: {
@@ -17,6 +19,83 @@ const companyLabel = computed(() => {
 })
 
 const companyLetter = computed(() => companyLabel.value.trim().charAt(0).toUpperCase() || 'N')
+const notify = useNotify()
+const lockedMessage = 'Bạn không có quyền thực hiện chức năng này'
+const {
+  permissions,
+  permissionsLoaded,
+  permissionsLoading,
+  ensurePermissionsLoaded,
+} = useEmployerCompanyPermissions()
+
+const navItems = computed(() => [
+  {
+    key: 'dashboard',
+    to: '/employer',
+    icon: 'dashboard',
+    label: 'Dashboard',
+    exact: true,
+  },
+  {
+    key: 'jobs',
+    to: '/employer/jobs',
+    icon: 'work',
+    label: 'Tin tuyển dụng',
+    permission: 'jobs',
+  },
+  {
+    key: 'candidates',
+    to: '/employer/candidates',
+    icon: 'group',
+    label: 'Ứng viên',
+    permission: 'applications',
+  },
+  {
+    key: 'interviews',
+    to: '/employer/interviews',
+    icon: 'calendar_today',
+    label: 'Phỏng vấn',
+    permission: 'interviews',
+  },
+  {
+    key: 'billing',
+    to: '/employer/billing',
+    icon: 'account_balance_wallet',
+    label: 'Ví & Billing',
+    permission: 'billing',
+  },
+  {
+    key: 'company',
+    to: '/employer/company',
+    icon: 'domain',
+    label: 'Công ty',
+    permission: 'company_profile',
+  },
+  {
+    key: 'hr-management',
+    to: '/employer/hr-management',
+    icon: 'groups',
+    label: 'Nhân sự HR',
+    permission: 'members',
+  },
+  {
+    key: 'audit-logs',
+    to: '/employer/audit-logs',
+    icon: 'history',
+    label: 'Nhật ký công ty',
+    permission: 'audit_logs',
+  },
+])
+
+const canAccessItem = (item) => !item.permission || (permissionsLoaded.value && Boolean(permissions.value[item.permission]))
+
+const showLockedNotice = () => {
+  notify.warning(lockedMessage)
+}
+
+onMounted(() => {
+  ensurePermissionsLoaded().catch(() => {})
+})
 </script>
 
 <template>
@@ -34,30 +113,35 @@ const companyLetter = computed(() => companyLabel.value.trim().charAt(0).toUpper
     </div>
 
     <nav class="flex-1 space-y-1 overflow-y-auto px-3">
-      <RouterLink to="/" class="nav-link flex items-center gap-3 rounded-lg px-3 py-2 text-slate-600 transition-colors font-medium hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800" :class="collapsed ? 'justify-center' : ''" :title="collapsed ? 'Trang chủ' : ''">
-        <span class="material-symbols-outlined">home</span>
-        <span v-if="!collapsed" class="text-sm">Trang chủ</span>
-      </RouterLink>
-      <RouterLink to="/employer" exact-active-class="active-nav" class="nav-link flex items-center gap-3 rounded-lg px-3 py-2 text-slate-600 transition-colors font-medium hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800" :class="collapsed ? 'justify-center' : ''" :title="collapsed ? 'Dashboard' : ''">
-        <span class="material-symbols-outlined">dashboard</span>
-        <span v-if="!collapsed" class="text-sm">Dashboard</span>
-      </RouterLink>
-      <RouterLink to="/employer/jobs" active-class="active-nav" class="nav-link flex items-center gap-3 rounded-lg px-3 py-2 text-slate-600 transition-colors font-medium hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800" :class="collapsed ? 'justify-center' : ''" :title="collapsed ? 'Tin tuyển dụng' : ''">
-        <span class="material-symbols-outlined">work</span>
-        <span v-if="!collapsed" class="text-sm">Tin tuyển dụng</span>
-      </RouterLink>
-      <RouterLink to="/employer/candidates" active-class="active-nav" class="nav-link flex items-center gap-3 rounded-lg px-3 py-2 text-slate-600 transition-colors font-medium hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800" :class="collapsed ? 'justify-center' : ''" :title="collapsed ? 'Ứng viên' : ''">
-        <span class="material-symbols-outlined">group</span>
-        <span v-if="!collapsed" class="text-sm">Ứng viên</span>
-      </RouterLink>
-      <RouterLink to="/employer/interviews" active-class="active-nav" class="nav-link flex items-center gap-3 rounded-lg px-3 py-2 text-slate-600 transition-colors font-medium hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800" :class="collapsed ? 'justify-center' : ''" :title="collapsed ? 'Phỏng vấn' : ''">
-        <span class="material-symbols-outlined">calendar_today</span>
-        <span v-if="!collapsed" class="text-sm">Phỏng vấn</span>
-      </RouterLink>
-      <RouterLink to="/employer/company" active-class="active-nav" class="nav-link flex items-center gap-3 rounded-lg px-3 py-2 text-slate-600 transition-colors font-medium hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800" :class="collapsed ? 'justify-center' : ''" :title="collapsed ? 'Công ty' : ''">
-        <span class="material-symbols-outlined">domain</span>
-        <span v-if="!collapsed" class="text-sm">Công ty</span>
-      </RouterLink>
+      <template v-for="item in navItems" :key="item.key">
+        <RouterLink
+          v-if="canAccessItem(item)"
+          :to="item.to"
+          :active-class="item.exact ? '' : 'active-nav'"
+          :exact-active-class="item.exact ? 'active-nav' : ''"
+          class="nav-link flex items-center gap-3 rounded-lg px-3 py-2 text-slate-600 transition-colors font-medium hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+          :class="collapsed ? 'justify-center' : ''"
+          :title="collapsed ? item.label : ''"
+        >
+          <span class="material-symbols-outlined">{{ item.icon }}</span>
+          <span v-if="!collapsed" class="text-sm">{{ item.label }}</span>
+        </RouterLink>
+        <button
+          v-else
+          class="nav-link locked-nav flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left font-medium text-slate-400 transition-colors hover:bg-slate-100 dark:text-slate-600 dark:hover:bg-slate-800"
+          :class="collapsed ? 'justify-center' : ''"
+          :title="lockedMessage"
+          :disabled="permissionsLoading && !permissionsLoaded"
+          type="button"
+          @click="showLockedNotice"
+        >
+          <span class="material-symbols-outlined">{{ item.icon }}</span>
+          <span v-if="!collapsed" class="text-sm">{{ item.label }}</span>
+          <span v-if="!collapsed" class="material-symbols-outlined ml-auto text-[17px]">
+            {{ permissionsLoading && !permissionsLoaded ? 'hourglass_top' : 'lock' }}
+          </span>
+        </button>
+      </template>
     </nav>
   </aside>
 </template>
@@ -70,5 +154,9 @@ const companyLetter = computed(() => companyLabel.value.trim().charAt(0).toUpper
 
 .nav-link.active-nav:hover {
   background-color: rgb(36 99 235 / 0.15);
+}
+
+.locked-nav {
+  cursor: not-allowed;
 }
 </style>

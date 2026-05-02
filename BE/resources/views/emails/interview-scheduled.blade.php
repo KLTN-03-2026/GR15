@@ -15,13 +15,13 @@
             <td style="padding:28px 32px;background:linear-gradient(135deg,#102144 0%,#2463eb 100%);color:#ffffff;">
               <div style="font-size:13px;letter-spacing:0.28em;text-transform:uppercase;opacity:0.82;font-weight:700;">AIRecruitment</div>
               <div style="margin-top:18px;display:inline-block;padding:8px 14px;border-radius:999px;font-size:13px;font-weight:700;background:#dbeafe;color:#1d4ed8;">
-                {{ $isRescheduled ? 'Lịch phỏng vấn đã cập nhật' : 'Thư mời phỏng vấn' }}
+                {{ !empty($isReminder) ? 'Nhắc lịch phỏng vấn' : ($isRescheduled ? 'Lịch phỏng vấn đã cập nhật' : 'Thư mời phỏng vấn') }}
               </div>
               <h1 style="margin:18px 0 0;font-size:30px;line-height:1.25;font-weight:800;">
-                {{ $isRescheduled ? 'Lịch phỏng vấn của bạn đã được cập nhật' : 'Bạn có lịch phỏng vấn mới' }}
+                {{ !empty($isReminder) ? 'Buổi phỏng vấn của bạn sắp diễn ra' : ($isRescheduled ? 'Lịch phỏng vấn của bạn đã được cập nhật' : 'Bạn có lịch phỏng vấn mới') }}
               </h1>
               <p style="margin:14px 0 0;font-size:15px;line-height:1.7;opacity:0.92;">
-                {{ $isRescheduled ? 'Nhà tuyển dụng vừa thay đổi thông tin buổi phỏng vấn. Vui lòng kiểm tra lại các mốc thời gian bên dưới.' : 'Nhà tuyển dụng đã đặt lịch phỏng vấn cho hồ sơ ứng tuyển của bạn.' }}
+                {{ !empty($isReminder) ? 'Đây là email nhắc lịch tự động. Vui lòng kiểm tra lại thời gian, hình thức và thông tin tham gia bên dưới.' : ($isRescheduled ? 'Nhà tuyển dụng vừa thay đổi thông tin buổi phỏng vấn. Vui lòng kiểm tra lại các mốc thời gian bên dưới.' : 'Nhà tuyển dụng đã đặt lịch phỏng vấn cho hồ sơ ứng tuyển của bạn.') }}
               </p>
             </td>
           </tr>

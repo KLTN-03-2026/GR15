@@ -33,11 +33,14 @@ class OfferLetterNotification extends Notification
         $tenCongTy = $congTy?->ten_cong_ty ?: 'Chưa xác định';
         $candidateId = (int) ($ungTuyen->hoSo?->nguoiDung?->id ?? $notifiable->id ?? 0);
         $frontEndUrl = rtrim((string) env('FRONTEND_URL', self::FRONTEND_FALLBACK), '/');
+        $expiresAt = $ungTuyen->han_phan_hoi_offer && $ungTuyen->han_phan_hoi_offer->isFuture()
+            ? $ungTuyen->han_phan_hoi_offer
+            : now('UTC')->addDays(14);
 
         $acceptUrl = $candidateId > 0
             ? URL::temporarySignedRoute(
                 'ung-vien.ung-tuyens.confirm-offer-email',
-                now('UTC')->addDays(14),
+                $expiresAt,
                 [
                     'id' => $ungTuyen->id,
                     'action' => 'accept',
@@ -49,7 +52,7 @@ class OfferLetterNotification extends Notification
         $declineUrl = $candidateId > 0
             ? URL::temporarySignedRoute(
                 'ung-vien.ung-tuyens.confirm-offer-email',
-                now('UTC')->addDays(14),
+                $expiresAt,
                 [
                     'id' => $ungTuyen->id,
                     'action' => 'decline',
@@ -68,6 +71,7 @@ class OfferLetterNotification extends Notification
                 'companyName' => $tenCongTy,
                 'offerNote' => $ungTuyen->ghi_chu_offer,
                 'offerLink' => $ungTuyen->link_offer,
+                'offerDeadline' => $ungTuyen->han_phan_hoi_offer?->timezone('Asia/Ho_Chi_Minh')->format('H:i d/m/Y'),
                 'acceptUrl' => $acceptUrl,
                 'declineUrl' => $declineUrl,
                 'actionUrl' => $frontEndUrl . '/applications',

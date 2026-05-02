@@ -1,9 +1,14 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
-import { applicationService, jobService, profileService, savedJobService } from '@/services/api'
+import { applicationService, jobService, profileService, savedJobService, walletService } from '@/services/api'
 import { useNotify } from '@/composables/useNotify'
 import { getAuthToken, getStoredCandidate } from '@/utils/authStorage'
+import {
+  getBillingFeatureLabel,
+  getEntitlementActionLabel,
+  getEntitlementCoverageNote,
+} from '@/utils/billing'
 
 const route = useRoute()
 const router = useRouter()
@@ -16,12 +21,21 @@ const isSaved = ref(false)
 const applyModalOpen = ref(false)
 const applying = ref(false)
 const generatingCoverLetter = ref(false)
+const tailoringCv = ref(false)
+const savingTailoredCv = ref(false)
 const loadingProfiles = ref(false)
+const loadingBillingContext = ref(false)
 const profiles = ref([])
 const selectedProfileId = ref('')
 const coverLetter = ref('')
 const generatedCoverLetterId = ref(null)
 const generatedCoverLetter = ref('')
+const tailoringResult = ref(null)
+const suppressProfileChangeReset = ref(false)
+const wallet = ref(null)
+const pricing = ref([])
+const entitlements = ref([])
+const currentSubscription = ref(null)
 
 const hasAuthToken = computed(() => Boolean(getAuthToken()))
 const currentUser = computed(() => getStoredCandidate())
@@ -30,6 +44,31 @@ const hasProfiles = computed(() => profiles.value.length > 0)
 const selectedProfile = computed(() =>
   profiles.value.find((profile) => Number(profile.id) === Number(selectedProfileId.value)) || null
 )
+
+const walletAvailable = computed(() => Number(wallet.value?.so_du_kha_dung || 0))
+const coverLetterPrice = computed(() =>
+  Number(pricing.value.find((item) => item.feature_code === 'cover_letter_generation')?.don_gia || 0)
+)
+const coverLetterEntitlement = computed(() =>
+  entitlements.value.find((item) => item.feature_code === 'cover_letter_generation') || null
+)
+
+const coverLetterBillingLabel = computed(() => {
+  return getEntitlementActionLabel(coverLetterEntitlement.value, {
+    actionLabel: 'Sinh thư AI',
+    price: coverLetterPrice.value,
+    formatCurrency,
+  })
+})
+
+const coverLetterWalletNote = computed(() => {
+  return getEntitlementCoverageNote(coverLetterEntitlement.value, {
+    currentSubscription: currentSubscription.value,
+    featureLabel: getBillingFeatureLabel('cover_letter_generation'),
+    price: coverLetterPrice.value,
+    formatCurrency,
+  })
+})
 
 const formatCurrency = (value) => {
   if (value === null || value === undefined || value === '') return 'Thỏa thuận'
@@ -41,7 +80,7 @@ const formatSalary = computed(() => {
   if (job.value.muc_luong_tu && job.value.muc_luong_den) {
     return `${formatCurrency(job.value.muc_luong_tu)} - ${formatCurrency(job.value.muc_luong_den)}`
   }
-  if (job.value.muc_luong) return formatCurrency(job.value.muc_luong)
+  if (job.value.muc_luong_tu) return formatCurrency(job.value.muc_luong_tu)
   return 'Thỏa thuận'
 })
 
@@ -116,6 +155,30 @@ const loadProfiles = async () => {
   }
 }
 
+const loadBillingContext = async () => {
+  loadingBillingContext.value = true
+  try {
+    const [walletResponse, pricingResponse, entitlementsResponse] = await Promise.all([
+      walletService.getWallet(),
+      walletService.getPricing(),
+      walletService.getEntitlements(),
+    ])
+
+    wallet.value = walletResponse?.data?.wallet || null
+    pricing.value = pricingResponse?.data || []
+    currentSubscription.value = entitlementsResponse?.data?.current_subscription || null
+    entitlements.value = entitlementsResponse?.data?.entitlements || []
+  } catch (error) {
+    wallet.value = null
+    pricing.value = []
+    currentSubscription.value = null
+    entitlements.value = []
+    notify.apiError(error, 'Không tải được dữ liệu ví AI.')
+  } finally {
+    loadingBillingContext.value = false
+  }
+}
+
 const openApplyModal = async () => {
   if (!isCandidate.value) {
     notify.warning('Vui lòng đăng nhập bằng tài khoản ứng viên để ứng tuyển.')
@@ -132,7 +195,7 @@ const openApplyModal = async () => {
     return
   }
 
-  await loadProfiles()
+  await Promise.all([loadProfiles(), loadBillingContext()])
 
   if (!profiles.value.length) {
     notify.warning('Bạn cần tạo ít nhất một hồ sơ/CV trước khi ứng tuyển.')
@@ -140,17 +203,19 @@ const openApplyModal = async () => {
   }
 
   resetCoverLetterDraft()
+  resetTailoringResult()
   applyModalOpen.value = true
 }
 
 const closeApplyModal = () => {
-  if (applying.value || generatingCoverLetter.value) return
+  if (applying.value || generatingCoverLetter.value || tailoringCv.value || savingTailoredCv.value) return
   applyModalOpen.value = false
 }
 
 const redirectToApplications = async () => {
   applyModalOpen.value = false
   resetCoverLetterDraft()
+  resetTailoringResult()
   await router.push({ name: 'Applications' })
 }
 
@@ -185,6 +250,7 @@ const submitApplication = async () => {
     notify.success('Ứng tuyển thành công. Bạn có thể theo dõi tại mục Việc đã ứng tuyển.')
     applyModalOpen.value = false
     resetCoverLetterDraft()
+    resetTailoringResult()
   } catch (error) {
     if (await handleExistingApplicationError(error)) {
       return
@@ -199,6 +265,58 @@ const resetCoverLetterDraft = () => {
   coverLetter.value = ''
   generatedCoverLetterId.value = null
   generatedCoverLetter.value = ''
+}
+
+const resetTailoringResult = () => {
+  tailoringResult.value = null
+}
+
+const tailorSelectedCvForJob = async () => {
+  if (!job.value?.id || !selectedProfileId.value || tailoringCv.value) return
+
+  tailoringCv.value = true
+  try {
+    const response = await profileService.tailorProfileForJob(Number(selectedProfileId.value), job.value.id, {
+      preview_only: true,
+    })
+    const payload = response?.data || {}
+    tailoringResult.value = payload
+    notify.success(response?.message || 'Đã tạo preview CV tối ưu theo tin tuyển dụng.')
+  } catch (error) {
+    notify.apiError(error, 'Không thể tối ưu CV cho tin này.')
+  } finally {
+    tailoringCv.value = false
+  }
+}
+
+const saveTailoredCvForJob = async () => {
+  if (!job.value?.id || !selectedProfileId.value || !tailoringResult.value?.tailoring || savingTailoredCv.value) return
+
+  savingTailoredCv.value = true
+  try {
+    const response = await profileService.tailorProfileForJob(Number(selectedProfileId.value), job.value.id, {
+      tailoring: tailoringResult.value.tailoring,
+    })
+    const payload = response?.data || {}
+    const newProfile = payload.profile || null
+
+    if (newProfile?.id) {
+      profiles.value = [
+        newProfile,
+        ...profiles.value.filter((profile) => Number(profile.id) !== Number(newProfile.id)),
+      ]
+      suppressProfileChangeReset.value = true
+      selectedProfileId.value = String(newProfile.id)
+      resetCoverLetterDraft()
+    }
+
+    tailoringResult.value = payload
+    notify.success(response?.message || 'Đã lưu CV tối ưu theo tin tuyển dụng.')
+  } catch (error) {
+    notify.apiError(error, 'Không thể lưu CV tối ưu cho tin này.')
+  } finally {
+    savingTailoredCv.value = false
+  }
 }
 
 const generateCoverLetter = async () => {
@@ -218,8 +336,17 @@ const generateCoverLetter = async () => {
     coverLetter.value = draft
 
     notify.success('Đã sinh thư ứng tuyển bằng AI. Bạn có thể chỉnh sửa trước khi nộp.')
+    await loadBillingContext()
   } catch (error) {
     if (await handleExistingApplicationError(error)) {
+      return
+    }
+    if (error?.code === 'WALLET_INSUFFICIENT_BALANCE') {
+      notify.warning('Số dư ví không đủ để sinh Cover Letter AI. Hãy nạp thêm tiền rồi thử lại.')
+      return
+    }
+    if (error?.code === 'BILLING_DUPLICATE_REQUEST') {
+      notify.info('Yêu cầu sinh thư trước đó vẫn đang xử lý. Vui lòng chờ thêm một chút.')
       return
     }
     notify.apiError(error, 'Không thể sinh thư ứng tuyển AI cho tin này.')
@@ -266,15 +393,24 @@ const handleSaveJob = async () => {
 onMounted(fetchJob)
 watch(() => route.params.id, fetchJob)
 watch(selectedProfileId, (nextValue, previousValue) => {
-  if (!generatedCoverLetterId.value || !previousValue || nextValue === previousValue) return
+  if (!previousValue || nextValue === previousValue) return
 
-  const shouldClearText = coverLetter.value.trim() === generatedCoverLetter.value.trim()
-  generatedCoverLetterId.value = null
-  generatedCoverLetter.value = ''
-
-  if (shouldClearText) {
-    coverLetter.value = ''
+  if (suppressProfileChangeReset.value) {
+    suppressProfileChangeReset.value = false
+    return
   }
+
+  if (generatedCoverLetterId.value) {
+    const shouldClearText = coverLetter.value.trim() === generatedCoverLetter.value.trim()
+    generatedCoverLetterId.value = null
+    generatedCoverLetter.value = ''
+
+    if (shouldClearText) {
+      coverLetter.value = ''
+    }
+  }
+
+  resetTailoringResult()
 })
 </script>
 
@@ -320,6 +456,13 @@ watch(selectedProfileId, (nextValue, previousValue) => {
             <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
               <div class="max-w-3xl">
                 <p class="text-xs font-semibold uppercase tracking-[0.32em] text-blue-100/80">Chi tiết việc làm</p>
+                <span
+                  v-if="job.is_featured"
+                  class="mt-4 inline-flex items-center gap-1.5 rounded-full bg-amber-400/15 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-amber-100"
+                >
+                  <span class="material-symbols-outlined text-[14px]">rocket_launch</span>
+                  Featured Listing
+                </span>
                 <h1 class="mt-3 text-3xl font-bold md:text-4xl">{{ job.tieu_de }}</h1>
                 <p class="mt-4 text-sm font-semibold text-blue-100">
                   {{ job.cong_ty?.ten_cong_ty || 'Công ty đang cập nhật' }}
@@ -489,6 +632,14 @@ watch(selectedProfileId, (nextValue, previousValue) => {
                 >
                   {{ saving ? 'Đang xử lý...' : isSaved ? 'Đã lưu tin' : 'Lưu tin tuyển dụng' }}
                 </button>
+                <button
+                  class="rounded-2xl border border-violet-200 bg-violet-50 px-5 py-3 text-sm font-semibold text-violet-700 transition hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-60"
+                  :disabled="isQuotaFull"
+                  type="button"
+                  @click="openApplyModal"
+                >
+                  Tối ưu CV cho tin này
+                </button>
               </div>
             </div>
           </section>
@@ -546,17 +697,134 @@ watch(selectedProfileId, (nextValue, previousValue) => {
               </p>
             </div>
 
+            <div class="rounded-2xl border border-emerald-100 bg-emerald-50/70 px-4 py-4 text-sm text-slate-700">
+              <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p class="text-xs font-black uppercase tracking-[0.22em] text-emerald-700">AI Wallet</p>
+                  <p class="mt-2 font-semibold text-slate-900">
+                    {{ loadingBillingContext ? 'Đang tải số dư ví...' : `Khả dụng ${formatCurrency(walletAvailable)}` }}
+                  </p>
+                  <p class="mt-1 text-xs text-slate-500">
+                    {{ coverLetterWalletNote }}
+                  </p>
+                </div>
+                <RouterLink
+                  :to="{ name: 'Wallet' }"
+                  class="inline-flex items-center justify-center rounded-xl border border-emerald-200 bg-white px-4 py-2 text-sm font-bold text-emerald-700 transition hover:bg-emerald-50"
+                >
+                  Nạp ví AI
+                </RouterLink>
+              </div>
+            </div>
+
+            <div class="rounded-3xl border border-violet-100 bg-gradient-to-br from-violet-50 via-white to-blue-50 px-5 py-5">
+              <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <p class="text-xs font-black uppercase tracking-[0.24em] text-violet-600">One-click CV Tailoring</p>
+                  <h4 class="mt-2 text-lg font-black text-slate-900">Tạo bản CV riêng cho tin này</h4>
+                  <p class="mt-2 text-sm leading-7 text-slate-600">
+                    AI sẽ đọc CV đang chọn và JD của vị trí này, sau đó tạo một CV mới nhấn mạnh kỹ năng, kinh nghiệm và dự án phù hợp hơn. CV gốc không bị thay đổi.
+                  </p>
+                </div>
+                <button
+                  class="inline-flex min-w-[190px] items-center justify-center gap-2 rounded-2xl bg-violet-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-violet-200 transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  :disabled="!selectedProfileId || tailoringCv || savingTailoredCv || applying || generatingCoverLetter"
+                  type="button"
+                  @click="tailorSelectedCvForJob"
+                >
+                  <span class="material-symbols-outlined text-[18px]" :class="tailoringCv ? 'animate-spin' : ''">
+                    {{ tailoringCv ? 'progress_activity' : 'auto_awesome' }}
+                  </span>
+                  {{ tailoringCv ? 'Đang tạo preview...' : 'Xem preview tối ưu' }}
+                </button>
+              </div>
+
+              <div
+                v-if="tailoringResult"
+                class="mt-4 grid gap-3 rounded-2xl border border-white bg-white/80 p-4 text-sm text-slate-600 shadow-sm lg:grid-cols-3"
+              >
+                <div class="lg:col-span-3">
+                  <p class="font-bold text-slate-900">
+                    {{ tailoringResult.profile?.id ? 'Đã lưu' : 'Preview' }}:
+                    {{ tailoringResult.profile?.tieu_de_ho_so || tailoringResult.preview_profile?.tieu_de_ho_so || 'CV tối ưu theo JD' }}
+                  </p>
+                  <p class="mt-1 text-xs text-slate-500">
+                    {{ tailoringResult.profile?.id
+                      ? 'Hệ thống đã tự chọn CV này để ứng tuyển. Bạn vẫn có thể đổi sang CV khác nếu muốn.'
+                      : 'Đây mới là bản xem trước. Bấm lưu nếu bạn muốn tạo CV mới từ nội dung tối ưu này.' }}
+                  </p>
+                </div>
+                <div class="lg:col-span-3 grid gap-3 rounded-2xl bg-slate-50 p-4 md:grid-cols-2">
+                  <div>
+                    <p class="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Thay đổi chính</p>
+                    <ul class="mt-2 space-y-1 text-sm leading-6 text-slate-600">
+                      <li v-if="tailoringResult.comparison?.career_goal_changed">Mục tiêu nghề nghiệp được viết lại theo vị trí.</li>
+                      <li v-if="tailoringResult.comparison?.summary_changed">Tóm tắt bản thân được tối ưu theo JD.</li>
+                      <li v-if="tailoringResult.comparison?.reordered_sections?.experiences">Kinh nghiệm được sắp xếp lại theo độ liên quan.</li>
+                      <li v-if="tailoringResult.comparison?.reordered_sections?.projects">Dự án được sắp xếp lại theo độ liên quan.</li>
+                      <li v-if="!(tailoringResult.comparison?.career_goal_changed || tailoringResult.comparison?.summary_changed || tailoringResult.comparison?.reordered_sections?.experiences || tailoringResult.comparison?.reordered_sections?.projects)">Nội dung được giữ ổn định, chủ yếu tối ưu keyword và thứ tự kỹ năng.</li>
+                    </ul>
+                  </div>
+                  <div>
+                    <p class="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Kỹ năng được ưu tiên</p>
+                    <p class="mt-2 text-sm leading-6 text-slate-600">
+                      {{ (tailoringResult.comparison?.prioritized_skills || []).join(', ') || 'Chưa có kỹ năng ưu tiên rõ.' }}
+                    </p>
+                  </div>
+                </div>
+                <div>
+                  <p class="text-xs font-black uppercase tracking-[0.18em] text-emerald-600">Keyword khớp</p>
+                  <p class="mt-2 leading-6">{{ (tailoringResult.tailoring?.matched_keywords || []).slice(0, 5).join(', ') || 'Chưa có keyword khớp rõ.' }}</p>
+                </div>
+                <div>
+                  <p class="text-xs font-black uppercase tracking-[0.18em] text-amber-600">Cần bổ sung</p>
+                  <p class="mt-2 leading-6">{{ (tailoringResult.tailoring?.skill_gaps || []).slice(0, 5).join(', ') || 'Chưa phát hiện thiếu hụt lớn.' }}</p>
+                </div>
+                <div>
+                  <p class="text-xs font-black uppercase tracking-[0.18em] text-blue-600">Gợi ý</p>
+                  <p class="mt-2 leading-6">{{ (tailoringResult.tailoring?.recommendations || [])[0] || 'Nên kiểm tra lại nội dung trước khi nộp.' }}</p>
+                </div>
+                <RouterLink
+                  v-if="tailoringResult.profile?.id"
+                  :to="{ name: 'CvBuilder', query: { id: tailoringResult.profile.id } }"
+                  class="lg:col-span-3 inline-flex items-center justify-center rounded-2xl border border-violet-200 px-4 py-2 text-sm font-bold text-violet-700 transition hover:bg-violet-50"
+                >
+                  Chỉnh CV tối ưu trong CV Builder
+                </RouterLink>
+                <div
+                  v-if="tailoringResult.matching"
+                  class="lg:col-span-3 rounded-2xl border border-emerald-100 bg-emerald-50 p-4"
+                >
+                  <p class="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">Matching sau tối ưu</p>
+                  <p class="mt-2 text-2xl font-black text-emerald-700">{{ Math.round(tailoringResult.matching.diem_phu_hop || 0) }}%</p>
+                  <p class="mt-1 text-sm leading-6 text-emerald-800">{{ tailoringResult.matching.explanation || 'Đã chấm lại mức độ phù hợp với JD bằng CV tối ưu.' }}</p>
+                </div>
+                <button
+                  v-if="!tailoringResult.profile?.id"
+                  class="lg:col-span-3 inline-flex items-center justify-center gap-2 rounded-2xl bg-violet-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  :disabled="savingTailoredCv || tailoringCv || applying || generatingCoverLetter"
+                  type="button"
+                  @click="saveTailoredCvForJob"
+                >
+                  <span class="material-symbols-outlined text-[18px]" :class="savingTailoredCv ? 'animate-spin' : ''">
+                    {{ savingTailoredCv ? 'progress_activity' : 'save' }}
+                  </span>
+                  {{ savingTailoredCv ? 'Đang lưu CV tối ưu...' : 'Lưu thành CV mới và chấm matching' }}
+                </button>
+              </div>
+            </div>
+
             <div>
               <div class="mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <label class="block text-sm font-semibold text-slate-700">Thư giới thiệu / Cover Letter</label>
                 <button
                   class="inline-flex items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700 transition hover:border-blue-300 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
-                  :disabled="!selectedProfileId || generatingCoverLetter || applying"
+                  :disabled="!selectedProfileId || generatingCoverLetter || applying || tailoringCv || savingTailoredCv"
                   type="button"
                   @click="generateCoverLetter"
                 >
                   <span class="material-symbols-outlined text-[18px]">auto_awesome</span>
-                  {{ generatingCoverLetter ? 'Đang sinh thư AI...' : 'Sinh thư AI' }}
+                  {{ generatingCoverLetter ? 'Đang sinh thư AI...' : coverLetterBillingLabel }}
                 </button>
               </div>
               <textarea
@@ -594,7 +862,7 @@ watch(selectedProfileId, (nextValue, previousValue) => {
           </button>
           <button
             class="rounded-2xl bg-blue-600 px-5 py-3 text-sm font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
-            :disabled="!selectedProfileId || applying || loadingProfiles || generatingCoverLetter"
+            :disabled="!selectedProfileId || applying || loadingProfiles || generatingCoverLetter || tailoringCv || savingTailoredCv"
             type="button"
             @click="submitApplication"
           >

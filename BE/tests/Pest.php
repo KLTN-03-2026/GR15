@@ -12,7 +12,7 @@
 */
 
 pest()->extend(Tests\TestCase::class)
- // ->use(Illuminate\Foundation\Testing\RefreshDatabase::class)
+    ->use(Illuminate\Foundation\Testing\RefreshDatabase::class)
     ->in('Feature');
 
 /*
@@ -44,4 +44,39 @@ expect()->extend('toBeOne', function () {
 function something()
 {
     // ..
+}
+
+function createCompanyForEmployer(\App\Models\NguoiDung $employer, array $attributes = []): \App\Models\CongTy
+{
+    return \App\Models\CongTy::factory()->create([
+        'nguoi_dung_id' => $employer->id,
+        ...$attributes,
+    ]);
+}
+
+function createJobForCompany(\App\Models\CongTy $company, array $attributes = []): \App\Models\TinTuyenDung
+{
+    return \App\Models\TinTuyenDung::factory()->create([
+        'cong_ty_id' => $company->id,
+        'hr_phu_trach_id' => $attributes['hr_phu_trach_id'] ?? $company->nguoi_dung_id,
+        ...$attributes,
+    ]);
+}
+
+function createApplicationForCandidate(
+    \App\Models\NguoiDung $candidate,
+    \App\Models\TinTuyenDung $job,
+    array $profileAttributes = [],
+    array $applicationAttributes = [],
+): \App\Models\UngTuyen {
+    $profile = \App\Models\HoSo::factory()->forNguoiDung($candidate->id)->create($profileAttributes);
+
+    return \App\Models\UngTuyen::create([
+        'tin_tuyen_dung_id' => $job->id,
+        'ho_so_id' => $profile->id,
+        'hr_phu_trach_id' => $job->hr_phu_trach_id,
+        'trang_thai' => \App\Models\UngTuyen::TRANG_THAI_CHO_DUYET,
+        'thoi_gian_ung_tuyen' => now(),
+        ...$applicationAttributes,
+    ]);
 }

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\HoSo\TaoHoSoRequest;
 use App\Http\Requests\HoSo\CapNhatHoSoUngVienRequest;
 use App\Models\HoSo;
+use App\Services\CvUploadValidationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -26,6 +27,10 @@ use Illuminate\Validation\ValidationException;
  */
 class HoSoController extends Controller
 {
+    public function __construct(private readonly CvUploadValidationService $cvUploadValidationService)
+    {
+    }
+
     private function syncCvPhoto(Request $request, HoSo $hoSo, array &$data): void
     {
         $photoMode = (string) ($data['che_do_anh_cv'] ?? $hoSo->che_do_anh_cv ?? 'profile');
@@ -169,6 +174,7 @@ class HoSoController extends Controller
 
         // Upload file CV nếu có
         if ($request->hasFile('file_cv')) {
+            $this->cvUploadValidationService->validate($request->file('file_cv'));
             $data['file_cv'] = $request->file('file_cv')
                 ->store('file_cv', 'public');
         }
@@ -230,6 +236,7 @@ class HoSoController extends Controller
 
         // Upload file CV mới nếu có, xoá file cũ
         if ($request->hasFile('file_cv')) {
+            $this->cvUploadValidationService->validate($request->file('file_cv'));
             if ($hoSo->file_cv) {
                 Storage::disk('public')->delete($hoSo->file_cv);
             }

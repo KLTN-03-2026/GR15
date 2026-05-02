@@ -31,7 +31,7 @@ class AdminHoSoController extends Controller
      * Query params:
      *   ?nguoi_dung_id=1       Lọc theo người dùng
      *   ?trang_thai=0|1        Lọc theo trạng thái
-     *   ?trinh_do=dai_hoc      Lọc theo trình độ
+     *   ?trinh_do=Đại học      Lọc theo trình độ
      *   ?search=keyword        Tìm theo tiêu đề/mục tiêu
      *   ?sort_by=created_at    Sắp xếp theo trường
      *   ?sort_dir=asc|desc     Chiều sắp xếp
@@ -50,7 +50,7 @@ class AdminHoSoController extends Controller
         }
 
         if ($request->filled('trinh_do')) {
-            $query->where('trinh_do', $request->trinh_do);
+            $query->whereIn('trinh_do', HoSo::trinhDoQueryValues($request->trinh_do));
         }
 
         if ($request->filled('search')) {
@@ -200,13 +200,13 @@ class AdminHoSoController extends Controller
             'an' => HoSo::where('trang_thai', HoSo::TRANG_THAI_AN)->count(),
             'da_xoa_mem' => HoSo::onlyTrashed()->count(),
             'theo_trinh_do' => [
-                'trung_hoc' => HoSo::where('trinh_do', 'trung_hoc')->count(),
-                'trung_cap' => HoSo::where('trinh_do', 'trung_cap')->count(),
-                'cao_dang' => HoSo::where('trinh_do', 'cao_dang')->count(),
-                'dai_hoc' => HoSo::where('trinh_do', 'dai_hoc')->count(),
-                'thac_si' => HoSo::where('trinh_do', 'thac_si')->count(),
-                'tien_si' => HoSo::where('trinh_do', 'tien_si')->count(),
-                'khac' => HoSo::where('trinh_do', 'khac')->count(),
+                'Trung học' => HoSo::whereIn('trinh_do', HoSo::trinhDoQueryValues('Trung học'))->count(),
+                'Trung cấp' => HoSo::whereIn('trinh_do', HoSo::trinhDoQueryValues('Trung cấp'))->count(),
+                'Cao đẳng' => HoSo::whereIn('trinh_do', HoSo::trinhDoQueryValues('Cao đẳng'))->count(),
+                'Đại học' => HoSo::whereIn('trinh_do', HoSo::trinhDoQueryValues('Đại học'))->count(),
+                'Thạc sĩ' => HoSo::whereIn('trinh_do', HoSo::trinhDoQueryValues('Thạc sĩ'))->count(),
+                'Tiến sĩ' => HoSo::whereIn('trinh_do', HoSo::trinhDoQueryValues('Tiến sĩ'))->count(),
+                'Khác' => HoSo::whereIn('trinh_do', HoSo::trinhDoQueryValues('Khác'))->count(),
             ],
         ];
 

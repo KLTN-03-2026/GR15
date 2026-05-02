@@ -10,4 +10,4 @@ router = APIRouter()
 
 @router.post("/parse/cv", response_model=BaseAiResponse)
 def parse_cv_endpoint(payload: CvParseRequest) -> BaseAiResponse:
-    return BaseAiResponse(**parse_cv(payload.ho_so_id, payload.file_path))
+    return BaseAiResponse(**parse_cv(payload.ho_so_id, payload.file_path, payload.raw_text))

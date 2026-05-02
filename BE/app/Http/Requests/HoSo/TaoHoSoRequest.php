@@ -2,7 +2,9 @@
 
 namespace App\Http\Requests\HoSo;
 
+use App\Models\HoSo;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class TaoHoSoRequest extends FormRequest
 {
@@ -26,6 +28,10 @@ class TaoHoSoRequest extends FormRequest
             }
         }
 
+        if ($this->has('trinh_do')) {
+            $payload['trinh_do'] = HoSo::normalizeTrinhDo($this->input('trinh_do'));
+        }
+
         if ($payload !== []) {
             $this->merge($payload);
         }
@@ -41,12 +47,14 @@ class TaoHoSoRequest extends FormRequest
         return [
             'tieu_de_ho_so' => ['required', 'string', 'max:200'],
             'muc_tieu_nghe_nghiep' => ['nullable', 'string'],
-            'trinh_do' => ['nullable', 'string', 'max:100', 'in:trung_hoc,trung_cap,cao_dang,dai_hoc,thac_si,tien_si,khac'],
+            'trinh_do' => ['nullable', 'string', 'max:100', Rule::in(HoSo::acceptedTrinhDoValues())],
             'kinh_nghiem_nam' => ['nullable', 'integer', 'min:0', 'max:50'],
             'mo_ta_ban_than' => ['nullable', 'string'],
             'file_cv' => ['nullable', 'file', 'mimes:pdf,doc,docx', 'max:5120'],
             'nguon_ho_so' => ['nullable', 'string', 'in:upload,builder,hybrid'],
             'mau_cv' => ['nullable', 'string', 'max:100'],
+            'bo_cuc_cv' => ['nullable', 'string', 'in:executive_navy,topcv_maroon,ats_serif'],
+            'ten_template_cv' => ['nullable', 'string', 'max:150'],
             'che_do_mau_cv' => ['nullable', 'string', 'in:style,position'],
             'vi_tri_ung_tuyen_muc_tieu' => ['nullable', 'string', 'max:150'],
             'ten_nganh_nghe_muc_tieu' => ['nullable', 'string', 'max:150'],
@@ -66,7 +74,7 @@ class TaoHoSoRequest extends FormRequest
         return [
             'tieu_de_ho_so.required' => 'Tiêu đề hồ sơ không được để trống.',
             'tieu_de_ho_so.max' => 'Tiêu đề hồ sơ tối đa 200 ký tự.',
-            'trinh_do.in' => 'Trình độ phải là: trung_hoc, trung_cap, cao_dang, dai_hoc, thac_si, tien_si, khac.',
+            'trinh_do.in' => 'Trình độ không hợp lệ.',
             'kinh_nghiem_nam.integer' => 'Kinh nghiệm năm phải là số nguyên.',
             'kinh_nghiem_nam.min' => 'Kinh nghiệm năm không được nhỏ hơn 0.',
             'kinh_nghiem_nam.max' => 'Kinh nghiệm năm không được lớn hơn 50.',

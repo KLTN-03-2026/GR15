@@ -1,23 +1,48 @@
-export const cvTemplateOptions = [
+const defaultCvTemplateOptions = [
   {
     value: 'executive_navy',
     label: 'Executive Navy',
     description: 'Bám theo mẫu header xanh đậm, tên căn giữa, sidebar trái và phần kinh nghiệm chi tiết.',
+    layout: 'executive_navy',
     badges: ['Hợp Product / Business', 'Hợp HR / Finance'],
   },
   {
     value: 'topcv_maroon',
     label: 'Sidebar Maroon',
     description: 'Bám theo mẫu sidebar đỏ nâu có ảnh đại diện lớn, cột trái đậm màu và nội dung trắng bên phải.',
+    layout: 'topcv_maroon',
     badges: ['Hợp Frontend / Mobile', 'Hợp Marketing / UI UX'],
   },
   {
     value: 'ats_serif',
     label: 'ATS Serif',
     description: 'Bám theo mẫu ATS trắng tối giản, chữ serif, một cột, ưu tiên đọc nhanh và in đẹp.',
+    layout: 'ats_serif',
     badges: ['Hợp ATS / Software', 'Hợp Data / Intern'],
   },
 ]
+
+let runtimeCvTemplateOptions = [...defaultCvTemplateOptions]
+
+export const getCvTemplateOptions = () => runtimeCvTemplateOptions
+
+export const setRuntimeCvTemplateOptions = (templates = []) => {
+  if (!Array.isArray(templates) || !templates.length) {
+    runtimeCvTemplateOptions = [...defaultCvTemplateOptions]
+    return
+  }
+
+  runtimeCvTemplateOptions = templates.map((template) => ({
+    value: template.ma_template || template.value,
+    label: template.ten_template || template.label,
+    description: template.mo_ta || template.description || '',
+    layout: template.bo_cuc || template.layout || template.value,
+    badges: Array.isArray(template.badges) ? template.badges : [],
+    order: Number(template.thu_tu_hien_thi || template.order || 0),
+  })).sort((a, b) => (a.order || 0) - (b.order || 0))
+}
+
+export const cvTemplateOptions = defaultCvTemplateOptions
 
 export const cvTemplateModeOptions = [
   { value: 'style', label: 'Theo phong cách', description: 'Chọn trực tiếp phong cách CV bám theo các mẫu tham chiếu.' },
@@ -68,6 +93,161 @@ export const cvSkillLevelOptions = [
   { value: 'chuyen_sau', label: 'Chuyên sâu' },
 ]
 
+const defaultProjectFieldConfig = {
+  sectionTitle: 'Dự án / Thành tựu nổi bật',
+  sectionDescription: 'Có thể là dự án, chiến dịch, đề án, portfolio hoặc thành tựu nghề nghiệp tiêu biểu.',
+  organizationLabel: 'Đơn vị / Khách hàng',
+  organizationPlaceholder: 'Bạn đã thực hiện mục này cho ai hoặc ở đâu? Ví dụ: Công ty ABC, khách hàng X, phòng ban nội bộ...',
+  domainLabel: 'Lĩnh vực / Công cụ',
+  domainPlaceholder: 'Bạn đã dùng công cụ, nền tảng hoặc làm trong mảng nào? Ví dụ: Excel, Figma, Meta Ads, Laravel...',
+  evidenceTypeLabel: 'Loại minh chứng',
+  evidenceLinkLabel: 'Liên kết minh chứng',
+  evidenceLinkPlaceholder: 'Nếu có tài liệu hoặc sản phẩm minh chứng, dán link tại đây. Ví dụ: portfolio, case study, báo cáo, dashboard...',
+  resultLabel: 'Kết quả nổi bật',
+  resultPlaceholder: 'Kết quả cụ thể là gì? Ví dụ: tăng 20% doanh thu, giảm 30% thời gian xử lý, phục vụ 5.000 người dùng/tháng...',
+  evidenceTypeOptions: [
+    { value: '', label: 'Chưa chọn loại minh chứng' },
+    { value: 'portfolio', label: 'Portfolio' },
+    { value: 'case_study', label: 'Case study / bài viết' },
+    { value: 'report', label: 'Báo cáo / tài liệu' },
+    { value: 'dashboard', label: 'Dashboard / minh chứng trực quan' },
+    { value: 'reference', label: 'Tài liệu tham chiếu khác' },
+  ],
+}
+
+const projectFieldProfiles = [
+  {
+    key: 'it',
+    matcher: ['cong nghe thong tin', 'cntt', 'it', 'software', 'developer', 'backend', 'frontend', 'mobile', 'data', 'qa', 'devops', 'lap trinh'],
+    config: {
+      sectionTitle: 'Dự án công nghệ nổi bật',
+      sectionDescription: 'Nêu các dự án kỹ thuật, sản phẩm đã tham gia và minh chứng như demo, GitHub hoặc tài liệu API.',
+      organizationLabel: 'Khách hàng / Đơn vị triển khai',
+      organizationPlaceholder: 'Bạn làm dự án này cho công ty nào hoặc đây là dự án cá nhân? Ví dụ: Công ty ABC, dự án cá nhân, khách hàng nội bộ...',
+      domainLabel: 'Công nghệ / Stack',
+      domainPlaceholder: 'Bạn đã dùng công nghệ gì? Ví dụ: Laravel, Vue.js, MySQL, Docker, Firebase...',
+      evidenceLinkLabel: 'Link demo / GitHub / API docs',
+      evidenceLinkPlaceholder: 'Dán link GitHub, demo, App Store, Swagger hoặc tài liệu kỹ thuật nếu có.',
+      resultPlaceholder: 'Dự án mang lại kết quả gì? Ví dụ: giảm thời gian xử lý 40%, phục vụ 5.000 user/tháng, tăng tốc độ tải 30%...',
+      evidenceTypeOptions: [
+        { value: '', label: 'Chưa chọn loại minh chứng' },
+        { value: 'github', label: 'GitHub / source code' },
+        { value: 'demo', label: 'Demo / website / app' },
+        { value: 'api_docs', label: 'API docs / technical docs' },
+        { value: 'case_study', label: 'Case study kỹ thuật' },
+      ],
+    },
+  },
+  {
+    key: 'marketing',
+    matcher: ['marketing', 'truyen thong', 'digital marketing', 'content marketing', 'seo', 'social media'],
+    config: {
+      sectionTitle: 'Chiến dịch / Dự án marketing',
+      sectionDescription: 'Phù hợp cho chiến dịch, kế hoạch nội dung, performance hoặc các case study truyền thông.',
+      organizationLabel: 'Thương hiệu / Khách hàng',
+      organizationPlaceholder: 'Bạn làm chiến dịch này cho thương hiệu hoặc khách hàng nào? Ví dụ: Thương hiệu X, chiến dịch nội bộ, nhãn hàng Y...',
+      domainLabel: 'Kênh / Công cụ',
+      domainPlaceholder: 'Bạn triển khai trên kênh hoặc công cụ nào? Ví dụ: Meta Ads, Google Ads, TikTok, GA4, CRM...',
+      evidenceLinkLabel: 'Link case study / landing page / chiến dịch',
+      evidenceLinkPlaceholder: 'Dán link landing page, bài case study, post social, trang chiến dịch hoặc báo cáo nếu có.',
+      resultPlaceholder: 'Chiến dịch đạt kết quả gì? Ví dụ: tăng 35% lead, giảm CPL 18%, đạt 1,2 triệu lượt tiếp cận...',
+      evidenceTypeOptions: [
+        { value: '', label: 'Chưa chọn loại minh chứng' },
+        { value: 'campaign', label: 'Trang chiến dịch / social post' },
+        { value: 'landing_page', label: 'Landing page' },
+        { value: 'case_study', label: 'Case study / bài viết' },
+        { value: 'report', label: 'Báo cáo hiệu quả' },
+      ],
+    },
+  },
+  {
+    key: 'design',
+    matcher: ['thiet ke', 'designer', 'ui ux', 'graphic', 'figma', 'behance', 'dribbble', 'sang tao'],
+    config: {
+      sectionTitle: 'Portfolio / Dự án thiết kế',
+      sectionDescription: 'Phù hợp cho UI/UX, graphic design, branding hoặc các sản phẩm sáng tạo cần portfolio.',
+      organizationLabel: 'Thương hiệu / Khách hàng',
+      organizationPlaceholder: 'Bạn thiết kế cho thương hiệu, khách hàng hoặc dự án nào? Ví dụ: Nhãn hàng, studio, dự án freelance...',
+      domainLabel: 'Công cụ / Phong cách',
+      domainPlaceholder: 'Bạn dùng công cụ gì hoặc theo phong cách nào? Ví dụ: Figma, Illustrator, Branding, Mobile UI...',
+      evidenceLinkLabel: 'Link portfolio / Behance / Figma',
+      evidenceLinkPlaceholder: 'Dán link Behance, Figma, Dribbble hoặc website portfolio để minh chứng sản phẩm.',
+      resultPlaceholder: 'Thiết kế này tạo ra tác động gì? Ví dụ: hoàn thiện bộ nhận diện, tăng CTR, cải thiện usability...',
+      evidenceTypeOptions: [
+        { value: '', label: 'Chưa chọn loại minh chứng' },
+        { value: 'portfolio', label: 'Portfolio' },
+        { value: 'behance', label: 'Behance' },
+        { value: 'figma', label: 'Figma' },
+        { value: 'dribbble', label: 'Dribbble' },
+      ],
+    },
+  },
+  {
+    key: 'sales',
+    matcher: ['kinh doanh', 'ban hang', 'sales', 'ecommerce', 'thuong mai dien tu'],
+    config: {
+      sectionTitle: 'Dự án / Thành tựu kinh doanh',
+      sectionDescription: 'Phù hợp cho deal lớn, thị trường mở mới, sáng kiến bán hàng hoặc triển khai vận hành bán hàng.',
+      organizationLabel: 'Khách hàng / Đơn vị',
+      organizationPlaceholder: 'Bạn bán hàng cho khách hàng nào hoặc ở khu vực/kênh nào? Ví dụ: doanh nghiệp khách hàng, thị trường miền Trung, sàn TMĐT...',
+      domainLabel: 'Sản phẩm / Kênh bán',
+      domainPlaceholder: 'Bạn bán sản phẩm gì hoặc qua kênh nào? Ví dụ: B2B SaaS, thương mại điện tử, đại lý, retail...',
+      evidenceLinkLabel: 'Link tài liệu / landing page / minh chứng bán hàng',
+      evidenceLinkPlaceholder: 'Dán link brochure, landing page sản phẩm, hồ sơ chào bán hoặc case study nếu có.',
+      resultPlaceholder: 'Kết quả kinh doanh là gì? Ví dụ: đạt 120% KPI, mở mới 30 khách hàng, tăng doanh thu 25%...',
+      evidenceTypeOptions: [
+        { value: '', label: 'Chưa chọn loại minh chứng' },
+        { value: 'case_study', label: 'Case study / thành tích' },
+        { value: 'landing_page', label: 'Trang sản phẩm / landing page' },
+        { value: 'report', label: 'Báo cáo / tài liệu bán hàng' },
+        { value: 'reference', label: 'Minh chứng khác' },
+      ],
+    },
+  },
+  {
+    key: 'finance',
+    matcher: ['ke toan', 'tai chinh', 'fp&a', 'dau tu', 'accounting', 'finance'],
+    config: {
+      sectionTitle: 'Dự án / Phân tích tài chính nổi bật',
+      sectionDescription: 'Phù hợp cho báo cáo phân tích, dashboard tài chính, đề án tối ưu chi phí hoặc quy trình kế toán.',
+      organizationLabel: 'Đơn vị / Bộ phận',
+      organizationPlaceholder: 'Bạn thực hiện cho bộ phận hoặc đơn vị nào? Ví dụ: phòng tài chính, công ty, dự án nội bộ...',
+      domainLabel: 'Mảng nghiệp vụ / Công cụ',
+      domainPlaceholder: 'Bạn làm ở mảng nào và dùng công cụ gì? Ví dụ: FP&A, ngân sách, Power BI, Excel, ERP...',
+      evidenceLinkLabel: 'Link dashboard / báo cáo / tài liệu',
+      evidenceLinkPlaceholder: 'Dán link dashboard, báo cáo mẫu hoặc tài liệu minh chứng nếu có thể chia sẻ.',
+      resultPlaceholder: 'Kết quả tài chính là gì? Ví dụ: rút ngắn thời gian chốt sổ, tối ưu chi phí 12%, chuẩn hóa báo cáo...',
+      evidenceTypeOptions: [
+        { value: '', label: 'Chưa chọn loại minh chứng' },
+        { value: 'dashboard', label: 'Dashboard / báo cáo' },
+        { value: 'report', label: 'Tài liệu phân tích' },
+        { value: 'case_study', label: 'Case study nghiệp vụ' },
+      ],
+    },
+  },
+  {
+    key: 'hr',
+    matcher: ['nhan su', 'hanh chinh', 'hr', 'recruiter', 'tuyen dung'],
+    config: {
+      sectionTitle: 'Dự án / Sáng kiến nhân sự',
+      sectionDescription: 'Phù hợp cho đề án tuyển dụng, cải tiến quy trình HR, onboarding hoặc chương trình nội bộ.',
+      organizationLabel: 'Phòng ban / Đơn vị',
+      organizationPlaceholder: 'Bạn thực hiện sáng kiến này ở phòng ban hoặc đơn vị nào? Ví dụ: phòng tuyển dụng, công ty, đơn vị phối hợp...',
+      domainLabel: 'Quy trình / Công cụ',
+      domainPlaceholder: 'Bạn dùng quy trình hoặc công cụ gì? Ví dụ: ATS, LinkedIn Recruiter, onboarding, policy...',
+      evidenceLinkLabel: 'Link tài liệu / portfolio / biểu mẫu',
+      evidenceLinkPlaceholder: 'Dán link tài liệu quy trình, portfolio tuyển dụng, biểu mẫu hoặc tài liệu nội bộ nếu có.',
+      resultPlaceholder: 'Sáng kiến tạo ra cải thiện gì? Ví dụ: rút ngắn time-to-hire 20%, tăng tỉ lệ nhận offer, cải thiện onboarding...',
+      evidenceTypeOptions: [
+        { value: '', label: 'Chưa chọn loại minh chứng' },
+        { value: 'portfolio', label: 'Portfolio / hồ sơ minh chứng' },
+        { value: 'report', label: 'Tài liệu / báo cáo HR' },
+        { value: 'case_study', label: 'Case study / sáng kiến nội bộ' },
+      ],
+    },
+  },
+]
+
 const TEMPLATE_ALIAS_MAP = {
   classic: 'executive_navy',
   executive: 'executive_navy',
@@ -105,6 +285,20 @@ export const resolveCvTemplateValue = (value) => {
   return TEMPLATE_ALIAS_MAP[normalized] || normalized
 }
 
+export const resolveCvTemplateLayout = (value, fallbackLayout = '') => {
+  const catalogEntry = getCvTemplateOptions().find((item) => item.value === String(value || '').trim())
+  if (catalogEntry?.layout) {
+    return catalogEntry.layout
+  }
+
+  const fallback = String(fallbackLayout || '').trim()
+  if (fallback) {
+    return TEMPLATE_ALIAS_MAP[fallback] || fallback
+  }
+
+  return resolveCvTemplateValue(value)
+}
+
 export const hasBuilderCv = (profile) => {
   if (!profile) return false
   if (profile.nguon_ho_so && profile.nguon_ho_so !== 'upload') return true
@@ -119,11 +313,73 @@ export const hasBuilderCv = (profile) => {
 }
 
 export const cvTemplateLabel = (value) =>
-  cvTemplateOptions.find((item) => item.value === resolveCvTemplateValue(value))?.label || 'Executive Navy'
+  getCvTemplateOptions().find((item) => item.value === String(value || '').trim())?.label
+  || defaultCvTemplateOptions.find((item) => item.value === resolveCvTemplateValue(value))?.label
+  || 'Executive Navy'
+
+export const getCvTemplateMeta = (value) =>
+  getCvTemplateOptions().find((item) => item.value === String(value || '').trim())
+  || defaultCvTemplateOptions.find((item) => item.value === resolveCvTemplateValue(value))
+  || null
+
+export const templateUsesCvPhoto = (value, fallbackLayout = '') =>
+  resolveCvTemplateLayout(value, fallbackLayout) === 'topcv_maroon'
 
 export const inferCvStyleFamily = (template) => resolveCvTemplateValue(template)
 
-export const getCvTemplatesForMode = () => cvTemplateOptions
+export const getCvTemplatesForMode = () => getCvTemplateOptions()
+
+const CV_PRINT_STORAGE_PREFIX = 'cv-print-preview:'
+
+export const storeCvPrintPayload = ({ profile, owner }) => {
+  const token = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+
+  if (typeof window !== 'undefined') {
+    window.localStorage.setItem(
+      `${CV_PRINT_STORAGE_PREFIX}${token}`,
+      JSON.stringify({
+        profile,
+        owner,
+        created_at: new Date().toISOString(),
+      }),
+    )
+  }
+
+  return token
+}
+
+export const readCvPrintPayload = (token) => {
+  if (typeof window === 'undefined' || !token) return null
+
+  const raw = window.localStorage.getItem(`${CV_PRINT_STORAGE_PREFIX}${token}`)
+  if (!raw) return null
+
+  try {
+    return JSON.parse(raw)
+  } catch (error) {
+    return null
+  }
+}
+
+export const clearCvPrintPayload = (token) => {
+  if (typeof window === 'undefined' || !token) return
+  window.localStorage.removeItem(`${CV_PRINT_STORAGE_PREFIX}${token}`)
+}
+
+export const openCvPrintPreview = ({ profile, owner }) => {
+  if (typeof window === 'undefined') return false
+
+  const popup = window.open('about:blank', '_blank')
+  if (!popup) {
+    return false
+  }
+
+  const token = storeCvPrintPayload({ profile, owner })
+  popup.name = JSON.stringify({ profile, owner, token })
+  popup.location.href = `/cv-print-preview?token=${encodeURIComponent(token)}`
+
+  return true
+}
 
 const cvTemplateThemes = {
   executive_navy: {
@@ -190,6 +446,22 @@ const normalizeIndustryName = (value) =>
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
+
+export const getCvProjectFieldConfig = ({ industryName = '', positionValue = '' } = {}) => {
+  const normalizedIndustry = normalizeIndustryName(industryName)
+  const normalizedPosition = normalizeIndustryName(positionValue)
+
+  const matchedProfile = projectFieldProfiles.find((profile) =>
+    profile.matcher.some((keyword) =>
+      normalizedIndustry.includes(keyword) || normalizedPosition.includes(keyword)
+    )
+  )
+
+  return {
+    ...defaultProjectFieldConfig,
+    ...(matchedProfile?.config || {}),
+  }
+}
 
 const industryPresetMatchers = [
   {
@@ -686,9 +958,10 @@ const buildTopcvMaroonHtml = (data) => `
                   <div class="title">${escapeHtml(item?.ten || '')}</div>
                   <div class="company">${escapeHtml(item?.vai_tro || '')}</div>
                 </div>
-                <div class="period">${escapeHtml(item?.cong_nghe || '')}</div>
+                <div class="period">${escapeHtml(item?.don_vi_hoac_khach_hang || item?.linh_vuc_hoac_cong_cu || item?.cong_nghe || '')}</div>
               </div>
               ${item?.mo_ta ? `<div style="margin-top: 8px; line-height: 1.7;">${escapeHtml(item.mo_ta)}</div>` : ''}
+              ${item?.ket_qua_noi_bat ? `<div style="margin-top: 6px; line-height: 1.7;"><strong>Kết quả:</strong> ${escapeHtml(item.ket_qua_noi_bat)}</div>` : ''}
             </div>
           `) || '<div>Chưa cập nhật dự án.</div>'}
         </section>
@@ -776,8 +1049,9 @@ const buildAtsSerifHtml = (data) => `
       ${renderList(data.projects, (item) => `
         <div class="entry">
           <div class="entry-title">${escapeHtml(item?.ten || '')}</div>
-          <div class="meta">${escapeHtml(item?.cong_nghe || '')}${item?.vai_tro ? ` | ${escapeHtml(item.vai_tro)}` : ''}</div>
+          <div class="meta">${escapeHtml(item?.vai_tro || '')}${item?.don_vi_hoac_khach_hang ? ` | ${escapeHtml(item.don_vi_hoac_khach_hang)}` : ''}${(item?.linh_vuc_hoac_cong_cu || item?.cong_nghe) ? ` | ${escapeHtml(item?.linh_vuc_hoac_cong_cu || item?.cong_nghe || '')}` : ''}</div>
           ${item?.mo_ta ? `<div class="text" style="margin-top: 6px;">${escapeHtml(item.mo_ta)}</div>` : ''}
+          ${item?.ket_qua_noi_bat ? `<div class="text" style="margin-top: 6px;"><strong>Kết quả:</strong> ${escapeHtml(item.ket_qua_noi_bat)}</div>` : ''}
         </div>
       `)}
       ${renderList(data.certificates, (item) => `

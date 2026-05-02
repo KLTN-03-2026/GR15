@@ -2,6 +2,7 @@
 
 namespace App\Notifications;
 
+use App\Models\InterviewRound;
 use App\Models\UngTuyen;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -32,6 +33,8 @@ class InterviewScheduledNotification extends Notification
     public function __construct(
         private readonly UngTuyen $ungTuyen,
         private readonly bool $isRescheduled = false,
+        private readonly bool $isReminder = false,
+        private readonly ?InterviewRound $interviewRound = null,
     ) {
     }
 
@@ -47,24 +50,30 @@ class InterviewScheduledNotification extends Notification
         $congTy = $tin?->congTy;
         $tenViTri = $tin?->tieu_de ?: 'Chưa xác định';
         $tenCongTy = $congTy?->ten_cong_ty ?: 'Chưa xác định';
-        $ngayHen = $ungTuyen->ngay_hen_phong_van;
-        $hinhThuc = match ((string) ($ungTuyen->hinh_thuc_phong_van ?? '')) {
+        $round = $this->interviewRound;
+        $ngayHen = $round?->ngay_hen_phong_van ?? $ungTuyen->ngay_hen_phong_van;
+        $hinhThuc = match ((string) ($round?->hinh_thuc_phong_van ?? $ungTuyen->hinh_thuc_phong_van ?? '')) {
             'online' => 'Phỏng vấn online',
             'offline' => 'Phỏng vấn trực tiếp',
             'phone' => 'Phỏng vấn qua điện thoại',
             default => null,
         };
-        $nguoiPhongVan = trim((string) ($ungTuyen->nguoi_phong_van ?? ''));
-        $linkPhongVan = trim((string) ($ungTuyen->link_phong_van ?? ''));
+        $nguoiPhongVan = trim((string) ($round?->nguoi_phong_van ?? $ungTuyen->nguoi_phong_van ?? ''));
+        $linkPhongVan = trim((string) ($round?->link_phong_van ?? $ungTuyen->link_phong_van ?? ''));
+        $tenVong = trim((string) ($round?->ten_vong ?? ''));
         $thoiGian = $ngayHen
             ? $ngayHen->timezone(self::DISPLAY_TIMEZONE)->format('H:i d/m/Y')
             : 'Chưa xác định';
-        $subject = $this->isRescheduled
+        $subject = $this->isReminder
+            ? "Nhac lich phong van - {$tenViTri} tai {$tenCongTy}"
+            : ($this->isRescheduled
             ? "Cap nhat lich phong van - {$tenViTri} tai {$tenCongTy}"
-            : "Thu moi phong van - {$tenViTri} tai {$tenCongTy}";
-        $previewText = $this->isRescheduled
+            : "Thu moi phong van - {$tenViTri} tai {$tenCongTy}");
+        $previewText = $this->isReminder
+            ? 'Day la email nhac lich phong van sap dien ra cua ban.'
+            : ($this->isRescheduled
             ? 'Nha tuyen dung vua cap nhat lich phong van cua ban.'
-            : 'Nha tuyen dung vua dat lich phong van cho ho so ung tuyen cua ban.';
+            : 'Nha tuyen dung vua dat lich phong van cho ho so ung tuyen cua ban.');
         $candidateId = (int) ($ungTuyen->hoSo?->nguoiDung?->id ?? $notifiable->id ?? 0);
         $acceptUrl = null;
         $declineUrl = null;
@@ -83,23 +92,25 @@ class InterviewScheduledNotification extends Notification
             }
 
             $acceptUrl = URL::temporarySignedRoute(
-                'ung-vien.ung-tuyens.confirm-interview-email',
+                $round ? 'ung-vien.ung-tuyens.interview-rounds.confirm-email' : 'ung-vien.ung-tuyens.confirm-interview-email',
                 $expiresAt,
-                [
+                array_filter([
                     'id' => $ungTuyen->id,
+                    'roundId' => $round?->id,
                     'action' => 'accept',
                     'user' => $candidateId,
-                ],
+                ], fn ($value) => $value !== null),
             );
 
             $declineUrl = URL::temporarySignedRoute(
-                'ung-vien.ung-tuyens.confirm-interview-email',
+                $round ? 'ung-vien.ung-tuyens.interview-rounds.confirm-email' : 'ung-vien.ung-tuyens.confirm-interview-email',
                 $expiresAt,
-                [
+                array_filter([
                     'id' => $ungTuyen->id,
+                    'roundId' => $round?->id,
                     'action' => 'decline',
                     'user' => $candidateId,
-                ],
+                ], fn ($value) => $value !== null),
             );
         }
 
@@ -109,15 +120,16 @@ class InterviewScheduledNotification extends Notification
                 'subjectText' => $subject,
                 'previewText' => $previewText,
                 'isRescheduled' => $this->isRescheduled,
+                'isReminder' => $this->isReminder,
                 'candidateName' => $notifiable->ho_ten ?: 'bạn',
-                'jobTitle' => $tenViTri,
+                'jobTitle' => $tenVong ? "{$tenViTri} - {$tenVong}" : $tenViTri,
                 'companyName' => $tenCongTy,
                 'interviewTime' => $thoiGian,
                 'interviewMode' => $hinhThuc,
                 'interviewerName' => $nguoiPhongVan,
                 'locationOrLink' => $linkPhongVan,
                 'canRespondFromEmail' => $canRespondFromEmail,
-                'attendanceStatus' => (int) ($ungTuyen->trang_thai_tham_gia_phong_van ?? UngTuyen::PHONG_VAN_CHO_XAC_NHAN),
+                'attendanceStatus' => (int) ($round?->trang_thai_tham_gia ?? $ungTuyen->trang_thai_tham_gia_phong_van ?? UngTuyen::PHONG_VAN_CHO_XAC_NHAN),
                 'lockedResponseMessage' => $lockedResponseMessage,
                 'acceptUrl' => $acceptUrl,
                 'declineUrl' => $declineUrl,

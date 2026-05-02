@@ -34,6 +34,8 @@ class DatabaseSeeder extends Seeder
             UngTuyenSeeder::class,
             KetQuaMatchingSeeder::class,
             TuVanNgheNghiepSeeder::class,
+            BangGiaTinhNangAiSeeder::class,
+            GoiDichVuSeeder::class,
         ]);
     }
 }

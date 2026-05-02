@@ -63,7 +63,7 @@ const formatSalary = (job) => {
   if (job.muc_luong_tu && job.muc_luong_den) {
     return `${formatCurrency(job.muc_luong_tu)} - ${formatCurrency(job.muc_luong_den)}`
   }
-  if (job.muc_luong) return formatCurrency(job.muc_luong)
+  if (job.muc_luong_tu) return formatCurrency(job.muc_luong_tu)
   return 'Thỏa thuận'
 }
 
@@ -207,7 +207,6 @@ const subscribeRealtimeJobs = () => {
         tieu_de: payload?.job?.title || 'Việc làm mới',
         dia_diem_lam_viec: payload?.job?.dia_diem_lam_viec || '',
         hinh_thuc_lam_viec: payload?.job?.hinh_thuc_lam_viec || '',
-        muc_luong: payload?.job?.muc_luong ?? null,
         muc_luong_tu: payload?.job?.muc_luong_tu ?? null,
         muc_luong_den: payload?.job?.muc_luong_den ?? null,
         ngay_het_han: payload?.job?.ngay_het_han || null,
@@ -262,13 +261,15 @@ onUnmounted(() => {
           Quản lý những doanh nghiệp bạn đang theo dõi và xem nhanh các hoạt động tuyển dụng mới nhất từ họ.
         </p>
       </div>
-      <RouterLink
-        :to="{ name: 'CompanyList' }"
-        class="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-500 px-5 py-3 font-semibold text-white shadow-lg shadow-blue-500/20 transition-all hover:from-blue-500 hover:to-indigo-400"
-      >
-        <span class="material-symbols-outlined text-xl">travel_explore</span>
-        Khám phá thêm công ty
-      </RouterLink>
+      <div class="flex flex-wrap gap-3">
+        <RouterLink
+          :to="{ name: 'CompanyList' }"
+          class="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-500 px-5 py-3 font-semibold text-white shadow-lg shadow-blue-500/20 transition-all hover:from-blue-500 hover:to-indigo-400"
+        >
+          <span class="material-symbols-outlined text-xl">travel_explore</span>
+          Khám phá thêm công ty
+        </RouterLink>
+      </div>
     </div>
 
     <div class="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">

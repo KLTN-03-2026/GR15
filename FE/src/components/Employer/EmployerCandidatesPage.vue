@@ -4,6 +4,7 @@ import { employerCandidateService } from '@/services/api'
 import { useEmployerCompanyPermissions } from '@/composables/useEmployerCompanyPermissions'
 import { useNotify } from '@/composables/useNotify'
 import { getAuthToken } from '@/utils/authStorage'
+import { hasBuilderCv, openCvPrintPreview } from '@/utils/profileCvBuilder'
 
 const notify = useNotify()
 const { currentInternalRoleLabel, ensurePermissionsLoaded } = useEmployerCompanyPermissions()
@@ -11,6 +12,7 @@ const { currentInternalRoleLabel, ensurePermissionsLoaded } = useEmployerCompany
 const loading = ref(false)
 const candidates = ref([])
 const pagination = ref(null)
+const selectedCvByCandidate = reactive({})
 
 const filters = reactive({
   search: '',
@@ -25,19 +27,19 @@ const filters = reactive({
 
 const degreeOptions = [
   { value: '', label: 'Tất cả trình độ' },
-  { value: 'trung_hoc', label: 'Trung học' },
-  { value: 'trung_cap', label: 'Trung cấp' },
-  { value: 'cao_dang', label: 'Cao đẳng' },
-  { value: 'dai_hoc', label: 'Đại học' },
-  { value: 'thac_si', label: 'Thạc sĩ' },
-  { value: 'tien_si', label: 'Tiến sĩ' },
-  { value: 'khac', label: 'Khác' },
+  { value: 'Trung học', label: 'Trung học' },
+  { value: 'Trung cấp', label: 'Trung cấp' },
+  { value: 'Cao đẳng', label: 'Cao đẳng' },
+  { value: 'Đại học', label: 'Đại học' },
+  { value: 'Thạc sĩ', label: 'Thạc sĩ' },
+  { value: 'Tiến sĩ', label: 'Tiến sĩ' },
+  { value: 'Khác', label: 'Khác' },
 ]
 
 const stats = computed(() => {
   const all = candidates.value
   const senior = all.filter((item) => Number(item.kinh_nghiem_nam || 0) >= 5).length
-  const availableCv = all.filter((item) => item.file_cv).length
+  const availableCv = all.filter((item) => (item.ho_sos || []).some((profile) => canOpenProfileCv(profile))).length
   const degreeCount = new Set(all.map((item) => item.trinh_do).filter(Boolean)).size
 
   return [
@@ -56,9 +58,9 @@ const stats = computed(() => {
       tone: 'text-violet-300 bg-violet-500/10',
     },
     {
-      label: 'Có file CV',
+      label: 'Có CV xem được',
       value: availableCv,
-      hint: 'Sẵn sàng để xem nhanh',
+      hint: 'Gồm file upload và CV tạo trên hệ thống',
       icon: 'description',
       tone: 'text-emerald-300 bg-emerald-500/10',
     },
@@ -74,12 +76,12 @@ const stats = computed(() => {
 
 const paginationSummary = computed(() => {
   if (!pagination.value) return 'Chưa có dữ liệu'
-  return `Hiển thị ${pagination.value.from || 0}-${pagination.value.to || 0} trên ${pagination.value.total || 0} hồ sơ`
+  return `Hiển thị ${pagination.value.from || 0}-${pagination.value.to || 0} trên ${pagination.value.total || 0} ứng viên`
 })
 
 const degreeLabel = (value) => {
-  const match = degreeOptions.find((item) => item.value === value)
-  return match?.label || 'Chưa cập nhật'
+  const match = degreeOptions.find((item) => item.value === value || item.label === value)
+  return match?.label || value || 'Chưa cập nhật'
 }
 
 const formatYears = (value) => {
@@ -88,9 +90,39 @@ const formatYears = (value) => {
   return `${years} năm kinh nghiệm`
 }
 
-const truncate = (text, max = 180) => {
+const truncate = (text, max = 360) => {
   if (!text) return 'Ứng viên chưa bổ sung mô tả bản thân.'
   return text.length > max ? `${text.slice(0, max).trim()}...` : text
+}
+
+const candidateProfiles = (candidate) => Array.isArray(candidate?.ho_sos) ? candidate.ho_sos : []
+
+const getSelectedProfile = (candidate) => {
+  const profiles = candidateProfiles(candidate)
+  if (!profiles.length) return candidate?.ho_so_mac_dinh || candidate
+
+  const selectedId = selectedCvByCandidate[candidate.id]
+  return profiles.find((profile) => Number(profile.id) === Number(selectedId))
+    || candidate.ho_so_mac_dinh
+    || profiles[0]
+}
+
+const profileOptionLabel = (profile, index) => {
+  const title = profile?.tieu_de_ho_so || `CV ${index + 1}`
+  const source = hasBuilderCv(profile) && !profile?.file_cv_url ? 'Tạo trên hệ thống' : 'Upload file'
+  const template = profile?.ten_template_cv ? ` - ${profile.ten_template_cv}` : ''
+  return `${title} (${source}${template})`
+}
+
+const canOpenProfileCv = (profile) => Boolean(profile?.file_cv_url || hasBuilderCv(profile))
+
+const syncDefaultCvSelections = () => {
+  candidates.value.forEach((candidate) => {
+    const profile = getSelectedProfile(candidate)
+    if (candidate?.id && profile?.id && !selectedCvByCandidate[candidate.id]) {
+      selectedCvByCandidate[candidate.id] = profile.id
+    }
+  })
 }
 
 const fetchCandidates = async () => {
@@ -100,6 +132,7 @@ const fetchCandidates = async () => {
     const payload = response?.data || {}
     candidates.value = payload.data || []
     pagination.value = payload
+    syncDefaultCvSelections()
   } catch (error) {
     candidates.value = []
     pagination.value = null
@@ -156,10 +189,23 @@ const fetchProtectedFile = async (url) => {
 }
 
 const openCv = async (candidate) => {
-  const cvUrl = candidate.file_cv_url
+  const selectedProfile = getSelectedProfile(candidate)
+  const cvUrl = selectedProfile?.file_cv_url
 
-  if (!cvUrl) {
-    notify.info('Ứng viên này chưa có file CV đính kèm.')
+  if (!canOpenProfileCv(selectedProfile)) {
+    notify.info('CV đang chọn chưa có file upload hoặc dữ liệu CV tạo trên hệ thống để xem.')
+    return
+  }
+
+  if (!cvUrl && hasBuilderCv(selectedProfile)) {
+    const opened = openCvPrintPreview({
+      profile: selectedProfile,
+      owner: candidate?.nguoi_dung,
+    })
+
+    if (!opened) {
+      notify.warning('Trình duyệt đang chặn cửa sổ xem CV. Hãy cho phép popup và thử lại.')
+    }
     return
   }
 
@@ -218,7 +264,7 @@ onMounted(async () => {
         <input
           v-model="filters.search"
           class="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-800/70 dark:text-white"
-          placeholder="Tìm theo tiêu đề hồ sơ, mô tả hoặc mục tiêu nghề nghiệp..."
+          placeholder="Tìm theo tên ứng viên, email, tiêu đề CV, mô tả hoặc mục tiêu nghề nghiệp..."
           type="text"
           @keyup.enter="applyFilters"
         >
@@ -294,22 +340,22 @@ onMounted(async () => {
     </div>
 
     <div v-else-if="!candidates.length" class="rounded-xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-500 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
-      Chưa có hồ sơ công khai nào phù hợp với bộ lọc hiện tại.
+      Chưa có ứng viên công khai nào phù hợp với bộ lọc hiện tại.
     </div>
 
     <div v-else class="grid grid-cols-1 gap-4">
       <div
         v-for="candidate in candidates"
         :key="candidate.id"
-        class="flex flex-col gap-6 rounded-xl border border-slate-200 bg-white p-5 transition-shadow hover:shadow-md dark:border-slate-800 dark:bg-slate-900 lg:flex-row lg:items-center"
+        class="grid grid-cols-1 gap-5 rounded-xl border border-slate-200 bg-white p-5 transition-shadow hover:shadow-md dark:border-slate-800 dark:bg-slate-900 xl:grid-cols-[minmax(0,1fr)_240px]"
       >
-        <div class="flex flex-1 items-center gap-4">
-          <div class="relative">
+        <div class="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start">
+          <div class="relative shrink-0">
             <div class="size-16 rounded-full border-2 border-[#2463eb]/20 p-0.5">
               <div class="flex h-full w-full items-center justify-center overflow-hidden rounded-full bg-slate-200 text-slate-500 dark:bg-slate-700">
                 <img
-                  v-if="candidate.nguoi_dung?.anh_dai_dien"
-                  :src="candidate.nguoi_dung.anh_dai_dien"
+                  v-if="candidate.nguoi_dung?.avatar_url"
+                  :src="candidate.nguoi_dung.avatar_url"
                   alt="avatar"
                   class="h-full w-full object-cover"
                 >
@@ -321,51 +367,68 @@ onMounted(async () => {
             <div class="absolute -bottom-1 -right-1 size-4 rounded-full border-2 border-white bg-green-500 dark:border-slate-900" title="Công khai"></div>
           </div>
 
-          <div>
-            <h4 class="text-lg font-bold text-slate-900 dark:text-slate-100">
-              {{ candidate.nguoi_dung?.ho_ten || 'Ứng viên công khai' }}
-            </h4>
-            <p class="text-sm text-slate-500">
-              {{ candidate.tieu_de_ho_so }} • {{ degreeLabel(candidate.trinh_do) }}
-            </p>
-            <div class="mt-2 flex flex-wrap items-center gap-2">
-              <span class="rounded-full bg-[#2463eb]/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-tight text-[#2463eb]">
-                {{ formatYears(candidate.kinh_nghiem_nam) }}
+          <div class="min-w-0 flex-1">
+            <div class="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+              <div class="min-w-0">
+                <h4 class="truncate text-lg font-bold text-slate-900 dark:text-slate-100">
+                  {{ candidate.nguoi_dung?.ho_ten || 'Ứng viên công khai' }}
+                </h4>
+                <p class="mt-0.5 truncate text-sm text-slate-500">
+                  {{ getSelectedProfile(candidate)?.tieu_de_ho_so || 'Chưa có tiêu đề CV' }}
+                </p>
+              </div>
+              <span class="w-fit rounded-full bg-emerald-100 px-3 py-1 text-[10px] font-bold uppercase tracking-tight text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+                Công khai
+              </span>
+            </div>
+
+            <div class="mt-3 flex flex-wrap items-center gap-2">
+              <span class="rounded-full bg-[#2463eb]/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-tight text-[#2463eb]">
+                {{ formatYears(getSelectedProfile(candidate)?.kinh_nghiem_nam || candidate.kinh_nghiem_nam) }}
+              </span>
+              <span class="rounded-full bg-sky-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-tight text-sky-700 dark:bg-sky-900/30 dark:text-sky-300">
+                {{ degreeLabel(getSelectedProfile(candidate)?.trinh_do || candidate.trinh_do) }}
+              </span>
+              <span class="rounded-full bg-violet-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-tight text-violet-700 dark:bg-violet-900/30 dark:text-violet-300">
+                {{ candidate.so_luong_cv || candidateProfiles(candidate).length || 1 }} CV công khai
               </span>
               <span
                 v-if="candidate.nguoi_dung?.email"
-                class="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-tight text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                class="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-tight text-slate-600 dark:bg-slate-800 dark:text-slate-300"
               >
                 {{ candidate.nguoi_dung.email }}
               </span>
+              <span class="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-tight text-slate-500 dark:bg-slate-800 dark:text-slate-300">
+                {{ candidate.nguoi_dung?.so_dien_thoai || 'Chưa có SĐT' }}
+              </span>
             </div>
-            <p class="mt-3 max-w-2xl text-sm leading-7 text-slate-500 dark:text-slate-400">
-              {{ truncate(candidate.mo_ta_ban_than || candidate.muc_tieu_nghe_nghiep) }}
+
+            <p class="mt-4 text-sm leading-7 text-slate-500 dark:text-slate-400">
+              {{ truncate(getSelectedProfile(candidate)?.mo_ta_ban_than || getSelectedProfile(candidate)?.muc_tieu_nghe_nghiep) }}
             </p>
           </div>
         </div>
 
-        <div class="flex items-center gap-8 lg:px-6 lg:border-x lg:border-slate-100 dark:lg:border-slate-800">
-          <div class="flex flex-col items-center min-w-[132px]">
-            <div class="flex items-center gap-1 text-[#2463eb]">
-              <span class="material-symbols-outlined text-[20px]">school</span>
-              <span class="text-lg font-black">{{ degreeLabel(candidate.trinh_do) }}</span>
-            </div>
-            <p class="mt-1 text-[10px] font-bold uppercase tracking-widest text-slate-400">Trình độ</p>
-          </div>
-          <div class="flex flex-col min-w-[156px]">
-            <span class="rounded-full bg-emerald-100 px-2.5 py-1 text-center text-[10px] font-bold uppercase text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
-              Công khai
-            </span>
-            <p class="mt-1 text-center text-[10px] font-medium text-slate-400">
-              {{ candidate.nguoi_dung?.so_dien_thoai || 'Chưa có số điện thoại' }}
-            </p>
-          </div>
-        </div>
-
-        <div class="ml-auto flex items-center gap-3">
+        <div class="flex flex-col gap-3 border-t border-slate-100 pt-4 dark:border-slate-800 xl:border-l xl:border-t-0 xl:pl-5 xl:pt-1">
+          <select
+            v-if="candidateProfiles(candidate).length > 1"
+            v-model="selectedCvByCandidate[candidate.id]"
+            class="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-800 outline-none transition focus:border-[#2463eb] dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+          >
+            <option
+              v-for="(profile, index) in candidateProfiles(candidate)"
+              :key="profile.id"
+              :value="profile.id"
+            >
+              {{ profileOptionLabel(profile, index) }}
+            </option>
+          </select>
+          <p v-else class="truncate rounded-lg bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-500 dark:bg-slate-800 dark:text-slate-300">
+            {{ profileOptionLabel(getSelectedProfile(candidate), 0) }}
+          </p>
           <button
-            class="flex h-10 items-center justify-center gap-2 rounded-lg bg-slate-100 px-4 text-sm font-bold text-slate-700 transition-colors hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200"
+            class="flex h-10 items-center justify-center gap-2 rounded-lg bg-slate-100 px-4 text-sm font-bold text-slate-700 transition-colors hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-800 dark:text-slate-200"
+            :disabled="!canOpenProfileCv(getSelectedProfile(candidate))"
             type="button"
             @click="openCv(candidate)"
           >

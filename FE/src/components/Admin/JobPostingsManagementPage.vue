@@ -39,7 +39,8 @@ const formData = reactive({
   hinh_thuc_lam_viec: '',
   cap_bac: '',
   so_luong_tuyen: 1,
-  muc_luong: '',
+  muc_luong_tu: '',
+  muc_luong_den: '',
   kinh_nghiem_yeu_cau: '',
   ngay_het_han: '',
   mo_ta_cong_viec: '',
@@ -75,6 +76,18 @@ const scrollToListTop = async () => {
 const formatCurrency = (value) => {
   if (value === null || value === undefined || value === '') return 'Thỏa thuận'
   return `${new Intl.NumberFormat('vi-VN').format(Number(value))}\u00A0đ`
+}
+
+const formatSalary = (job) => {
+  const salaryFrom = Number(job?.muc_luong_tu || 0)
+  const salaryTo = Number(job?.muc_luong_den || 0)
+
+  if (salaryFrom && salaryTo) {
+    return `${formatCurrency(salaryFrom)} - ${formatCurrency(salaryTo)}`
+  }
+
+  if (salaryFrom) return formatCurrency(salaryFrom)
+  return 'Thỏa thuận'
 }
 
 const parseDateTime = (value) => {
@@ -195,7 +208,8 @@ const openEditModal = (job) => {
   formData.hinh_thuc_lam_viec = job.hinh_thuc_lam_viec || ''
   formData.cap_bac = job.cap_bac || ''
   formData.so_luong_tuyen = job.so_luong_tuyen || 1
-  formData.muc_luong = job.muc_luong ?? ''
+  formData.muc_luong_tu = job.muc_luong_tu ?? ''
+  formData.muc_luong_den = job.muc_luong_den ?? ''
   formData.kinh_nghiem_yeu_cau = job.kinh_nghiem_yeu_cau || ''
   formData.ngay_het_han = formatDateTimeInput(job.ngay_het_han)
   formData.mo_ta_cong_viec = job.mo_ta_cong_viec || ''
@@ -212,11 +226,26 @@ const closeEditModal = () => {
 const submitEdit = async () => {
   if (!editingJob.value) return
 
+  const salaryFrom = formData.muc_luong_tu === '' ? null : Number(formData.muc_luong_tu)
+  const salaryTo = formData.muc_luong_den === '' ? null : Number(formData.muc_luong_den)
+
+  if (salaryFrom === null && salaryTo !== null) {
+    notify.warning('Vui lòng nhập ô lương đầu tiên trước khi nhập lương cao nhất.')
+    return
+  }
+
+  if (salaryFrom !== null && salaryTo !== null && salaryFrom > salaryTo) {
+    notify.warning('Lương thấp nhất phải nhỏ hơn hoặc bằng lương cao nhất.')
+    return
+  }
+
   saving.value = true
   try {
     await adminJobPostingService.updateJob(editingJob.value.id, {
       ...formData,
-      muc_luong: formData.muc_luong === '' ? null : Number(formData.muc_luong),
+      muc_luong_tu: salaryFrom,
+      muc_luong_den: salaryTo,
+      don_vi_luong: 'VND/tháng',
       so_luong_tuyen: Number(formData.so_luong_tuyen) || 1,
       ngay_het_han: formData.ngay_het_han || null,
       kinh_nghiem_yeu_cau: formData.kinh_nghiem_yeu_cau || null,
@@ -470,7 +499,7 @@ onBeforeUnmount(() => {
               </div>
             </td>
             <td class="whitespace-nowrap px-4 py-5 text-center text-sm font-semibold">
-              {{ formatCurrency(job.muc_luong) }}
+              {{ formatSalary(job) }}
             </td>
             <td class="px-4 py-5 text-center text-sm text-slate-600 dark:text-slate-400">
               {{ formatDate(job.ngay_het_han) }}
@@ -580,8 +609,12 @@ onBeforeUnmount(() => {
         <input v-model="formData.so_luong_tuyen" type="number" min="1" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20" />
       </div>
       <div class="space-y-2">
-        <label class="block text-sm font-semibold text-slate-700">Mức lương</label>
-        <input v-model="formData.muc_luong" type="number" min="0" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20" />
+        <label class="block text-sm font-semibold text-slate-700">Lương từ</label>
+        <input v-model="formData.muc_luong_tu" type="number" min="0" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20" />
+      </div>
+      <div class="space-y-2">
+        <label class="block text-sm font-semibold text-slate-700">Lương đến</label>
+        <input v-model="formData.muc_luong_den" type="number" min="0" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20" />
       </div>
       <div class="space-y-2">
         <label class="block text-sm font-semibold text-slate-700">Kinh nghiệm yêu cầu</label>

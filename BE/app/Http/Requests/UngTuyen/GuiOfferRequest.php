@@ -16,6 +16,7 @@ class GuiOfferRequest extends FormRequest
         return [
             'ghi_chu_offer' => ['nullable', 'string', 'max:5000'],
             'link_offer' => ['nullable', 'url', 'max:2048'],
+            'han_phan_hoi_offer' => ['nullable', 'date'],
         ];
     }
 
@@ -23,6 +24,7 @@ class GuiOfferRequest extends FormRequest
     {
         return [
             'link_offer.url' => 'Liên kết offer không hợp lệ.',
+            'han_phan_hoi_offer.date' => 'Hạn phản hồi offer không hợp lệ.',
         ];
     }
 }

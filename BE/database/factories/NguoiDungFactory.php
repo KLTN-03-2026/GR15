@@ -47,6 +47,8 @@ class NguoiDungFactory extends Factory
     {
         return $this->state(fn(array $attributes) => [
             'vai_tro' => NguoiDung::VAI_TRO_ADMIN,
+            'cap_admin' => NguoiDung::CAP_ADMIN_ADMIN,
+            'quyen_admin' => NguoiDung::allAdminPermissions(),
         ]);
     }
 

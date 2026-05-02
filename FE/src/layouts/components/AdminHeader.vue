@@ -33,6 +33,7 @@ const syncCurrentUser = () => {
 }
 
 const displayName = computed(() => currentUser.value?.ho_ten || currentUser.value?.email || 'Quản trị viên')
+const adminScopeLabel = computed(() => currentUser.value?.cap_admin === 'super_admin' ? 'Super Admin' : 'Admin')
 const avatarLetter = computed(() => displayName.value.trim().charAt(0).toUpperCase() || 'A')
 const avatarCandidates = computed(() =>
   buildStorageAssetCandidates(
@@ -59,6 +60,11 @@ const submitSearch = () => {
     return
   }
 
+  if ((keyword.includes('admin') || keyword.includes('quan tri vien')) && currentUser.value?.cap_admin === 'super_admin') {
+    router.push('/admin/admins')
+    return
+  }
+
   if (keyword.includes('cong ty') || keyword.includes('company')) {
     router.push('/admin/companies')
     return
@@ -66,6 +72,11 @@ const submitSearch = () => {
 
   if (keyword.includes('job') || keyword.includes('tin')) {
     router.push('/admin/jobs')
+    return
+  }
+
+  if (keyword.includes('billing') || keyword.includes('payment') || keyword.includes('doanh thu') || keyword.includes('thanh toan')) {
+    router.push('/admin/billing')
     return
   }
 
@@ -194,7 +205,7 @@ watch(
           </div>
           <div class="hidden min-w-0 sm:block">
             <p class="truncate text-sm font-semibold text-slate-900 dark:text-white">{{ displayName }}</p>
-            <p class="truncate text-xs uppercase tracking-[0.18em] text-slate-400">Quản trị hệ thống</p>
+            <p class="truncate text-xs uppercase tracking-[0.18em] text-slate-400">{{ adminScopeLabel }}</p>
           </div>
           <span class="material-symbols-outlined text-slate-400 text-[18px]">expand_more</span>
         </button>

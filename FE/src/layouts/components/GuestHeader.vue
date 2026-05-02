@@ -26,7 +26,12 @@ const currentUser = computed(() => {
   authVersion.value
   return getStoredUser()
 })
-const currentRole = computed(() => currentUser.value?.vai_tro)
+const currentRole = computed(() => {
+  const role = currentUser.value?.vai_tro
+  if (role === undefined || role === null) return null
+  const normalizedRole = Number(role)
+  return Number.isNaN(normalizedRole) ? null : normalizedRole
+})
 const isAuthenticatedUser = computed(() => hasAuthToken.value && currentRole.value !== undefined && currentRole.value !== null)
 const displayName = computed(() => currentUser.value?.ho_ten || currentUser.value?.email || 'Tài khoản')
 const avatarLetter = computed(() => displayName.value.trim().charAt(0).toUpperCase() || 'U')
@@ -41,9 +46,9 @@ const dashboardLink = computed(() => {
   return '/dashboard'
 })
 const dashboardText = computed(() => {
-  if (currentRole.value === 1) return 'Vào khu vực tuyển dụng'
+  if (currentRole.value === 1) return 'Vào dashboard tuyển dụng'
   if (currentRole.value === 2) return 'Vào trang quản trị'
-  return 'Vào dashboard'
+  return 'Về trang chủ ứng viên'
 })
 
 watch(

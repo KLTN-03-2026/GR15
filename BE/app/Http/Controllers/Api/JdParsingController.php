@@ -23,7 +23,8 @@ class JdParsingController extends Controller
 
     public function parse(int $id): JsonResponse
     {
-        $congTyId = $this->getCurrentEmployerCompany()?->id;
+        $congTy = $this->getCurrentEmployerCompany();
+        $congTyId = $congTy?->id;
 
         if (!$congTyId) {
             return response()->json([
@@ -33,6 +34,7 @@ class JdParsingController extends Controller
         }
 
         $tin = TinTuyenDung::where('cong_ty_id', $congTyId)->findOrFail($id);
+        $this->abortIfCannotManageJobRecord($this->getAuthenticatedEmployer(), $congTy, $tin);
 
         try {
             $result = $this->aiClientService->parseJd($tin->id, (string) $tin->mo_ta_cong_viec);

@@ -18,13 +18,11 @@ export const extractApiFieldErrors = (error) => {
 
 export const extractApiErrorMessage = (error, fallback = 'Đã xảy ra lỗi, vui lòng thử lại.') => {
   const fieldErrors = extractApiFieldErrors(error)
-  const firstFieldMessage = Object.values(fieldErrors).flat().find(Boolean)
+  const fieldMessages = Object.values(fieldErrors).flat().filter(Boolean)
 
-  return (
-    firstFieldMessage ||
-    error?.message ||
-    error?.data?.message ||
-    error?.response?.data?.message ||
-    fallback
-  )
+  if (fieldMessages.length) {
+    return fieldMessages.slice(0, 4).join('\n')
+  }
+
+  return error?.message || error?.data?.message || error?.response?.data?.message || fallback
 }
