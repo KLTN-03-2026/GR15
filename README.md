@@ -2,129 +2,68 @@
 
 > _"AI Recruitment Platform for Candidates, Employers and Admin"_
 
-SmartJob AI là hệ thống tuyển dụng toàn diện được xây dựng theo mô hình tách biệt `FE + BE + AI`, hỗ trợ ứng viên tìm việc, nhà tuyển dụng quản lý quy trình tuyển dụng, và quản trị viên theo dõi vận hành hệ thống. Dự án tập trung vào việc kết hợp nghiệp vụ tuyển dụng truyền thống với các tính năng AI như phân tích CV, phân tích mô tả công việc, job matching, sinh thư xin việc, chatbot tư vấn nghề nghiệp và mock interview.
+SmartJob AI là hệ thống tuyển dụng đa vai trò được tổ chức theo mô hình tách biệt `FE + BE + AI`. Dự án phục vụ 3 nhóm người dùng chính:
+
+- Ứng viên tìm việc, quản lý hồ sơ và dùng các tính năng AI.
+- Nhà tuyển dụng quản lý công ty, bài đăng, ứng viên và phỏng vấn.
+- Quản trị viên theo dõi vận hành, phân quyền, AI usage, billing và thống kê hệ thống.
+
+Hệ thống kết hợp nghiệp vụ tuyển dụng truyền thống với các tính năng AI như parse CV, parse JD, matching, sinh thư xin việc, hỗ trợ viết nội dung CV, chatbot tư vấn nghề nghiệp, mock interview và interview copilot.
 
 ---
 
-## Giới thiệu & ý tưởng tổng thể
+## Tổng quan
 
-Trong quy trình tuyển dụng hiện đại, cả ứng viên lẫn nhà tuyển dụng đều gặp nhiều vấn đề:
+SmartJob AI được xây dựng để giải quyết các bài toán phổ biến trong tuyển dụng:
 
-- Ứng viên khó đánh giá mức độ phù hợp giữa hồ sơ và tin tuyển dụng.
-- CV và JD thường được xử lý thủ công, tốn thời gian và dễ bỏ sót thông tin.
-- Doanh nghiệp cần một dashboard để quản lý bài đăng, ứng viên và lịch phỏng vấn.
-- Hệ thống tuyển dụng thông thường thiếu lớp AI hỗ trợ tư vấn, matching và phân tích.
+- CV và JD thường không đồng nhất, khó đối chiếu thủ công.
+- Ứng viên khó tự đánh giá mức độ phù hợp với công việc.
+- Nhà tuyển dụng cần một dashboard thống nhất để quản lý job, ứng viên, lịch phỏng vấn và nội bộ công ty.
+- Hệ thống tuyển dụng truyền thống thiếu lớp AI để phân tích, tư vấn và hỗ trợ ra quyết định.
 
-SmartJob AI được xây dựng để giải bài toán đó bằng một nền tảng web có khả năng vận hành theo nhiều vai trò và mở rộng AI service riêng để xử lý các bài toán thông minh.
-
----
-
-## Mục tiêu dự án
-
-- Số hóa quy trình tuyển dụng cho ứng viên, nhà tuyển dụng và admin.
-- Nâng cao chất lượng matching giữa CV và tin tuyển dụng bằng AI.
-- Hỗ trợ ứng viên cải thiện hồ sơ, định hướng nghề nghiệp và luyện phỏng vấn.
-- Giúp nhà tuyển dụng quản lý công ty, bài đăng, ứng viên và trạng thái tuyển dụng trên cùng một hệ thống.
-- Xây dựng kiến trúc để tách lớp giao diện, API nghiệp vụ và AI service để dễ bảo trì và mở rộng.
-
----
-
-## Thách thức mà dự án hướng tới
-
-- Dữ liệu CV và JD không đồng nhất, khó đối chiếu thủ công.
-- Ứng viên cần gợi ý việc làm và định hướng nghề nghiệp cá nhân hóa.
-- Nhà tuyển dụng cần theo dõi ứng viên, email phỏng vấn và trạng thái xử lý theo quy trình.
-- Hệ thống cần phân quyền rõ ràng cho 3 nhóm vai trò: ứng viên, nhà tuyển dụng, admin.
-
----
-
-## Giải pháp SmartJob AI
-
-- Frontend `Vue 3 + Vite` cho các giao diện guest, candidate dashboard, employer dashboard và admin dashboard.
-- Backend `Laravel 12 + Sanctum + Socialite` xử lý auth, phân quyền, CRUD nghiệp vụ và API REST.
-- AI service `FastAPI` phục vụ parse CV, parse JD, semantic search, matching, cover letter, career report, career chatbot và mock interview.
-- Luồng dữ liệu tách thành 3 khối `FE`, `BE`, `AI` để dễ phát triển song song và thay thế mô đun.
-
----
-
-## Đối tượng hướng đến
-
-### 1. Ứng viên
-
-**Mục tiêu:** Tìm việc, quản lý hồ sơ và nhận gợi ý cá nhân hóa.
-
-**Lợi ích:**
-
-- Đăng ký, đăng nhập, quản lý thông tin cá nhân và hồ sơ CV.
-- Parse CV bằng AI để trích xuất kỹ năng và thông tin chuyên môn.
-- Xem việc phù hợp, matching score và báo cáo định hướng nghề nghiệp.
-- Tạo thư xin việc và trò chuyện với AI career consultant.
-- Luyện mock interview và xem báo cáo đánh giá.
-
----
-
-### 2. Nhà tuyển dụng
-
-**Mục tiêu:** Quản lý công ty, bài đăng và quá trình tuyển dụng.
-
-**Lợi ích:**
-
-- Quản lý thông tin công ty và logo doanh nghiệp.
-- Tạo, cập nhật, ẩn/hiện tin tuyển dụng.
-- Parse JD để chuẩn hóa dữ liệu bài đăng.
-- Theo dõi danh sách ứng viên và cập nhật trạng thái ứng tuyển.
-- Gửi lại email phỏng vấn và quản lý luồng phỏng vấn.
-
----
-
-### 3. Quản trị viên
-
-**Mục tiêu:** Điều phối và giám sát toàn bộ hệ thống.
-
-**Lợi ích:**
-
-- Quản lý người dùng, công ty, hồ sơ, kỹ năng, ngành nghề, tin tuyển dụng.
-- Xem thống kê ứng tuyển, matching, lưu tin và tư vấn nghề nghiệp.
-- Theo dõi dashboard thị trường và tình hình vận hành tổng quan.
-- Kiểm soát phân quyền và khóa/mở khóa tài khoản.
+Kiến trúc tách riêng frontend, backend và AI service giúp nhóm phát triển song song, giảm coupling và dễ thay thế từng mô-đun khi mở rộng.
 
 ---
 
 ## Chức năng chính
 
 - Xác thực tài khoản bằng email, Bearer Token và đăng nhập Google.
-- Quản lý hồ sơ ứng viên, kỹ năng cá nhân và CV upload.
-- Quản lý công ty, tin tuyển dụng và danh sách ứng viên.
-- Quản lý ứng tuyển, trạng thái phỏng vấn, xác nhận tham gia và rút đơn.
-- Semantic search tin tuyển dụng.
-- AI CV parsing, JD parsing, job matching.
-- AI career report, cover letter generation, chatbot career consultant.
-- AI mock interview theo phiên và báo cáo sau phỏng vấn.
-- Admin dashboard và các trang quản trị nghiệp vụ.
+- Quản lý hồ sơ ứng viên, kỹ năng cá nhân, CV upload và CV builder.
+- Quản lý công ty, tin tuyển dụng, ứng viên và các vòng phỏng vấn.
+- Quản lý ví, thanh toán, gói dịch vụ và entitlement theo tính năng.
+- Gợi ý việc làm phù hợp từ dữ liệu matching.
+- AI CV parsing, JD parsing và job matching với semantic skill scoring nội bộ.
+- AI cover letter, career report, CV builder writing assistant và career chatbot có stream response.
+- AI mock interview và interview copilot cho phía tuyển dụng.
+- Dashboard và màn quản trị cho users, admins, companies, profiles, skills, industries, jobs, applications, AI usage, billing, CV templates, audit logs và stats.
 
 ---
 
-## Tính năng nổi bật
+## Đối tượng sử dụng
 
-### AI phân tích hồ sơ và bài đăng
+### 1. Ứng viên
 
-- Parse CV từ file hồ sơ ứng viên.
-- Parse JD để trích xuất yêu cầu công việc.
-- Match CV và JD để tính mức độ phù hợp.
+- Đăng ký, đăng nhập, quản lý thông tin cá nhân và hồ sơ.
+- Tải CV, parse CV và quản lý kỹ năng.
+- Xem công việc phù hợp, kết quả matching và career report.
+- Tạo thư xin việc, trò chuyện với AI và luyện mock interview.
+- Quản lý ví, lịch sử thanh toán và gói dịch vụ.
 
-### AI hỗ trợ ứng viên
+### 2. Nhà tuyển dụng
 
-- Tạo thư xin việc dựa trên hồ sơ và tin tuyển dụng.
-- Sinh career report dựa trên profile và kết quả matching.
-- Chatbot tư vấn nghề nghiệp có hỗ trợ stream response.
-- Mock interview gồm sinh câu hỏi, đánh giá câu trả lời và tổng hợp báo cáo.
+- Quản lý thông tin công ty và phân quyền nội bộ.
+- Tạo, cập nhật, ẩn hoặc xuất bản tin tuyển dụng.
+- Parse JD để chuẩn hóa yêu cầu công việc.
+- Theo dõi ứng viên, shortlist, lịch phỏng vấn và offer.
+- Dùng interview copilot để hỗ trợ quy trình phỏng vấn.
+- Quản lý billing, audit log và thông báo nội bộ.
 
-### Hệ thống quản lý đa vai trò
+### 3. Quản trị viên
 
-- Guest pages cho đăng ký, đăng nhập, tìm việc, xem công ty, ngành nghề, kỹ năng.
-- Candidate dashboard cho profile, CV, skills, applications, matched jobs, AI center.
-- Employer dashboard cho công ty, jobs, candidates, interviews.
-- Admin dashboard cho users, companies, profiles, skills, industries, jobs, stats.
+- Quản lý người dùng, quản trị viên, công ty, hồ sơ, kỹ năng, ngành nghề và tin tuyển dụng.
+- Theo dõi AI usage, billing, CV templates và audit logs.
+- Xem thống kê tổng hợp về lưu tin, ứng tuyển, matching và tư vấn nghề nghiệp.
+- Kiểm soát phân quyền admin và trạng thái tài khoản toàn hệ thống.
 
 ---
 
@@ -132,24 +71,33 @@ SmartJob AI được xây dựng để giải bài toán đó bằng một nền
 
 Hệ thống được tổ chức thành 3 khối chính:
 
-| Thành phần | Vai trò                                                                      |
----------------------------------------------------------------------------------------------
-| `FE/`      | Giao diện người dùng viết bằng `Vue 3`, `Vue Router`, `Vite`, `Tailwind CSS` |
-| `BE/`      | API nghiệp vụ viết bằng `Laravel 12`, `Sanctum`, `Socialite`, `Pest`         |
-| `AI/`      | Dịch vụ AI viết bằng `FastAPI`, `Pydantic`, `sentence-transformers`, `FAISS` |
+| Thành phần | Vai trò                                                                                                  |
+| -----------| -------------------------------------------------------------------------------------------------------- |
+| `FE/`      | Giao diện người dùng viết bằng `Vue 3`, `Vue Router`, `Vite`, `Tailwind CSS`, `Laravel Echo`             |
+| `BE/`      | API nghiệp vụ viết bằng `Laravel 12`, `Sanctum`, `Socialite`, `Reverb`, `Pest`                           |
+| `AI/`      | Dịch vụ AI viết bằng `FastAPI`, `Pydantic`, `pdfplumber`, provider-based integration với `Ollama/OpenAI` |
+
+Luồng dữ liệu chính:
+
+1. Người dùng thao tác trên `FE`.
+2. `FE` gọi API REST tại `BE` thông qua `VITE_API_BASE_URL`.
+3. `BE` xử lý auth, phân quyền, CRUD nghiệp vụ, billing, notification và realtime.
+4. Khi cần AI, `BE` gọi sang `AI service`.
+5. `AI service` trả về JSON hoặc stream response cho các tác vụ parse, matching, generation, chat và interview.
+6. `BE` lưu kết quả vào database và trả response lại cho `FE`.
 
 ---
 
 ## Công nghệ sử dụng
 
-| Thành phần     | Công nghệ                                                                |
----------------------------------------------------------------------------------------------
-| Frontend       | Vue 3, Vite, Vue Router, Tailwind CSS 4, vue-toastification              |
-| Backend        | Laravel 12, PHP 8.2, Laravel Sanctum, Laravel Socialite, L5 Swagger      |
-| AI Service     | FastAPI, Uvicorn, Pydantic, pdfplumber, sentence-transformers, faiss-cpu |
-| Database       | MySQL / cấu hình qua Laravel                                             |
-| Authentication | Bearer Token, Google OAuth, role-based middleware                        |
-| Testing        | Pest, PHPUnit, Python regression tests                                   |
+| Thành phần     | Công nghệ                                                                             |
+| ---------------| ------------------------------------------------------------------------------------- |
+| Frontend       | Vue 3, Vite, Vue Router, Tailwind CSS 4, vue-toastification, laravel-echo, pusher-js  |
+| Backend        | Laravel 12, PHP 8.2, Laravel Sanctum, Laravel Socialite, Laravel Reverb, L5 Swagger   |
+| AI Service     | FastAPI, Uvicorn, Pydantic, pdfplumber, python-dotenv, pytest                         |
+| Database       | MySQL qua cấu hình Laravel                                                            |
+| Authentication | Bearer Token, Google OAuth, role-based middleware                                     |
+| Testing        | Pest, PHPUnit, Python regression tests, FE smoke test script                          |
 
 ---
 
@@ -157,38 +105,47 @@ Hệ thống được tổ chức thành 3 khối chính:
 
 ```text
 KLTN/
-├── AI/                    # AI service FastAPI
-├── BE/                    # Backend Laravel API
-├── FE/                    # Frontend Vue 3
-└── README.md              # Tổng quan dự án
+├── AI/          # AI service FastAPI
+├── BE/          # Backend Laravel API
+├── Documents/   # Tài liệu phân tích, backlog, test plan, UI design
+├── FE/          # Frontend Vue 3
+└── README.md    # Tổng quan dự án
 ```
-
----
-
-## Luồng dữ liệu chính
-
-1. Người dùng thao tác trên `FE`.
-2. `FE` gọi API REST tại `BE` thông qua `VITE_API_BASE_URL`.
-3. `BE` xử lý auth, phân quyền, CRUD và các quy trình nghiệp vụ.
-4. Khi cần xử lý AI, `BE` gọi sang `AI service`.
-5. `AI service` trả về JSON cho parse, matching, generation, chat hoặc interview.
-6. `BE` lưu kết quả vào database và trả response lại cho `FE`.
 
 ---
 
 ## Các module AI hiện có
 
+Các endpoint AI đang được mount trực tiếp trong `AI/app/main.py`:
+
+- `GET /health`
 - `POST /parse/cv`
 - `POST /parse/jd`
 - `POST /match/cv-jd`
 - `POST /generate/cover-letter`
 - `POST /generate/career-report`
-- `POST /search/semantic/jobs`
+- `POST /generate/cv-builder-writing`
 - `POST /chat/career-consultant`
 - `POST /chat/career-consultant/stream`
 - `POST /interview/mock/question`
 - `POST /interview/mock/evaluate`
 - `POST /interview/mock/report`
+- `POST /interview/copilot/generate`
+- `POST /interview/copilot/evaluate`
+
+Lưu ý:
+
+- Matching hiện có thành phần semantic skill scoring trong logic chấm điểm.
+- Repo hiện không có module `semantic search` độc lập hoặc endpoint `POST /search/semantic/jobs`.
+
+---
+
+## Các khu vực giao diện chính
+
+- Guest pages: landing, login, register, quên mật khẩu, tìm việc, xem công ty, ngành nghề, kỹ năng.
+- Candidate dashboard: profile, CV, CV builder, skills, applications, saved jobs, followed companies, matched jobs, career report, AI center, wallet, plans, payments.
+- Employer dashboard: company, jobs, candidates, interviews, HR management, billing, audit logs, profile.
+- Admin dashboard: users, admins, companies, profiles, user skills, industries, skills, jobs, applications, matchings, career advising, CV templates, AI usage, billing, audit logs, stats.
 
 ---
 
@@ -198,13 +155,12 @@ KLTN/
 
 - `PHP 8.2+`
 - `Composer`
-- `Node.js 20+`
+- `Node.js 20.19+` hoặc `>= 22.12.0`
 - `npm`
 - `Python 3.11+`
 - `MySQL`
 - `Git`
-
----
+- `Ollama` hoặc `OpenAI API key` nếu muốn chạy đầy đủ các tính năng AI
 
 ### 1. Clone repository
 
@@ -213,19 +169,33 @@ git clone https://github.com/KLTN-03-2026/GR15.git
 cd GR15
 ```
 
-Nếu bạn đang làm việc với thư mục local khác, hãy thay đường dẫn tương ứng.
-
----
+Nếu bạn đang làm việc trong thư mục local khác, hãy thay đường dẫn tương ứng.
 
 ### 2. Cài đặt Backend Laravel
 
 ```bash
 cd BE
 composer install
-copy .env.example .env
+npm install
+```
+
+Repo hiện không kèm `BE/.env.example`, vì vậy cần tự tạo `BE/.env` từ cấu hình nội bộ của nhóm hoặc từ môi trường đã có sẵn. Các nhóm biến quan trọng thường bao gồm:
+
+- `APP_*`
+- `DB_*`
+- `FRONTEND_URL`
+- `AI_SERVICE_URL`, `AI_SERVICE_TIMEOUT`
+- `GOOGLE_*`
+- `MAIL_*`
+- `REVERB_*`
+- `MOMO_*`
+- `VNPAY_*`
+
+Sau khi có `BE/.env`, chạy:
+
+```bash
 php artisan key:generate
 php artisan migrate
-npm install
 ```
 
 Chạy backend local:
@@ -240,13 +210,11 @@ Hoặc chạy chế độ phát triển tổng hợp của Laravel:
 composer run dev
 ```
 
-Mặc định backend sẽ phục vụ tại:
+Mặc định backend phục vụ tại:
 
 ```text
 http://127.0.0.1:8000
 ```
-
----
 
 ### 3. Cài đặt Frontend Vue
 
@@ -255,11 +223,20 @@ cd FE
 npm install
 ```
 
-Tạo file `.env` trong `FE/` nếu cần:
+Tạo `FE/.env` nếu chưa có:
 
 ```env
 VITE_API_BASE_URL=http://127.0.0.1:8000/api/v1
+VITE_REVERB_APP_KEY=
+VITE_REVERB_HOST=127.0.0.1
+VITE_REVERB_PORT=8080
+VITE_REVERB_SCHEME=http
 ```
+
+Trong đó:
+
+- `VITE_API_BASE_URL` là bắt buộc.
+- Nhóm `VITE_REVERB_*` là cần thiết nếu muốn bật realtime notifications qua Reverb.
 
 Chạy frontend:
 
@@ -267,13 +244,11 @@ Chạy frontend:
 npm run dev
 ```
 
-Mặc định frontend sẽ chạy tại:
+Mặc định frontend chạy tại:
 
 ```text
 http://127.0.0.1:5173
 ```
-
----
 
 ### 4. Cài đặt AI Service
 
@@ -282,11 +257,32 @@ cd AI
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
-copy .env.example .env
+```
+
+Repo hiện không kèm `AI/.env.example`, vì vậy cần tự tạo `AI/.env`. Một cấu hình tối thiểu có thể bắt đầu như sau:
+
+```env
+AI_SERVICE_NAME=KLTN AI Service
+AI_DEBUG=false
+LOCAL_LLM_MODEL=qwen2.5:3b
+OLLAMA_URL=http://127.0.0.1:11434/api/generate
+OLLAMA_MODEL=qwen2.5:3b
+OPENAI_API_KEY=
+OPENAI_BASE_URL=https://api.openai.com/v1/responses
+OPENAI_MODEL=gpt-4.1-mini
+CHATBOT_PROVIDER=ollama
+COVER_LETTER_PROVIDER=ollama
+CAREER_REPORT_PROVIDER=ollama
+MOCK_INTERVIEW_PROVIDER=ollama
+```
+
+Chạy AI service:
+
+```bash
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8001
 ```
 
-AI service sẽ chạy tại:
+AI service mặc định chạy tại:
 
 ```text
 http://127.0.0.1:8001
@@ -294,37 +290,70 @@ http://127.0.0.1:8001
 
 ---
 
-## Môi trường phát triển đề xuất
-
-### Backend
-
-- Cập nhật file `BE/.env` cho database, mail, Sanctum và biến liên quan AI.
-- Kiểm tra route API tại `BE/routes/api.php`.
+## Vị trí mã nguồn quan trọng
 
 ### Frontend
 
-- API client nằm trong `FE/src/services/api.js`.
-- Router nằm trong `FE/src/router/index.js`.
+- API client: `FE/src/services/api.js`
+- Realtime client: `FE/src/services/realtime.js`
+- Router: `FE/src/router/index.js`
+- Layout và shell UI: `FE/src/layouts/`
+
+### Backend
+
+- API routes: `BE/routes/api.php`
+- Controllers: `BE/app/Http/Controllers/Api/`
+- Form requests: `BE/app/Http/Requests/`
+- Models: `BE/app/Models/`
+- AI bridge: `BE/app/Services/Ai/AiClientService.php`
 
 ### AI
 
-- App entry nằm trong `AI/app/main.py`.
-- Các router AI nằm trong `AI/app/routers/`.
-- Các service xử lý nghiệp vụ AI nằm trong `AI/app/services/`.
+- App entry: `AI/app/main.py`
+- Routers: `AI/app/routers/`
+- Schemas: `AI/app/schemas/`
+- Services: `AI/app/services/`
+- Runtime config: `AI/app/core/config.py`
 
 ---
 
-## Hướng phát triển tương lai
+## Kiểm thử
 
-- Cải thiện độ chính xác của matching và semantic search.
-- Bổ sung dashboard phân tích sâu hơn cho employer và admin.
-- Mở rộng bộ câu hỏi và rubric cho mock interview.
-- Tích hợp thêm model AI provider linh hoạt hơn cho chat và generation.
-- Tăng cường test tự động cho cả `FE`, `BE` và `AI`.
+### Backend
+
+```bash
+cd BE
+php artisan test
+```
+
+### Frontend
+
+```bash
+cd FE
+npm run build
+npm run test:smoke
+```
+
+### AI
+
+```bash
+cd AI
+pytest
+```
 
 ---
 
-## Báo lỗi
+## Hướng phát triển tiếp theo
+
+- Cải thiện chất lượng matching và semantic scoring.
+- Mở rộng bộ prompt, rubric và báo cáo cho mock interview.
+- Tăng độ linh hoạt khi chuyển provider giữa `Ollama` và `OpenAI`.
+- Tăng cường test tự động cho `FE`, `BE` và `AI`.
+- Hoàn thiện thêm tài liệu riêng cho từng module `FE/`, `BE/`, `AI/`.
+
+---
+
+## Báo lỗi và đóng góp
 
 Nếu bạn phát hiện lỗi, hãy tạo issue kèm theo:
 
@@ -337,17 +366,13 @@ Repository:
 
 - https://github.com/KLTN-03-2026/GR15
 
----
+Nguyên tắc đóng góp:
 
-## Đóng góp
-
-- Fork repository và tạo branch mới cho tính năng hoặc bugfix.
 - Giữ code style nhất quán với từng module.
 - Với backend, ưu tiên viết test bằng `Pest` khi thay đổi nghiệp vụ quan trọng.
-- Với AI service, có thể bổ sung regression test Python cho chatbot và mock interview.
+- Với AI service, nên bổ sung regression test cho chatbot, career report và interview flows khi thay đổi prompt hoặc provider.
 
 ---
-
 
 ## Liên hệ dự án
 
@@ -355,4 +380,3 @@ Dự án hiện được quản lý qua repository:
 
 - https://github.com/KLTN-03-2026/GR15
 
----
