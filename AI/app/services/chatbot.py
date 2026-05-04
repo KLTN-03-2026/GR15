@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from typing import Iterator
 
 from app.core.config import settings
@@ -51,6 +52,9 @@ def generate_career_chat_reply(
             "error": None,
         }
 
+    provider_name, provider = _resolve_provider()
+    prefers_model = provider_name in {"ollama", "openai"}
+
     if intent in DETERMINISTIC_INTENTS and not (force_model and intent in MODEL_PREFERRED_INTENTS):
         answer = _normalize_answer(build_template_answer(message, context, history, intent))
         return {
@@ -65,7 +69,7 @@ def generate_career_chat_reply(
             "error": None,
         }
 
-    if not force_model and should_use_fast_path(message, intent=intent):
+    if not prefers_model and not force_model and should_use_fast_path(message, intent=intent):
         answer = _normalize_answer(build_template_answer(message, context, history, intent))
         return {
             "success": True,
@@ -79,8 +83,13 @@ def generate_career_chat_reply(
             "error": None,
         }
 
-    provider_name, provider = _resolve_provider()
-    answer = _normalize_answer(provider.generate(message, context, history))
+    try:
+        answer = _normalize_answer(provider.generate(message, context, history))
+    except Exception as exc:
+        logger.warning("Chat provider failed, fallback to template. provider=%s error=%s", provider_name, exc)
+        answer = _normalize_answer(build_template_answer(message, context, history, intent))
+        provider_name = "template_fallback"
+
     if _looks_like_provider_guardrail(answer):
         answer = _normalize_answer(build_template_answer(message, context, history, intent))
         provider_name = "template_fallback"
@@ -122,8 +131,7 @@ def stream_career_chat_reply(
                 "intent": intent,
             },
         )
-        for chunk in _chunk_text(OUT_OF_SCOPE_MESSAGE):
-            yield _sse_event("chunk", {"content": chunk})
+        yield from _emit_chunked_sse(OUT_OF_SCOPE_MESSAGE)
         yield _sse_event(
             "done",
             {
@@ -135,6 +143,9 @@ def stream_career_chat_reply(
             },
         )
         return
+
+    provider_name, provider = _resolve_provider()
+    prefers_model = provider_name in {"ollama", "openai"}
 
     if intent in DETERMINISTIC_INTENTS and not (force_model and intent in MODEL_PREFERRED_INTENTS):
         answer = _normalize_answer(build_template_answer(message, context, history, intent))
@@ -148,8 +159,7 @@ def stream_career_chat_reply(
                 "intent": intent,
             },
         )
-        for chunk in _chunk_text(answer):
-            yield _sse_event("chunk", {"content": chunk})
+        yield from _emit_chunked_sse(answer)
         yield _sse_event(
             "done",
             {
@@ -162,7 +172,7 @@ def stream_career_chat_reply(
         )
         return
 
-    if not force_model and should_use_fast_path(message, intent=intent):
+    if not prefers_model and not force_model and should_use_fast_path(message, intent=intent):
         answer = _normalize_answer(build_template_answer(message, context, history, intent))
         yield _sse_event(
             "meta",
@@ -174,8 +184,7 @@ def stream_career_chat_reply(
                 "intent": intent,
             },
         )
-        for chunk in _chunk_text(answer):
-            yield _sse_event("chunk", {"content": chunk})
+        yield from _emit_chunked_sse(answer)
         yield _sse_event(
             "done",
             {
@@ -188,7 +197,6 @@ def stream_career_chat_reply(
         )
         return
 
-    provider_name, provider = _resolve_provider()
     model_version = f"{MODEL_VERSION}::{provider_name}"
 
     yield _sse_event(
@@ -214,6 +222,7 @@ def stream_career_chat_reply(
             for chunk in _chunk_text(answer):
                 chunks.append(chunk)
                 yield _sse_event("chunk", {"content": chunk})
+                time.sleep(0.035)
     except Exception as exc:
         logger.warning("Chat stream provider failed, fallback to generate. provider=%s error=%s", provider_name, exc)
         try:
@@ -221,6 +230,7 @@ def stream_career_chat_reply(
             for chunk in _chunk_text(answer):
                 chunks.append(chunk)
                 yield _sse_event("chunk", {"content": chunk})
+                time.sleep(0.035)
         except Exception as fallback_exc:
             yield _sse_event(
                 "error",
@@ -291,6 +301,12 @@ def _chunk_text(text: str, chunk_size: int = 60) -> list[str]:
     return chunks
 
 
+def _emit_chunked_sse(text: str, delay_seconds: float = 0.04) -> Iterator[str]:
+    for chunk in _chunk_text(text):
+        yield _sse_event("chunk", {"content": chunk})
+        time.sleep(delay_seconds)
+
+
 def _normalize_answer(text: str) -> str:
     cleaned = (
         text.replace("**", "")
@@ -314,6 +330,7 @@ def _normalize_answer(text: str) -> str:
         previous_blank = False
 
     cleaned = "\n".join(normalized_lines).strip()
+    cleaned = _normalize_vietnamese_terms(cleaned)
     cleaned = _trim_incomplete_tail(cleaned)
 
     if not cleaned:
@@ -327,6 +344,42 @@ def _normalize_answer(text: str) -> str:
         return cleaned[: last_stop + 1].strip()
 
     return f"{cleaned}."
+
+
+def _normalize_vietnamese_terms(text: str) -> str:
+    replacements = {
+        "Next 30 days": "30 ngày đầu",
+        "Next 60 days": "60 ngày",
+        "Next 90 days": "90 ngày",
+        "next 30 days": "30 ngày đầu",
+        "next 60 days": "60 ngày",
+        "next 90 days": "90 ngày",
+        "Career Path Simulator": "Mô phỏng lộ trình nghề nghiệp",
+        "career path simulator": "mô phỏng lộ trình nghề nghiệp",
+        "mini project": "dự án nhỏ",
+        "Mini project": "Dự án nhỏ",
+        "case study": "bài phân tích tình huống",
+        "Case study": "Bài phân tích tình huống",
+        "portfolio": "hồ sơ dự án",
+        "Portfolio": "Hồ sơ dự án",
+        "matching": "đối sánh",
+        "Matching": "Đối sánh",
+        "apply": "ứng tuyển",
+        "Apply": "Ứng tuyển",
+        "cover letter": "thư xin việc",
+        "Cover letter": "Thư xin việc",
+        "job mục tiêu": "vị trí mục tiêu",
+        "job phù hợp": "vị trí phù hợp",
+        "job gần nhất": "vị trí gần nhất",
+        "job ": "công việc ",
+        "Job ": "Công việc ",
+        "skill gap": "khoảng cách kỹ năng",
+        "Skill gap": "Khoảng cách kỹ năng",
+    }
+    output = text
+    for source, target in replacements.items():
+        output = output.replace(source, target)
+    return output
 
 
 def _looks_like_provider_guardrail(answer: str) -> bool:

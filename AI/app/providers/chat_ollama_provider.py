@@ -18,7 +18,8 @@ class OllamaChatProvider:
             "stream": False,
             "keep_alive": settings.ollama_keep_alive,
             "options": {
-                "temperature": 0.1,
+                "temperature": 0,
+                "top_p": 0.8,
                 "num_predict": _resolve_num_predict(question),
                 "num_ctx": settings.ollama_num_ctx,
                 "num_thread": settings.ollama_num_thread,
@@ -60,7 +61,8 @@ class OllamaChatProvider:
             "stream": True,
             "keep_alive": settings.ollama_keep_alive,
             "options": {
-                "temperature": 0.1,
+                "temperature": 0,
+                "top_p": 0.8,
                 "num_predict": _resolve_num_predict(question),
                 "num_ctx": settings.ollama_num_ctx,
                 "num_thread": settings.ollama_num_thread,
@@ -111,10 +113,14 @@ Bạn là trợ lý tư vấn nghề nghiệp trong một hệ thống tuyển d
 Yêu cầu bắt buộc:
 - Chỉ trả lời bằng tiếng Việt có dấu đầy đủ.
 - Trả lời trực tiếp, không suy nghĩ thành nhiều bước.
-- Chỉ trả lời trong phạm vi: hồ sơ CV, kết quả matching, nghề nghiệp phù hợp, kỹ năng cần bổ sung, công việc trong hệ thống, cover letter, chuẩn bị phỏng vấn.
-- Câu hỏi hiện tại đã được hệ thống xác nhận là thuộc phạm vi tư vấn nghề nghiệp. Không được trả lời bằng thông báo ngoài phạm vi nếu câu hỏi đang nói về hồ sơ, CV, kỹ năng, nghề phù hợp, công việc, matching hoặc lộ trình phát triển.
+- Không tự xưng "tôi"; khi cần gọi vai trò, dùng "hệ thống" hoặc "trợ lý này".
+- Khi nói về người dùng, dùng "bạn"; khi nói về dữ liệu CV, dùng "hồ sơ" hoặc "ứng viên".
+- Không dùng cụm tiếng Anh phổ thông trong nội dung tư vấn. Bắt buộc Việt hóa: "Next 30 days" thành "30 ngày đầu", "Next 60 days" thành "60 ngày", "Next 90 days" thành "90 ngày", "mini project" thành "dự án nhỏ", "case study" thành "bài phân tích tình huống", "portfolio" thành "hồ sơ dự án", "matching" thành "đối sánh", "job" thành "công việc/vị trí", "apply" thành "ứng tuyển", "cover letter" thành "thư xin việc".
+- Chỉ giữ tiếng Anh khi đó là tên riêng công nghệ, tên vị trí gốc, viết tắt kỹ thuật hoặc tên framework như iOS, Swift, SwiftUI, Firebase, REST API, Docker.
+- Chỉ trả lời trong phạm vi: hồ sơ CV, kết quả đối sánh, nghề nghiệp phù hợp, kỹ năng cần bổ sung, công việc trong hệ thống, thư xin việc, chuẩn bị phỏng vấn.
+- Câu hỏi hiện tại đã được hệ thống xác nhận là thuộc phạm vi tư vấn nghề nghiệp. Không được trả lời bằng thông báo ngoài phạm vi nếu câu hỏi đang nói về hồ sơ, CV, kỹ năng, nghề phù hợp, công việc, đối sánh hoặc lộ trình phát triển.
 - Nếu câu hỏi ngoài phạm vi, trả đúng câu sau:
-"Tôi được thiết kế để hỗ trợ tư vấn nghề nghiệp, giải thích hồ sơ CV, kết quả matching và thông tin tuyển dụng trong hệ thống. Với câu hỏi này, tôi chưa phải là trợ lý phù hợp. Bạn có thể hỏi tôi về nghề nghiệp, kỹ năng cần bổ sung, CV, thư xin việc hoặc công việc phù hợp với hồ sơ của bạn."
+"Trợ lý này được thiết kế để hỗ trợ tư vấn nghề nghiệp, giải thích hồ sơ CV, kết quả đối sánh và thông tin tuyển dụng trong hệ thống. Với câu hỏi này, hệ thống chưa phải là kênh hỗ trợ phù hợp. Bạn có thể hỏi về nghề nghiệp, kỹ năng cần bổ sung, CV, thư xin việc hoặc công việc phù hợp với hồ sơ của bạn."
 - Không bịa dữ liệu ngoài context.
 - Nếu thiếu dữ liệu thì nói rõ là chưa đủ dữ liệu.
 - Không dùng markdown.
@@ -139,15 +145,18 @@ Lý do:
 Hướng thay thế:
 - ...
 - Nếu người dùng hỏi về lộ trình, kế hoạch 3 tháng hoặc 6 tháng, phải chia rõ theo từng giai đoạn:
-Giai đoạn 1:
+Mô phỏng lộ trình nghề nghiệp 30/60/90 ngày:
 - ...
-Giai đoạn 2:
+30 ngày đầu:
 - ...
-Giai đoạn 3:
+60 ngày:
+- ...
+90 ngày:
 - ...
 - Trả lời phải bám sát đúng câu hỏi hiện tại, không chuyển sang chủ đề khác.
 - Ý định câu hỏi đã được hệ thống phân loại là: {resolved_intent}.
 - Hãy bám sát đúng ý định đã phân loại. Không được đổi sang dạng trả lời chung chung.
+- Giữ cùng cấu trúc trả lời cho cùng một ý định để kết quả ổn định giữa các phiên.
 
 Ngữ cảnh hệ thống:
 {json.dumps(compact_context, ensure_ascii=False, separators=(',', ':'))}
@@ -165,7 +174,6 @@ def _compact_context(context: dict) -> dict:
     report = context.get("career_report") or {}
     matches = context.get("top_matching_jobs") or []
     related_job = context.get("related_job") or {}
-    semantic_jobs = context.get("semantic_jobs") or []
     conversation_summary = context.get("conversation_summary")
 
     return {
@@ -173,9 +181,12 @@ def _compact_context(context: dict) -> dict:
         "candidate_profile": {
             "ho_ten": candidate.get("ho_ten"),
             "tieu_de_ho_so": candidate.get("tieu_de_ho_so"),
+            "vi_tri_ung_tuyen_muc_tieu": candidate.get("vi_tri_ung_tuyen_muc_tieu"),
+            "ten_nganh_nghe_muc_tieu": candidate.get("ten_nganh_nghe_muc_tieu"),
             "kinh_nghiem_nam": candidate.get("kinh_nghiem_nam"),
             "trinh_do": candidate.get("trinh_do"),
             "parsed_skills": (candidate.get("parsed_skills") or [])[:8],
+            "builder_skills": (candidate.get("builder_skills") or [])[:8],
         },
         "career_report": {
             "nghe_de_xuat": report.get("nghe_de_xuat"),
@@ -201,7 +212,6 @@ def _compact_context(context: dict) -> dict:
             "level": related_job.get("level"),
             "skills": (related_job.get("skills") or [])[:5],
         } if related_job else None,
-        "semantic_jobs": semantic_jobs[:2],
     }
 
 

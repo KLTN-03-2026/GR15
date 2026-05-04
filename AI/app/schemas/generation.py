@@ -13,3 +13,9 @@ class CareerReportRequest(BaseModel):
     ho_so_id: int
     cv_profile: dict | None = None
     matching_profiles: list[dict] | None = None
+
+
+class CvBuilderWritingRequest(BaseModel):
+    cv_profile: dict | None = None
+    section: str = "summary"
+    options: dict | None = None

@@ -35,4 +35,45 @@ return [
         ],
     ],
 
+    'ai_service' => [
+        'base_url' => env('AI_SERVICE_URL', 'http://127.0.0.1:8001'),
+        'timeout' => env('AI_SERVICE_TIMEOUT', 120),
+    ],
+
+    'google' => [
+        'client_id' => env('GOOGLE_CLIENT_ID'),
+        'client_secret' => env('GOOGLE_CLIENT_SECRET'),
+        'redirect' => env('GOOGLE_REDIRECT_URI'),
+    ],
+
+    'momo' => [
+        'base_url' => env('MOMO_BASE_URL', 'https://test-payment.momo.vn'),
+        'partner_code' => env('MOMO_PARTNER_CODE'),
+        'partner_name' => env('MOMO_PARTNER_NAME', env('APP_NAME', 'KhanhMai')),
+        'store_id' => env('MOMO_STORE_ID', 'KhanhMaiStore'),
+        'access_key' => env('MOMO_ACCESS_KEY'),
+        'secret_key' => env('MOMO_SECRET_KEY'),
+        'request_type' => env('MOMO_REQUEST_TYPE', 'captureWallet'),
+        'lang' => env('MOMO_LANG', 'vi'),
+        'timeout' => env('MOMO_TIMEOUT', 30),
+        'redirect_url' => env('MOMO_REDIRECT_URL'),
+        'ipn_url' => env('MOMO_IPN_URL'),
+        'min_amount' => env('MOMO_MIN_AMOUNT', 1000),
+        'pending_expire_minutes' => env('MOMO_PENDING_EXPIRE_MINUTES', 15),
+        'auto_complete_return_local' => env('MOMO_AUTO_COMPLETE_RETURN_LOCAL', env('APP_ENV') === 'local'),
+    ],
+
+    'vnpay' => [
+        'base_url' => env('VNPAY_BASE_URL', 'https://sandbox.vnpayment.vn/paymentv2/vpcpay.html'),
+        'tmn_code' => env('VNPAY_TMN_CODE'),
+        'hash_secret' => env('VNPAY_HASH_SECRET'),
+        'return_url' => env('VNPAY_RETURN_URL'),
+        'ipn_url' => env('VNPAY_IPN_URL'),
+        'locale' => env('VNPAY_LOCALE', 'vn'),
+        'order_type' => env('VNPAY_ORDER_TYPE', 'other'),
+        'min_amount' => env('VNPAY_MIN_AMOUNT', 1000),
+        'pending_expire_minutes' => env('VNPAY_PENDING_EXPIRE_MINUTES', 15),
+        'auto_complete_return_local' => env('VNPAY_AUTO_COMPLETE_RETURN_LOCAL', env('APP_ENV') === 'local'),
+    ],
+
 ];
