@@ -40,9 +40,6 @@ def simulator_context() -> dict:
                 "missing_skills": ["Docker", "Redis"],
             }
         ],
-        "semantic_jobs": [
-            {"title": "Backend Developer Laravel", "company_name": "TechViet"},
-        ],
     }
 
 
@@ -63,13 +60,13 @@ class CareerPathSimulatorTests(unittest.TestCase):
             INTENT_LEARNING_PLAN,
         )
 
-        self.assertIn("Career Path Simulator 30/60/90 ngày:", answer)
+        self.assertIn("Mô phỏng lộ trình nghề nghiệp 30/60/90 ngày:", answer)
         self.assertIn("Mục tiêu chính: Backend Developer Laravel", answer)
         self.assertIn("Docker", answer)
         self.assertIn("30 ngày đầu:", answer)
         self.assertIn("60 ngày:", answer)
         self.assertIn("90 ngày:", answer)
-        self.assertIn("Backend Developer Laravel - TechViet", answer)
+        self.assertIn("Backend Developer Laravel", answer)
 
     def test_chatbot_non_model_provider_returns_simulator_answer(self) -> None:
         with patch("app.services.chatbot._resolve_provider", return_value=("template", TemplateChatProvider())):
@@ -83,7 +80,7 @@ class CareerPathSimulatorTests(unittest.TestCase):
 
         self.assertTrue(response["success"])
         self.assertEqual(response["data"]["intent"], INTENT_LEARNING_PLAN)
-        self.assertIn("Career Path Simulator 30/60/90 ngày:", response["data"]["answer"])
+        self.assertIn("Mô phỏng lộ trình nghề nghiệp 30/60/90 ngày:", response["data"]["answer"])
 
 
 if __name__ == "__main__":

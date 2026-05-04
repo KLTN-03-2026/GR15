@@ -52,10 +52,6 @@ def sample_context() -> dict:
             "level": "Junior",
             "skills": ["Laravel", "MySQL", "REST API"],
         },
-        "semantic_jobs": [
-            {"title": "Backend Developer Laravel", "company_name": "Cong ty AI Test"},
-            {"title": "PHP Developer", "company_name": "Cong ty Demo"},
-        ],
         "conversation_summary": (
             "Chủ đề gần nhất: định hướng nghề nghiệp. "
             "Hướng nghề đang ưu tiên: Backend Developer Laravel. "
@@ -200,7 +196,7 @@ class ChatbotRegressionTests(unittest.TestCase):
             [],
             INTENT_LEARNING_PLAN,
         )
-        self.assertIn("Career Path Simulator 30/60/90 ngày:", answer)
+        self.assertIn("Mô phỏng lộ trình nghề nghiệp 30/60/90 ngày:", answer)
         self.assertIn("30 ngày đầu:", answer)
         self.assertIn("60 ngày:", answer)
         self.assertIn("90 ngày:", answer)

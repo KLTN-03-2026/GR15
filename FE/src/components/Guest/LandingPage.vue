@@ -8,22 +8,14 @@ import { VIETNAM_PROVINCES_34 } from '@/constants/vietnamProvinces'
 const router = useRouter()
 const notify = useNotify()
 
-const searchMode = ref('quick')
 const quickQuery = ref('')
 const quickLocation = ref('')
-const semanticQuery = ref('')
 
 const featuredJobs = ref([])
 const featuredIndustries = ref([])
 const featuredSkills = ref([])
 const featuredCompanies = ref([])
 const loadingLanding = ref(false)
-
-const placeholderText = computed(() =>
-  searchMode.value === 'semantic'
-    ? 'Ví dụ: backend Laravel remote, ưu tiên REST API và MySQL'
-    : 'Kỹ năng hoặc ngành nghề...',
-)
 
 const scoreFeaturedJob = (job) => {
   const featuredBoost = job?.is_featured ? 5000000000000 : 0
@@ -144,26 +136,20 @@ const loadLandingData = async () => {
 }
 
 const handleHeroSearch = () => {
-  const value = searchMode.value === 'semantic' ? semanticQuery.value.trim() : quickQuery.value.trim()
+  const value = quickQuery.value.trim()
   const location = quickLocation.value.trim()
 
-  if (!value && !(searchMode.value === 'quick' && location)) {
-    notify.warning(
-      searchMode.value === 'semantic'
-        ? 'Hãy nhập mô tả công việc bạn muốn tìm bằng AI.'
-        : 'Hãy nhập từ khóa hoặc chọn tỉnh/thành để tìm việc.',
-    )
+  if (!value && !location) {
+    notify.warning('Hãy nhập từ khóa hoặc chọn tỉnh/thành để tìm việc.')
     return
   }
 
   router.push({
     path: '/jobs',
-    query: searchMode.value === 'semantic'
-      ? { semantic_q: value }
-      : {
-          ...(value ? { search: value } : {}),
-          ...(location ? { dia_diem: location } : {}),
-        },
+    query: {
+      ...(value ? { search: value } : {}),
+      ...(location ? { dia_diem: location } : {}),
+    },
   })
 }
 
@@ -188,55 +174,19 @@ onMounted(() => {
         </p>
 
         <div class="mt-10 w-full max-w-4xl rounded-[28px] bg-white/95 p-3 shadow-2xl ring-1 ring-slate-200 backdrop-blur dark:bg-slate-900/95 dark:ring-slate-800">
-          <div class="flex flex-wrap items-center gap-2 border-b border-slate-200 px-2 pb-3 dark:border-slate-800">
-            <button
-              type="button"
-              class="inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-bold transition-all"
-              :class="searchMode === 'quick'
-                ? 'bg-[#2463eb] text-white shadow-lg shadow-blue-200/60'
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'"
-              @click="searchMode = 'quick'"
-            >
-              <span class="material-symbols-outlined text-base">search</span>
-              Tìm nhanh
-            </button>
-            <button
-              type="button"
-              class="inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-bold transition-all"
-              :class="searchMode === 'semantic'
-                ? 'bg-[#2463eb] text-white shadow-lg shadow-blue-200/60'
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'"
-              @click="searchMode = 'semantic'"
-            >
-              <span class="material-symbols-outlined text-base">auto_awesome</span>
-              Semantic Search
-            </button>
-          </div>
-
           <div class="mt-3 flex flex-col gap-3 md:flex-row md:items-center">
             <div class="flex min-w-0 flex-1 items-center rounded-2xl bg-slate-50 px-4 dark:bg-slate-950">
-              <span class="material-symbols-outlined text-slate-400">
-                {{ searchMode === 'semantic' ? 'psychology' : 'search' }}
-              </span>
+              <span class="material-symbols-outlined text-slate-400">search</span>
               <input
-                v-if="searchMode === 'quick'"
                 v-model="quickQuery"
                 class="w-full border-none bg-transparent py-4 text-slate-900 shadow-none outline-none ring-0 placeholder:text-slate-400 focus:border-transparent focus:outline-none focus:ring-0 focus:ring-offset-0 dark:text-white"
-                :placeholder="placeholderText"
-                type="text"
-                @keyup.enter="handleHeroSearch"
-              />
-              <input
-                v-else
-                v-model="semanticQuery"
-                class="w-full border-none bg-transparent py-4 text-slate-900 shadow-none outline-none ring-0 placeholder:text-slate-400 focus:border-transparent focus:outline-none focus:ring-0 focus:ring-offset-0 dark:text-white"
-                :placeholder="placeholderText"
+                placeholder="Kỹ năng hoặc ngành nghề..."
                 type="text"
                 @keyup.enter="handleHeroSearch"
               />
             </div>
 
-            <div v-if="searchMode === 'quick'" class="flex min-w-0 items-center rounded-2xl bg-slate-50 px-4 md:w-60 dark:bg-slate-950">
+            <div class="flex min-w-0 items-center rounded-2xl bg-slate-50 px-4 md:w-60 dark:bg-slate-950">
               <span class="material-symbols-outlined text-slate-400">location_on</span>
               <select
                 v-model="quickLocation"
@@ -254,20 +204,14 @@ onMounted(() => {
               class="flex h-14 items-center justify-center gap-2 rounded-2xl bg-[#2463eb] px-8 font-bold text-white transition-all hover:bg-blue-700"
               @click="handleHeroSearch"
             >
-              <span class="material-symbols-outlined text-base">{{ searchMode === 'semantic' ? 'auto_awesome' : 'search' }}</span>
-              {{ searchMode === 'semantic' ? 'Tìm bằng AI' : 'Tìm kiếm' }}
+              <span class="material-symbols-outlined text-base">search</span>
+              Tìm kiếm
             </button>
           </div>
 
           <div class="mt-3 flex flex-wrap items-center gap-2 px-2 text-left">
             <span class="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
-              {{ searchMode === 'semantic' ? 'Mô tả tự nhiên, AI tự hiểu ý bạn' : 'Tìm nhanh theo từ khóa quen thuộc' }}
-            </span>
-            <span
-              v-if="searchMode === 'semantic'"
-              class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300"
-            >
-              Ví dụ: backend Laravel, Docker, Đà Nẵng hoặc remote
+              Tìm nhanh theo từ khóa quen thuộc
             </span>
           </div>
         </div>

@@ -25,9 +25,7 @@ use App\Http\Controllers\Api\MatchingController;
 use App\Http\Controllers\Api\MomoTopUpController;
 use App\Http\Controllers\Api\VnpayController;
 use App\Http\Controllers\Api\CoverLetterController;
-use App\Http\Controllers\Api\CvTailoringController;
 use App\Http\Controllers\Api\CareerReportController;
-use App\Http\Controllers\Api\SemanticSearchController;
 use App\Http\Controllers\Api\WalletController;
 use App\Http\Controllers\Api\CvTemplateController;
 use App\Http\Controllers\Api\CvBuilderWritingController;
@@ -48,7 +46,6 @@ use App\Http\Controllers\Api\Admin\AdminKyNangController;
 use App\Http\Controllers\Api\Admin\AdminNguoiDungKyNangController;
 use App\Http\Controllers\Api\Admin\AdminCongTyController;
 use App\Http\Controllers\Api\Admin\AdminTinTuyenDungController;
-use App\Http\Controllers\Api\Admin\AdminMarketDashboardController;
 use App\Http\Controllers\Api\Admin\AdminBillingController;
 use App\Http\Controllers\Api\Admin\AdminLuuTinController;
 use App\Http\Controllers\Api\Admin\AdminUngTuyenController;
@@ -361,10 +358,6 @@ Route::delete('v1/admin/admins/{id}', [AdminQuanTriVienController::class, 'destr
     ->middleware(['auth:sanctum', 'role:admin', 'super_admin'])
     ->name('admin.admins.destroy');
 
-Route::get('v1/admin/thi-truong/dashboard', [AdminMarketDashboardController::class, 'overview'])
-    ->middleware(['auth:sanctum', 'role:admin', 'admin_permission:stats'])
-    ->name('admin.thi-truong.dashboard');
-
 // Danh sách tất cả người dùng (có lọc, tìm kiếm, phân trang)
 Route::get('v1/admin/nguoi-dungs', [AdminNguoiDungController::class, 'index'])
     ->middleware(['auth:sanctum', 'role:admin', 'admin_permission:users'])
@@ -444,10 +437,6 @@ Route::post('v1/ung-vien/ho-sos/{id}/matching', [MatchingController::class, 'gen
 Route::post('v1/ung-vien/ho-sos/{id}/career-report', [CareerReportController::class, 'generate'])
     ->middleware(['auth:sanctum', 'role:ung_vien'])
     ->name('ung-vien.ho-sos.career-report');
-
-Route::post('v1/ung-vien/ho-sos/{id}/tailor/{tinTuyenDungId}', [CvTailoringController::class, 'tailorForJob'])
-    ->middleware(['auth:sanctum', 'role:ung_vien'])
-    ->name('ung-vien.ho-sos.tailor-for-job');
 
 Route::post('v1/ung-vien/cv-builder/ai-writing', [CvBuilderWritingController::class, 'generate'])
     ->middleware(['auth:sanctum', 'role:ung_vien'])
@@ -593,9 +582,6 @@ Route::delete('v1/admin/ho-sos/{id}/xoa-vinh-vien', [AdminHoSoController::class,
 // ============================================================
 // NHÓM 7: PUBLIC — Danh mục ngành nghề (không cần xác thực)
 // ============================================================
-
-Route::get('v1/tin-tuyen-dungs/semantic-search', [SemanticSearchController::class, 'searchJobs'])
-    ->name('tin-tuyen-dungs.semantic-search');
 
 // Danh sách ngành nghề hiển thị (dạng phẳng)
 Route::get('v1/nganh-nghes', [NganhNgheController::class, 'index'])

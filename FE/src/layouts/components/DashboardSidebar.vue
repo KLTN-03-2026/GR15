@@ -82,9 +82,9 @@ onBeforeUnmount(() => {
         <span class="material-symbols-outlined">workspace_premium</span>
         <span v-if="!collapsed" class="text-sm">Gói Pro</span>
       </RouterLink>
-      <RouterLink to="/payments" active-class="active-nav" class="nav-link flex items-center gap-3 rounded-lg px-3 py-2 text-slate-600 transition-colors font-medium hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800" :class="collapsed ? 'justify-center' : ''" :title="collapsed ? 'Lịch sử thanh toán' : ''">
+      <RouterLink to="/payments" active-class="active-nav" class="nav-link flex items-center gap-3 rounded-lg px-3 py-2 text-slate-600 transition-colors font-medium hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800" :class="collapsed ? 'justify-center' : ''" :title="collapsed ? 'Thanh toán' : ''">
         <span class="material-symbols-outlined">receipt_long</span>
-        <span v-if="!collapsed" class="text-sm">Lịch sử thanh toán</span>
+        <span v-if="!collapsed" class="text-sm">Thanh toán</span>
       </RouterLink>
       <RouterLink to="/applications" active-class="active-nav" class="nav-link flex items-center gap-3 rounded-lg px-3 py-2 text-slate-600 transition-colors font-medium hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800" :class="collapsed ? 'justify-center' : ''" :title="collapsed ? 'Việc đã ứng tuyển' : ''">
         <span class="material-symbols-outlined">send</span>

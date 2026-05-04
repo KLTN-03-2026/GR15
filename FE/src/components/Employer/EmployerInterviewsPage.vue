@@ -1266,10 +1266,10 @@ watch(() => form.hr_phu_trach_id, (value) => {
     <div class="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.55fr)_360px]">
       <div class="space-y-6">
         <div class="rounded-2xl border border-slate-200 bg-white shadow-sm shadow-slate-950/5 dark:border-slate-800 dark:bg-slate-900">
-          <div class="grid grid-cols-1 gap-3 border-b border-slate-200 p-4 dark:border-slate-800 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_220px_220px] 2xl:grid-cols-[minmax(0,1fr)_220px_220px_170px_150px]">
+          <div class="grid grid-cols-1 items-center gap-3 border-b border-slate-200 p-4 dark:border-slate-800 md:grid-cols-2 lg:grid-cols-5">
             <select
               v-model="filters.tin_tuyen_dung_id"
-              class="w-full min-w-0 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-800/70 dark:text-white"
+              class="h-14 w-full min-w-0 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 outline-none transition focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-800/70 dark:text-white md:col-span-2 lg:col-span-1"
               @change="applyFilters"
             >
               <option value="">Tất cả tin tuyển dụng</option>
@@ -1280,7 +1280,7 @@ watch(() => form.hr_phu_trach_id, (value) => {
 
             <select
               v-model="filters.trang_thai"
-              class="w-full min-w-0 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-800/70 dark:text-white"
+              class="h-14 w-full min-w-0 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 outline-none transition focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-800/70 dark:text-white"
               @change="applyFilters"
             >
               <option v-for="status in statusOptions" :key="String(status.value)" :value="status.value">
@@ -1290,7 +1290,7 @@ watch(() => form.hr_phu_trach_id, (value) => {
 
             <select
               v-model="filters.hr_phu_trach_id"
-              class="w-full min-w-0 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-800/70 dark:text-white"
+              class="h-14 w-full min-w-0 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 outline-none transition focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-800/70 dark:text-white"
               @change="applyFilters"
             >
               <option v-for="option in hrFilterOptions" :key="option.id || 'all-hr'" :value="option.id">
@@ -1300,7 +1300,7 @@ watch(() => form.hr_phu_trach_id, (value) => {
 
             <select
               v-model="filters.per_page"
-              class="w-full min-w-0 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-800/70 dark:text-white"
+              class="h-14 w-full min-w-0 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 outline-none transition focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-800/70 dark:text-white"
               @change="applyFilters"
             >
               <option :value="10">10 / trang</option>
@@ -1309,7 +1309,7 @@ watch(() => form.hr_phu_trach_id, (value) => {
             </select>
 
             <button
-              class="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+              class="flex h-14 w-full min-w-0 items-center justify-center rounded-xl border border-slate-200 px-3 text-sm font-bold text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
               type="button"
               @click="resetFilters"
             >

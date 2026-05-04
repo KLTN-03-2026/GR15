@@ -25,7 +25,7 @@ Phạm vi rà soát:
 
 - Backend Laravel: `BE/routes/api.php`, controllers, services, models, migrations, console schedule, broadcasting channels.
 - Frontend Vue: router, services API, các màn hình Guest/Candidate/Employer/Admin, composables realtime/notification.
-- AI FastAPI: routers, schemas, services cho parsing, matching, generation, chatbot, mock interview, semantic search, CV tailoring, CV Builder AI Writing, career path simulator và interview copilot.
+- AI FastAPI: routers, schemas, services cho parsing, matching, generation, chatbot, mock interview, CV Builder AI Writing, career path simulator và interview copilot.
 
 Ghi chú: Đã rà soát lại codebase ngày 29/04/2026. Backend feature suite, frontend smoke test và AI regression test đều chạy thành công trên môi trường hiện tại.
 
@@ -38,7 +38,6 @@ Ghi chú: Đã rà soát lại codebase ngày 29/04/2026. Backend feature suite,
 - Xác thực, phân quyền cơ bản theo vai trò ứng viên / nhà tuyển dụng / admin.
 - Quản lý hồ sơ ứng viên, CV upload, CV builder, CV template, CV preview/print PDF phía frontend.
 - AI parsing CV/JD, matching, career report, chatbot tư vấn nghề nghiệp, mock interview.
-- One-click CV Tailoring theo JD đã có API, AI service, fallback và UI trong trang chi tiết job.
 - Employer flow đã mở rộng mạnh: quản lý công ty, HR nội bộ, phân quyền nội bộ, tin tuyển dụng, JD parsing, duyệt ứng tuyển.
 - AI Shortlist cho nhà tuyển dụng đã có chấm điểm hybrid, giải thích AI, so sánh ứng viên.
 - Interview Copilot đã có sinh câu hỏi, rubric, tóm tắt ứng viên và đánh giá sau phỏng vấn.
@@ -107,7 +106,6 @@ Trạng thái: Hoàn thành khá đầy đủ.
 - Danh sách và chi tiết ngành nghề.
 - Danh sách và chi tiết kỹ năng.
 - Tìm kiếm việc làm theo bộ lọc.
-- Semantic search việc làm qua AI service.
 - Lưu tin từ public job list/job detail khi đã đăng nhập.
 - Follow/unfollow công ty từ trang công ty.
 
@@ -115,7 +113,6 @@ Các file chính:
 
 - `BE/app/Http/Controllers/Api/TinTuyenDungController.php`
 - `BE/app/Http/Controllers/Api/CongTyController.php`
-- `BE/app/Http/Controllers/Api/SemanticSearchController.php`
 - `FE/src/components/Guest/JobSearchPage.vue`
 - `FE/src/components/Guest/JobDetailPage.vue`
 - `FE/src/components/Guest/CompanyDetailPage.vue`
@@ -151,13 +148,11 @@ Trạng thái: Hoàn thành tốt, có nhiều tính năng AI.
 - Career report.
 - AI Career Chat.
 - Mock Interview có câu hỏi, trả lời, đánh giá, streaming và report.
-- One-click CV Tailoring từ job detail, có preview và lưu thành CV mới.
 
 Các file chính:
 
 - `BE/app/Http/Controllers/Api/HoSoController.php`
 - `BE/app/Http/Controllers/Api/CvParsingController.php`
-- `BE/app/Http/Controllers/Api/CvTailoringController.php`
 - `BE/app/Http/Controllers/Api/UngVienUngTuyenController.php`
 - `BE/app/Http/Controllers/Api/CoverLetterController.php`
 - `BE/app/Http/Controllers/Api/MatchingController.php`
@@ -175,7 +170,7 @@ Các file chính:
 Nên cải thiện:
 
 - Server-side PDF/export đã có cho hồ sơ ứng tuyển/timeline, offer, phỏng vấn và onboarding; CV Builder vẫn dùng preview/print browser cho layout CV thiết kế.
-- Cần lưu/versioning nhiều bản CV rõ hơn: clone, lịch sử chỉnh sửa, CV gốc vs CV tailor.
+- Cần lưu/versioning nhiều bản CV rõ hơn: clone, lịch sử chỉnh sửa và CV gốc.
 - Cần gợi ý học tập theo skill gap từ career report/matching.
 
 ---
@@ -288,10 +283,8 @@ Trạng thái: Đã có nhiều module, phần lớn có fallback ở backend.
 - Match CV-JD.
 - Cover letter generation.
 - Career report.
-- Semantic job search.
 - Career chatbot và streaming.
 - Mock interview question/evaluation/report.
-- CV tailoring.
 - Interview copilot generate/evaluate.
 
 Các file chính:
@@ -305,7 +298,7 @@ Nên cải thiện:
 
 - Chuẩn hóa version/model metadata cho mọi response.
 - Bổ sung token/cost thực tế vào AI usage log khi AI service/provider trả usage metadata.
-- Tăng regression test cho CV tailoring, shortlist, interview copilot.
+- Tăng regression test cho shortlist và interview copilot.
 - Tách rõ provider thật và fallback để demo dễ kiểm soát.
 
 ---
@@ -441,7 +434,6 @@ Còn có thể cải thiện:
 | Audit log | Đã thực hiện tốt | Có audit log thống nhất cho admin/employer và nhiều action quan trọng. Cần thêm timeline theo entity. |
 | Notification center | Đã thực hiện tốt | Đã lưu DB, unread/read, realtime, toast, deep link tới đúng application/section/modal/tab cho các flow ứng tuyển chính. Cần chuẩn hóa taxonomy khi thêm type mới. |
 | AI CV Builder | Đã thực hiện | Có form/template/preview/print, preset theo vị trí/phong cách và AI Writing cho summary/objective/experience/project/skills với fallback nội bộ. |
-| One-click CV Tailoring | Đã thực hiện | Có API, AI service, fallback, preview/save, tạo matching sau khi lưu. Cần UX versioning tốt hơn. |
 | AI Shortlist | Đã thực hiện | Có ranking hybrid, AI explanation, skill gap, confidence, compare. Nên thêm lưu kết quả shortlist và audit/feedback HR. |
 | Interview Copilot | Đã thực hiện | Có generate/evaluate, câu hỏi, rubric, red flags, summary và lưu theo từng vòng phỏng vấn khi chọn `interview_round_id`. |
 | AI Usage Dashboard | Đã thực hiện | Có bảng `ai_usage_logs`, logging ở `AiClientService`, log fallback chính và màn admin `/admin/ai-usage`. Chưa có token/cost thật vì AI service chưa chuẩn hóa metadata này. |
@@ -584,8 +576,8 @@ Trạng thái: Đã hoàn thành trong đợt cập nhật 24/04/2026.
 - Migration `ai_usage_logs` lưu feature, endpoint, provider/model/version, status, fallback, duration, HTTP status, lỗi, user/company, request reference và metadata.
 - Model `AiUsageLog`.
 - Service `AiUsageLogger` ghi log an toàn, không làm hỏng flow chính nếu ghi log lỗi.
-- `AiClientService` tự động log success/error cho các call AI service: parse CV/JD, matching, cover letter, career report, CV tailoring, semantic search, chat/stream, mock interview, interview copilot.
-- Các fallback chính đã ghi log riêng: CV Tailoring, Interview Copilot generate/evaluate, AI Shortlist explanation, Career Chat stream fallback.
+- `AiClientService` tự động log success/error cho các call AI service: parse CV/JD, matching, cover letter, career report, chat/stream, mock interview, interview copilot.
+- Các fallback chính đã ghi log riêng: Interview Copilot generate/evaluate, AI Shortlist explanation, Career Chat stream fallback.
 - Admin API:
   - `GET /api/v1/admin/ai-usage/overview`
   - `GET /api/v1/admin/ai-usage/logs`
@@ -758,7 +750,7 @@ Hiện trạng:
 Cần cải thiện:
 
 - Chạy lại toàn bộ `php artisan test` trước buổi demo để xác nhận các nhóm tính năng mới không bị regression.
-- Mở rộng tiếp backend feature tests cho auth, HR roles, audit log, notification, CV tailoring, shortlist và interview copilot nếu còn thời gian.
+- Mở rộng tiếp backend feature tests cho auth, HR roles, audit log, notification, shortlist và interview copilot nếu còn thời gian.
 - Có thể bổ sung Playwright/E2E cho các flow demo chính khi frontend đã có test runner/browser test chính thức.
 
 ---
@@ -844,7 +836,6 @@ Việc có thể làm thêm:
 So với roadmap, hệ thống hiện tại đã triển khai được phần lớn các tính năng tạo giá trị cao:
 
 - AI CV Builder có builder/template/print và AI Writing từng section.
-- One-click CV Tailoring.
 - AI Shortlist.
 - Interview Copilot.
 - Nhiều vòng phỏng vấn chuẩn hóa.

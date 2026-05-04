@@ -19,8 +19,8 @@ it('returns ai usage overview, feature list and filtered logs for admin', functi
         'metadata_json' => ['intent' => 'career_path_simulator'],
     ]);
     AiUsageLog::create([
-        'feature' => 'cv_tailoring',
-        'endpoint' => '/generate/cv-tailoring',
+        'feature' => 'cover_letter',
+        'endpoint' => '/generate/cover-letter',
         'provider' => 'local_fallback',
         'model_version' => 'fallback',
         'status' => AiUsageLog::STATUS_FALLBACK,
@@ -41,12 +41,12 @@ it('returns ai usage overview, feature list and filtered logs for admin', functi
         ->getJson('/api/v1/admin/ai-usage/features')
         ->assertOk()
         ->assertJsonFragment(['feature' => 'career_chat'])
-        ->assertJsonFragment(['feature' => 'cv_tailoring']);
+        ->assertJsonFragment(['feature' => 'cover_letter']);
 
     $this->actingAs($admin, 'sanctum')
-        ->getJson('/api/v1/admin/ai-usage/logs?feature=cv_tailoring&used_fallback=1')
+        ->getJson('/api/v1/admin/ai-usage/logs?feature=cover_letter&used_fallback=1')
         ->assertOk()
-        ->assertJsonPath('data.data.0.feature', 'cv_tailoring')
+        ->assertJsonPath('data.data.0.feature', 'cover_letter')
         ->assertJsonPath('data.data.0.used_fallback', true);
 });
 

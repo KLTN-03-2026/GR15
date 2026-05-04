@@ -12,6 +12,9 @@ class CongTySeeder extends Seeder
     public function run(): void
     {
         $ntds = NguoiDung::where('vai_tro', NguoiDung::VAI_TRO_NHA_TUYEN_DUNG)->get();
+        $skipCompanyEmails = [
+            'tuyen.dung.nocongty@kltn.com',
+        ];
 
         if ($ntds->isEmpty()) {
             $this->command->warn('⚠️ Chưa có nhà tuyển dụng. Hãy chạy NguoiDungSeeder trước.');
@@ -152,12 +155,13 @@ class CongTySeeder extends Seeder
             ],
         ];
 
-        $ntdConLai = $ntds->filter(function ($ntd) {
+        $ntdConLai = $ntds->filter(function ($ntd) use ($skipCompanyEmails) {
             return !in_array($ntd->email, [
                 'tuyen.dung1@kltn.com',
                 'tuyen.dung2@kltn.com',
                 'tuyen.dung3@kltn.com',
                 'tuyen.dung.khoa@kltn.com',
+                ...$skipCompanyEmails,
             ], true);
         })->values();
 

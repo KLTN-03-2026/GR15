@@ -9,7 +9,6 @@ He thong AI hien tai gom 3 lop chinh:
 1. Lop xu ly du lieu nen:
    - Parse CV.
    - Parse JD.
-   - Semantic Search.
    - Matching CV - JD.
 
 2. Lop AI cho ung vien:
@@ -18,7 +17,6 @@ He thong AI hien tai gom 3 lop chinh:
    - Chatbot AI tu van nghe nghiep.
    - Mock Interview.
    - Cover Letter AI.
-   - CV Tailoring.
    - CV Builder AI Writing.
 
 3. Lop AI cho nha tuyen dung:
@@ -35,7 +33,6 @@ AI service hien dang dang ky cac router:
 - `/parse/jd`
 - `/match/cv-jd`
 - `/generate/*`
-- `/search/semantic/jobs`
 - `/chat/career-consultant`
 - `/interview/mock/*`
 - `/interview/copilot/*`
@@ -46,13 +43,11 @@ AI service hien dang dang ky cac router:
 |---|---|---|---|
 | Parse CV | Ung vien / He thong | Trich xuat noi dung CV thanh du lieu co cau truc | raw text, ten, email, phone, skills, experience, education |
 | Parse JD | He thong / Nha tuyen dung | Trich xuat noi dung tin tuyen dung | skills, requirements, benefits, salary, location |
-| Semantic Search | Khach / Ung vien | Tim viec bang ngon ngu tu nhien | danh sach job lien quan, diem semantic, ly do khop |
 | Matched Jobs | Ung vien | So khop CV voi tin tuyen dung | diem phu hop, diem ky nang, diem kinh nghiem, skill khop/thieu |
 | Career Report | Ung vien | Tu van huong nghe nghiep | nghe de xuat, muc do phu hop, ky nang can bo sung |
 | Chatbot AI | Ung vien | Tu van nghe nghiep theo hoi dap | cau tra loi theo context CV/report/job |
 | Mock Interview | Ung vien | Luyen phong van mo phong | cau hoi, cham cau tra loi, bao cao tong ket |
 | Cover Letter AI | Ung vien | Sinh thu xin viec theo CV va JD | thu xin viec ca nhan hoa |
-| CV Tailoring | Ung vien | Toi uu CV theo mot JD cu the | CV goi y, keyword khop, skill gaps |
 | CV Builder AI Writing | Ung vien | Goi y viet tung phan CV | summary, kinh nghiem, muc tieu, ky nang |
 | AI Shortlist | Nha tuyen dung | Loc ung vien phu hop voi tin tuyen dung | danh sach ung vien, diem, giai thich AI |
 | AI Compare ung vien | Nha tuyen dung | So sanh nhieu ung vien | diem manh/yeu, ung vien uu tien |
@@ -138,75 +133,6 @@ Matching can biet JD yeu cau ky nang gi, muc do nao, cap bac nao. Neu chi so san
 - Tu dong goi y skill khi nha tuyen dung tao tin.
 - Canh bao JD qua ngan, mo ho hoac thieu yeu cau.
 
-## 5. Semantic Search
-
-### Y nghia
-
-Semantic Search cho phep tim viec bang ngon ngu tu nhien. Vi du:
-
-- "viec backend laravel cho fresher o TP HCM"
-- "cong viec marketing can biet SEO va content"
-- "intern data analyst co Power BI"
-
-Khac voi tim kiem keyword thong thuong, Semantic Search co gang hieu y dinh, nhom nghe, ky nang va muc do lien quan.
-
-### Luong xu ly
-
-1. Nguoi dung nhap cau tim kiem.
-2. Backend lay cac tin tuyen dung dang active, cong ty active, chua het han.
-3. Backend gom thong tin job thanh document:
-   - Tieu de.
-   - Mo ta cong viec.
-   - Dia diem.
-   - Hinh thuc lam viec.
-   - Cap bac.
-   - Kinh nghiem.
-   - Trinh do.
-   - Ten cong ty.
-   - Nganh nghe.
-   - Ky nang yeu cau.
-   - Parsed JD.
-4. AI service tao vector cho query va documents.
-5. Neu co `sentence_transformers` va `faiss` thi dung embedding + FAISS.
-6. Neu khong co thi dung hashed vector fallback.
-7. He thong rerank bang nhieu diem:
-   - Semantic score.
-   - Keyword score.
-   - Skill score.
-   - Category score.
-   - Title score.
-8. Backend luu/cap nhat vector vao bang `vector_embeddings`.
-9. Tra ve job kem diem va ly do.
-
-### Ket qua
-
-Moi ket qua gom:
-
-- `semantic_score`
-- `keyword_score`
-- `skill_score`
-- `category_score`
-- `title_score`
-- `final_score`
-- `semantic_reason`
-- `matched_keywords`
-- `job`
-
-### Tai sao lam nhu vay
-
-Nguoi tim viec khong phai luc nao cung biet dung keyword trong JD. Semantic Search giup tim duoc cac job gan nghia, cung nhom nghe, cung ky nang, ngay ca khi tu khoa khong trung 100%.
-
-Thiet ke fallback hashed vector giup he thong van chay duoc khi moi truong chua cai embedding model hoac FAISS.
-
-### Toi uu them
-
-- Cai dat sentence-transformers + FAISS trong moi truong production de ket qua tot hon fallback.
-- Cache embedding theo hash de khong phai tinh lai toan bo job moi lan search.
-- Tach document thanh chunks neu JD dai.
-- Ket hop filter cung: dia diem, luong, cap bac, hinh thuc lam viec.
-- Hoc lai ranking tu hanh vi click/apply/save job cua ung vien.
-- Them semantic search cho ung vien trong dashboard ca nhan dua tren CV.
-
 ## 6. Matched Jobs
 
 ### Y nghia
@@ -239,11 +165,11 @@ Vi du, job senior se uu tien kinh nghiem cao hon job intern. Job intern/fresher 
 
 ### Tai sao lam nhu vay
 
-Neu chi dung keyword thi ket qua de sai. Neu chi dung LLM thi ton chi phi va kho kiem soat. Cach hien tai dung rule + semantic gan dung giup on dinh, nhanh va giai thich duoc.
+Neu chi dung keyword thi ket qua de sai. Neu chi dung LLM thi ton chi phi va kho kiem soat. Cach hien tai dung rule + do tuong dong ky nang giup on dinh, nhanh va giai thich duoc.
 
 ### Toi uu them
 
-- Dua semantic embedding vao matching skill.
+- Nang cap do tuong dong skill trong matching.
 - Hoc trong so tu du lieu tuyen dung that.
 - Them diem luong, dia diem, hinh thuc lam viec.
 - Giai thich chi tiet hon: vi sao diem thap, can bo sung gi.
@@ -397,39 +323,6 @@ Ung vien thuong viet cover letter chung chung. Dua CV, JD va matching vao prompt
 - Kiem tra do chung chung.
 - Goi y chinh sua truoc khi nop ho so.
 
-## 11. CV Tailoring
-
-### Y nghia
-
-CV Tailoring giup tao phien ban CV phu hop voi mot JD cu the.
-
-### Xu ly
-
-He thong so sanh skill trong CV va skill trong JD, sau do:
-
-- Doi title CV theo vi tri.
-- Viet lai muc tieu nghe nghiep.
-- Viet lai summary.
-- Uu tien ky nang khop voi JD.
-- Sap xep kinh nghiem/du an lien quan len truoc.
-- Chi ra keyword khop va skill gap.
-
-### Ket qua
-
-- `tailored_profile`
-- `matched_keywords`
-- `skill_gaps`
-- `recommendations`
-- `cover_letter_suggestion`
-
-### Tai sao lam nhu vay
-
-Mot CV duy nhat kho toi uu cho moi job. Tailoring giup ung vien tao CV nham dung JD hon, tang kha nang qua vong loc.
-
-### Toi uu them
-
-- So sanh truoc/sau bang diem matching.
-- Cho user chap nhan/tuchoi tung goi y.
 - Kiem tra ATS-friendly.
 - Khong tu them ky nang neu CV khong co bang chung.
 
@@ -596,15 +489,13 @@ Neu AI loi, he thong co co che fail/release usage de tranh tru tien sai.
 - Co day du pipeline tu CV/JD den matching, report, chat, interview.
 - Co billing va free quota.
 - Co fallback cho mot so tinh nang khi model/AI service loi.
-- Co semantic search cho tim viec theo ngon ngu tu nhien.
 - Co AI cho ca ung vien va nha tuyen dung.
 - Co luu usage log de admin theo doi.
-- Co giai thich ket qua o nhieu diem: matching, semantic search, shortlist.
+- Co giai thich ket qua o nhieu diem: matching, career report, shortlist.
 
 ## 18. Han che hien tai
 
 - Parse CV PDF scan chua co OCR.
-- Semantic Search co the dang dung hashed fallback neu chua cai sentence-transformers/faiss.
 - Matching chua hoc tu du lieu tuyen dung thuc te.
 - Chatbot chua co RAG day du tu knowledge base noi bo.
 - Interview Copilot hien thien ve rule-based, chua phai LLM reasoning sau.
@@ -620,12 +511,10 @@ Neu AI loi, he thong co co che fail/release usage de tranh tru tien sai.
 - Cho user sua parse result.
 - Parse JD thanh bat buoc/uu tien/rui ro.
 
-### Uu tien 2: Nang cap Semantic Search va Matching
+### Uu tien 2: Nang cap Matching
 
-- Cai sentence-transformers + FAISS.
-- Cache embedding theo job.
-- Chunk JD dai.
-- Ket hop filter cung voi semantic score.
+- Chuan hoa skill catalog va alias ky nang.
+- Bo sung filter cung theo dia diem, luong, cap bac, hinh thuc lam viec.
 - Hoc ranking tu click/save/apply/interview/hire.
 
 ### Uu tien 3: Cai thien AI Assistant
@@ -655,10 +544,10 @@ Neu AI loi, he thong co co che fail/release usage de tranh tru tien sai.
 He thong hien tai da co mot bo tinh nang AI kha day du cho bai toan tuyen dung:
 
 ```text
-CV/JD -> Parse -> Semantic Search/Matching -> Career Report/Chatbot/Mock Interview/Cover Letter/CV Tailoring
+CV/JD -> Parse -> Matching -> Career Report/Chatbot/Mock Interview/Cover Letter
 Ung tuyen -> AI Shortlist/Compare -> Interview Copilot -> Danh gia phong van
 ```
 
-Trong do Semantic Search la lop tim kiem theo y dinh, Matched Jobs la lop so khop ca nhan hoa, Career Report va Chatbot la lop tu van, Mock Interview la lop luyen tap, AI Shortlist/Compare/Interview Copilot la lop ho tro nha tuyen dung ra quyet dinh nhanh va co cau truc hon.
+Trong do Matched Jobs la lop so khop ca nhan hoa, Career Report va Chatbot la lop tu van, Mock Interview la lop luyen tap, AI Shortlist/Compare/Interview Copilot la lop ho tro nha tuyen dung ra quyet dinh nhanh va co cau truc hon.
 
-Huong phat trien tot nhat tiep theo la nang chat luong du lieu dau vao, nang embedding/semantic ranking, them feedback loop tu hanh vi thuc te, va xay dashboard quan tri chat luong AI.
+Huong phat trien tot nhat tiep theo la nang chat luong du lieu dau vao, cai thien matching/ranking, them feedback loop tu hanh vi thuc te, va xay dashboard quan tri chat luong AI.

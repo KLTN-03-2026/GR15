@@ -141,7 +141,7 @@ class NguoiDung extends Authenticatable implements MustVerifyEmail
         [
             'key' => 'stats',
             'label' => 'Báo cáo & phân tích',
-            'description' => 'Xem các báo cáo tổng hợp, thống kê lưu tin, xu hướng thị trường và phân tích chuyên sâu.',
+            'description' => 'Xem các báo cáo tổng hợp, thống kê lưu tin và phân tích hiệu suất AI.',
         ],
     ];
 

@@ -218,9 +218,9 @@ onMounted(loadSkillDetail)
 
             <div class="rounded-3xl border border-slate-200 bg-gradient-to-br from-[#2463eb] to-indigo-500 p-8 text-white shadow-xl dark:border-slate-800">
               <p class="text-sm font-bold uppercase tracking-[0.35em] text-white/70">Gợi ý hành động</p>
-              <h3 class="mt-4 text-2xl font-black">Kết hợp kỹ năng với semantic search</h3>
+              <h3 class="mt-4 text-2xl font-black">Tìm việc theo kỹ năng nổi bật</h3>
               <p class="mt-3 text-sm leading-7 text-white/80">
-                Thử mô tả thêm lĩnh vực, cấp bậc hoặc địa điểm cùng kỹ năng này để AI tìm ra job phù hợp hơn.
+                Lọc danh sách việc làm theo kỹ năng này, sau đó kết hợp thêm ngành nghề, cấp bậc hoặc địa điểm để tìm vị trí phù hợp hơn.
               </p>
               <div class="mt-6 flex flex-wrap gap-3">
                 <RouterLink

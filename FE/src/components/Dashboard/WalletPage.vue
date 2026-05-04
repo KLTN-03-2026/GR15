@@ -1,15 +1,10 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
-import { RouterLink } from 'vue-router'
-import { useRoute, useRouter } from 'vue-router'
-import { walletService } from '@/services/api'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
+import { subscriptionService, walletService } from '@/services/api'
 import { useNotify } from '@/composables/useNotify'
 import {
   getBillingFeatureLabel,
-  getEntitlementLabel,
-  getFreeQuotaText,
-  getSubscriptionQuotaText,
-  sortEntitlementsByFeature,
 } from '@/utils/billing'
 
 const notify = useNotify()
@@ -23,8 +18,7 @@ const selectedAmount = ref(50000)
 const selectedGateway = ref('momo')
 const wallet = ref(null)
 const pricing = ref([])
-const entitlements = ref([])
-const currentSubscription = ref(null)
+const plans = ref([])
 const transactions = ref([])
 const paymentDraft = ref(null)
 
@@ -61,7 +55,10 @@ const pricedFeatures = computed(() =>
   [...pricing.value].sort((left, right) => Number(left.don_gia || 0) - Number(right.don_gia || 0))
 )
 
-const entitlementCards = computed(() => sortEntitlementsByFeature(entitlements.value))
+const proPlans = computed(() => {
+  const paidPlans = plans.value.filter((plan) => !Number(plan.is_free || 0) && Number(plan.gia || 0) > 0)
+  return [...paidPlans].sort((left, right) => Number(left.gia || 0) - Number(right.gia || 0))
+})
 
 const formatCurrency = (value) =>
   `${new Intl.NumberFormat('vi-VN').format(Number(value || 0))} đ`
@@ -81,26 +78,19 @@ const formatDateTime = (value) => {
   }).format(new Date(value))
 }
 
-const getWalletPriceText = (item) => {
-  if (item?.wallet_price === null || item?.wallet_price === undefined) return 'Chưa cấu hình'
-  return `${formatCurrency(item.wallet_price)}/${item.wallet_unit || 'lượt'}`
+const cycleLabel = (cycle) => {
+  if (cycle === 'free') return 'Mặc định'
+  if (cycle === 'monthly') return 'Theo tháng'
+  if (cycle === 'yearly') return 'Theo năm'
+  return cycle || 'Không xác định'
 }
 
-const getFreeQuotaDisplayText = (item) => {
-  const baseText = getFreeQuotaText(item)
-  return baseText === 'Không có' ? baseText : `${baseText} lượt`
-}
-
-const getSubscriptionQuotaDisplayText = (item) => {
-  const baseText = getSubscriptionQuotaText(item, {
-    hasCurrentSubscription: Boolean(currentSubscription.value),
-    excludedLabel: 'Không nằm trong gói',
-    inactiveLabel: 'Chưa kích hoạt Pro',
-  })
-
-  return baseText === 'Không giới hạn' || baseText === 'Không nằm trong gói' || baseText === 'Chưa kích hoạt Pro'
-    ? baseText
-    : `${baseText} lượt`
+const getFeatureDescription = (featureCode) => {
+  if (featureCode === 'cv_builder_ai') return 'AI gợi ý nội dung CV và thư ứng tuyển theo hồ sơ.'
+  if (featureCode === 'career_report_ai') return 'Sinh báo cáo định hướng nghề nghiệp dựa trên kỹ năng và mục tiêu.'
+  if (featureCode === 'career_chatbot_message') return 'Chatbot tư vấn nghề nghiệp, lộ trình học và chuẩn bị ứng tuyển.'
+  if (featureCode === 'mock_interview_session') return 'Tạo phiên luyện phỏng vấn mô phỏng theo vị trí và kỹ năng.'
+  return 'Tính năng AI đang bật theo mô hình pay-per-use từ ví.'
 }
 
 const getTransactionLabel = (transaction) => {
@@ -181,10 +171,10 @@ const loadBillingData = async (page = pagination.current_page, showLoading = tru
   }
 
   try {
-    const [walletResponse, pricingResponse, entitlementsResponse, transactionsResponse] = await Promise.all([
+    const [walletResponse, pricingResponse, plansResponse, transactionsResponse] = await Promise.all([
       walletService.getWallet(),
       walletService.getPricing(),
-      walletService.getEntitlements(),
+      subscriptionService.getPlans(),
       walletService.getTransactions({
         page,
         per_page: pagination.per_page,
@@ -193,8 +183,7 @@ const loadBillingData = async (page = pagination.current_page, showLoading = tru
 
     wallet.value = walletResponse?.data?.wallet || null
     pricing.value = pricingResponse?.data || []
-    currentSubscription.value = entitlementsResponse?.data?.current_subscription || null
-    entitlements.value = entitlementsResponse?.data?.entitlements || []
+    plans.value = plansResponse?.data || []
     normalizeTransactions(transactionsResponse)
   } catch (error) {
     notify.apiError(error, 'Không thể tải dữ liệu ví AI.')
@@ -305,45 +294,6 @@ onMounted(async () => {
       </article>
     </div>
 
-    <section class="rounded-[28px] border border-slate-200 bg-white/95 p-6 shadow-[0_22px_60px_rgba(148,163,184,0.12)] dark:border-slate-800 dark:bg-slate-900/85">
-      <div class="flex flex-col gap-3 border-b border-slate-200 pb-5 md:flex-row md:items-end md:justify-between dark:border-slate-800">
-        <div>
-          <h2 class="text-2xl font-bold text-slate-900 dark:text-white">Hạn mức AI hiện tại</h2>
-          <p class="mt-2 text-sm text-slate-600 dark:text-slate-400">
-            Theo dõi số lượt miễn phí, quota Pro và đơn giá ví của từng tính năng.
-          </p>
-        </div>
-        <p class="text-sm font-semibold text-emerald-700 dark:text-emerald-200">
-          {{ currentSubscription?.goi_dich_vu?.ten_goi || 'Đang dùng lớp Free mặc định' }}
-        </p>
-      </div>
-
-      <div class="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <article
-          v-for="item in entitlementCards"
-          :key="item.feature_code"
-          class="flex h-full flex-col rounded-2xl border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-700 dark:bg-slate-950/45"
-        >
-          <p class="min-h-[3.5rem] text-sm font-bold leading-7 text-slate-900 dark:text-white">{{ getEntitlementLabel(item) }}</p>
-
-          <div class="mt-4 space-y-2 text-sm">
-            <div class="flex items-center justify-between gap-3 rounded-xl bg-white/90 px-3 py-2 dark:bg-slate-900/80">
-              <span class="text-slate-500 dark:text-slate-400">Miễn phí còn</span>
-              <span class="font-bold text-slate-900 dark:text-white">{{ getFreeQuotaDisplayText(item) }}</span>
-            </div>
-            <div class="flex items-center justify-between gap-3 rounded-xl bg-white/90 px-3 py-2 dark:bg-slate-900/80">
-              <span class="text-slate-500 dark:text-slate-400">Pro còn</span>
-              <span class="font-bold text-slate-900 dark:text-white">{{ getSubscriptionQuotaDisplayText(item) }}</span>
-            </div>
-            <div class="flex items-center justify-between gap-3 rounded-xl bg-white/90 px-3 py-2 dark:bg-slate-900/80">
-              <span class="text-slate-500 dark:text-slate-400">Giá ví</span>
-              <span class="font-bold text-slate-900 dark:text-white">{{ getWalletPriceText(item) }}</span>
-            </div>
-          </div>
-        </article>
-      </div>
-    </section>
-
     <div class="grid gap-6 xl:grid-cols-[380px_minmax(0,1fr)]">
       <aside class="space-y-6">
         <section class="rounded-[28px] border border-slate-200 bg-white/95 p-6 shadow-[0_22px_60px_rgba(148,163,184,0.12)] dark:border-slate-800 dark:bg-slate-900/85">
@@ -437,37 +387,56 @@ onMounted(async () => {
         </section>
 
         <section class="rounded-[28px] border border-slate-200 bg-white/95 p-6 shadow-[0_22px_60px_rgba(148,163,184,0.12)] dark:border-slate-800 dark:bg-slate-900/85">
-          <div class="flex items-center justify-between gap-3">
-            <div>
-              <h2 class="text-2xl font-bold text-slate-900 dark:text-white">Bảng giá AI</h2>
-              <p class="mt-2 text-sm text-slate-600 dark:text-slate-400">Các tính năng đang bật pay-per-use.</p>
+          <h2 class="text-2xl font-bold text-slate-900 dark:text-white">Bảng giá AI</h2>
+          <p class="mt-2 text-sm text-slate-600 dark:text-slate-400">Gói Pro và các tính năng đang bật pay-per-use.</p>
+
+          <div v-if="proPlans.length" class="mt-5">
+            <p class="text-xs font-black uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Gói Pro</p>
+            <div class="mt-3 space-y-3">
+              <article
+                v-for="plan in proPlans"
+                :key="plan.id"
+                class="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-700 dark:bg-slate-950/50"
+              >
+                <div class="flex items-start justify-between gap-4">
+                  <div>
+                    <p class="text-sm font-bold text-slate-900 dark:text-white">{{ plan.ten_goi }}</p>
+                    <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">{{ plan.mo_ta || cycleLabel(plan.chu_ky) }}</p>
+                    <RouterLink
+                      :to="{ name: 'Plans' }"
+                      class="mt-3 inline-flex items-center gap-1 text-xs font-bold text-emerald-700 hover:underline dark:text-emerald-200"
+                    >
+                      Xem gói
+                      <span class="material-symbols-outlined text-[16px]">arrow_forward</span>
+                    </RouterLink>
+                  </div>
+                  <span class="rounded-2xl bg-emerald-500/10 px-3 py-2 text-sm font-black text-emerald-700 dark:text-emerald-200">
+                    {{ formatCurrency(plan.gia) }}
+                  </span>
+                </div>
+              </article>
             </div>
-            <RouterLink
-              :to="{ name: 'AICenterChatbot' }"
-              class="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-            >
-              AI Center
-            </RouterLink>
           </div>
 
-          <div class="mt-5 space-y-3">
+          <div class="mt-6">
+            <p class="text-xs font-black uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">AI Pay-Per-Use</p>
+            <div class="mt-3 space-y-3">
             <article
               v-for="item in pricedFeatures"
               :key="item.id"
-              class="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-700 dark:bg-slate-950/50"
+              class="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-700 dark:bg-slate-950/50"
             >
-              <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div class="min-w-0">
+              <div class="flex items-start justify-between gap-4">
+                <div>
                   <p class="text-sm font-bold text-slate-900 dark:text-white">{{ item.ten_hien_thi }}</p>
+                  <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">{{ getFeatureDescription(item.feature_code) }}</p>
                 </div>
-                <div class="inline-flex shrink-0 self-start rounded-2xl bg-blue-500/10 px-3 py-2 text-blue-700 dark:text-blue-200">
-                  <div class="text-right">
-                    <p class="text-lg font-black leading-none">{{ formatCurrency(item.don_gia) }}</p>
-                    <p class="mt-1 text-[11px] font-bold uppercase tracking-[0.18em]">/{{ item.don_vi_tinh }}</p>
-                  </div>
-                </div>
+                <span class="rounded-2xl bg-blue-500/10 px-3 py-2 text-sm font-black text-blue-700 dark:text-blue-200">
+                  {{ formatCurrency(item.don_gia) }}
+                </span>
               </div>
             </article>
+            </div>
           </div>
         </section>
       </aside>

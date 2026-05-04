@@ -318,7 +318,7 @@ onUnmounted(() => {
               <p class="text-sm font-bold uppercase tracking-[0.35em] text-white/70">Gợi ý hành động</p>
               <h3 class="mt-4 text-2xl font-black">Khám phá thêm cơ hội phù hợp</h3>
               <p class="mt-3 text-sm leading-7 text-white/80">
-                Tìm thêm việc làm cùng lĩnh vực hoặc sử dụng semantic search để mô tả chính xác vị trí bạn đang hướng tới.
+                Tìm thêm việc làm của công ty hoặc lọc theo kỹ năng, ngành nghề và địa điểm để chọn vị trí phù hợp hơn.
               </p>
               <div class="mt-6 flex flex-wrap gap-3">
                 <RouterLink

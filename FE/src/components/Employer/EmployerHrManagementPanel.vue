@@ -837,29 +837,6 @@ onMounted(async () => {
     </div>
   </div>
 
-  <div class="mb-8 grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-5">
-    <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-      <p class="text-sm font-medium text-slate-500">Tổng HR</p>
-      <p class="mt-3 text-2xl font-black text-slate-900 dark:text-white">{{ hrStats.total }}</p>
-    </div>
-    <div class="rounded-xl border border-amber-200 bg-white p-6 shadow-sm dark:border-amber-900/50 dark:bg-slate-900">
-      <p class="text-sm font-medium text-slate-500">HR được phân quyền</p>
-      <p class="mt-3 text-2xl font-black text-amber-600">{{ hrStats.assignableHr }}</p>
-    </div>
-    <div class="rounded-xl border border-violet-200 bg-white p-6 shadow-sm dark:border-violet-900/50 dark:bg-slate-900">
-      <p class="text-sm font-medium text-slate-500">Tổng quyền đã cấp</p>
-      <p class="mt-3 text-2xl font-black text-violet-600">{{ hrStats.grantedPermissions }}</p>
-    </div>
-    <div class="rounded-xl border border-blue-200 bg-white p-6 shadow-sm dark:border-blue-900/50 dark:bg-slate-900">
-      <p class="text-sm font-medium text-slate-500">HR bị khóa</p>
-      <p class="mt-3 text-2xl font-black text-[#2463eb]">{{ hrStats.lockedHr }}</p>
-    </div>
-    <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-      <p class="text-sm font-medium text-slate-500">Owner</p>
-      <p class="mt-3 text-2xl font-black text-slate-900 dark:text-white">{{ hrStats.owners }}</p>
-    </div>
-  </div>
-
   <div class="mb-6 flex flex-wrap gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-900">
     <button
       :class="[

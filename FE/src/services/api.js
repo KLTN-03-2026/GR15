@@ -602,13 +602,6 @@ export const companyService = {
     })
 }
 
-export const adminMarketService = {
-  getDashboard: () =>
-    apiCall('/admin/thi-truong/dashboard', {
-      method: 'GET',
-    }),
-}
-
 export const adminBillingService = {
   getOverview: () =>
     apiCall('/admin/billing/overview', {
@@ -1579,11 +1572,6 @@ export const jobService = {
       method: 'GET'
     }),
 
-  semanticSearch: (q, top_k = 8) =>
-    apiCall(`/tin-tuyen-dungs/semantic-search?q=${encodeURIComponent(q)}&top_k=${top_k}`, {
-      method: 'GET',
-    }),
-
   getIndustries: (options = {}) => {
     const params = new URLSearchParams()
 
@@ -1748,11 +1736,6 @@ export const profileService = {
       method: 'POST'
     }),
 
-  tailorProfileForJob: (id, jobId, data = {}) =>
-    apiCall(`/ung-vien/ho-sos/${id}/tailor/${jobId}`, {
-      method: 'POST',
-      body: JSON.stringify(data),
-    }),
 }
 
 export const walletService = {

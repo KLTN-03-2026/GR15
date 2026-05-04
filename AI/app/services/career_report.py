@@ -486,7 +486,7 @@ def _build_report_outline(reasoning_context: dict) -> dict:
             "confidence_basis": [
                 "Kỹ năng đã parse từ CV",
                 "Nhóm năng lực nổi bật theo skill catalog",
-                "Top job matching và kỹ năng còn thiếu",
+                "Top công việc đối sánh và kỹ năng còn thiếu",
             ],
         },
         "career_paths": career_paths,
@@ -555,7 +555,7 @@ def _build_report_text(*, reasoning_context: dict, report_outline: dict) -> str:
             top_match_lines.append(f"- {match['job_title']} ({match['score']:.2f}/100)")
         top_match_block = "\n".join(top_match_lines)
     else:
-        top_match_block = "Hiện chưa có đủ dữ liệu matching để đối chiếu với nhiều vị trí đang tuyển."
+        top_match_block = "Hiện chưa có đủ dữ liệu đối sánh để đối chiếu với nhiều vị trí đang tuyển."
 
     gaps = skills.get("suggested_skill_gaps") or []
     if gaps:
@@ -572,7 +572,7 @@ def _build_report_text(*, reasoning_context: dict, report_outline: dict) -> str:
     )
 
     closing = (
-        "Khuyến nghị chung: nên dùng báo cáo này như một bản định hướng có căn cứ từ dữ liệu CV và matching, "
+        "Khuyến nghị chung: nên dùng báo cáo này như một bản định hướng có căn cứ từ dữ liệu CV và kết quả đối sánh, "
         "đồng thời cập nhật CV sau mỗi giai đoạn học tập/dự án để hệ thống tái đánh giá chính xác hơn."
     )
 
@@ -590,7 +590,7 @@ def _build_report_text(*, reasoning_context: dict, report_outline: dict) -> str:
 
 def _path_rationale(role: str, index: int, matches: list[dict], strengths: list[dict]) -> str:
     if index == 0 and matches:
-        return f"Đây là hướng ưu tiên vì có job matching cao nhất và bám sát dữ liệu tuyển dụng hiện có ({matches[0].get('score', 0):.2f}/100)."
+        return f"Đây là hướng ưu tiên vì có công việc đối sánh cao nhất và bám sát dữ liệu tuyển dụng hiện có ({matches[0].get('score', 0):.2f}/100)."
     if strengths:
         return "Hướng này phù hợp với nhóm năng lực nổi bật: " + ", ".join(item["label"] for item in strengths[:2]) + "."
     return "Hướng này nên được xem như lựa chọn tham khảo khi ứng viên bổ sung thêm dữ liệu kỹ năng và kinh nghiệm."
@@ -602,20 +602,20 @@ def _roadmap_items(candidate_level: str, gaps: list[str], stage: int) -> list[st
 
     if stage == 0:
         return [
-            f"Đánh giá lại CV và chuẩn hóa mô tả kinh nghiệm theo hướng {candidate_level}.",
+            f"Đánh giá lại CV và chuẩn hóa mô tả kinh nghiệm theo cấp độ {candidate_level}.",
             f"Học/củng cố nền tảng {primary_gap}.",
             "Chọn 2-3 JD mục tiêu để đối chiếu yêu cầu kỹ năng.",
         ]
     if stage == 1:
         return [
-            f"Xây một mini project hoặc case study thể hiện {primary_gap}.",
-            f"Bổ sung kỹ năng {secondary_gap} vào portfolio nếu phù hợp.",
+            f"Xây một dự án nhỏ hoặc bài phân tích tình huống thể hiện {primary_gap}.",
+            f"Bổ sung kỹ năng {secondary_gap} vào hồ sơ dự án nếu phù hợp.",
             "Cập nhật CV bằng số liệu, phạm vi công việc và kết quả đạt được.",
         ]
     return [
-        "Ứng tuyển thử vào nhóm vị trí có điểm matching cao nhất.",
+        "Ứng tuyển thử vào nhóm vị trí có điểm đối sánh cao nhất.",
         "Luyện phỏng vấn theo các kỹ năng còn thiếu xuất hiện lặp lại trong JD.",
-        "Đo lại matching sau khi cập nhật CV để kiểm tra mức cải thiện.",
+        "Đo lại mức đối sánh sau khi cập nhật CV để kiểm tra mức cải thiện.",
     ]
 
 
@@ -623,7 +623,7 @@ def _portfolio_suggestions(primary_role: str | None, gaps: list[str]) -> list[st
     role = primary_role or "hướng nghề mục tiêu"
     suggestions = [
         f"Xây một dự án nhỏ mô phỏng công việc thực tế của {role}.",
-        "Viết README thể hiện bối cảnh, cách triển khai, kết quả và bài học.",
+        "Viết tài liệu giới thiệu dự án thể hiện bối cảnh, cách triển khai, kết quả và bài học.",
     ]
     if gaps:
         suggestions.append("Ưu tiên đưa vào dự án các kỹ năng: " + ", ".join(gaps[:3]) + ".")
@@ -648,6 +648,7 @@ def _generate_llm_report_text(reasoning_context: dict, report_outline: dict) -> 
 def _build_llm_report_prompt(reasoning_context: dict, report_outline: dict) -> str:
     return """
 Viết Career Report bằng tiếng Việt, ngắn gọn, có căn cứ từ JSON.
+Vai trò: hệ thống tư vấn nghề nghiệp đang đưa ra nhận định cho người dùng.
 
 Quy tắc bắt buộc:
 - KHÔNG viết tiêu đề "Báo cáo học thuật", "Mục lục", "Giới thiệu thông tin cá nhân", "Phân tích dữ liệu".
@@ -660,7 +661,12 @@ Lý do đề xuất
 Lộ trình 30/60/90 ngày
 Chiến lược cập nhật CV và ứng tuyển
 - Không dùng markdown đậm/nghiêng, không dùng ký tự # hoặc code block.
-- Mỗi mục 2-5 gạch đầu dòng ngắn, thực tế. Tổng độ dài khoảng 450-700 từ.
+- Không dùng cụm tiếng Anh phổ thông trong nội dung tư vấn. Bắt buộc Việt hóa: "Next 30 days" thành "30 ngày đầu", "Next 60 days" thành "60 ngày", "Next 90 days" thành "90 ngày", "mini project" thành "dự án nhỏ", "case study" thành "bài phân tích tình huống", "portfolio" thành "hồ sơ dự án", "matching" thành "đối sánh", "job" thành "công việc/vị trí", "apply" thành "ứng tuyển".
+- Chỉ giữ tiếng Anh khi đó là tên riêng công nghệ, tên vị trí gốc, viết tắt kỹ thuật hoặc tên framework như iOS, Swift, SwiftUI, Firebase, REST API, Docker.
+- Không xưng "tôi", "mình" như thể AI là ứng viên. Khi nói về hồ sơ, dùng "ứng viên", "hồ sơ" hoặc "bạn".
+- Không viết các câu như "Tôi đã phân tích", "Tôi xác định", "Tôi khuyến nghị".
+- Mỗi mục 2-4 gạch đầu dòng ngắn, thực tế. Tổng độ dài khoảng 320-520 từ.
+- Dùng cùng thứ tự mục, cùng phong cách câu, không thêm phần mới để câu trả lời ổn định giữa các lần sinh.
 - Không bịa dữ liệu ngoài JSON; nếu thiếu dữ liệu thì nói ngắn gọn là dữ liệu còn hạn chế.
 
 JSON:
@@ -727,7 +733,12 @@ def _generate_openai_report(prompt: str) -> str:
                 "content": [
                     {
                         "type": "input_text",
-                        "text": "Bạn viết báo cáo hướng nghiệp học thuật, cá nhân hóa, bám sát evidence, bằng tiếng Việt.",
+                        "text": (
+                            "Bạn viết báo cáo hướng nghiệp ngắn gọn bằng tiếng Việt. "
+                            "Chỉ bám sát evidence, không tự xưng 'tôi', không lan man, không thêm mục ngoài yêu cầu. "
+                            "Giọng văn là hệ thống tư vấn nói với người dùng, dùng 'ứng viên', 'hồ sơ' hoặc 'bạn' khi cần. "
+                            "Không dùng cụm tiếng Anh phổ thông trong phần tư vấn; chỉ giữ tên riêng công nghệ hoặc tên vị trí gốc."
+                        ),
                     }
                 ],
             },
@@ -737,6 +748,7 @@ def _generate_openai_report(prompt: str) -> str:
             },
         ],
         "max_output_tokens": settings.career_report_max_tokens,
+        "temperature": 0,
     }
 
     request = Request(
@@ -769,7 +781,8 @@ def _generate_ollama_report(prompt: str) -> str:
         "stream": False,
         "keep_alive": settings.ollama_keep_alive,
         "options": {
-            "temperature": 0.15,
+            "temperature": 0,
+            "top_p": 0.8,
             "num_predict": settings.career_report_max_tokens,
             "num_ctx": max(settings.ollama_num_ctx, 3072),
             "num_thread": settings.ollama_num_thread,
@@ -855,12 +868,55 @@ def _finalize_llm_report_text(text: str) -> str:
         for line in cleaned.splitlines()
         if line.strip() and not line.strip().lower().startswith(forbidden_prefixes)
     ]
-    cleaned = "\n\n".join(lines)
+    cleaned = "\n\n".join(_normalize_report_voice(line) for line in lines)
 
     if not cleaned.lower().startswith("đề xuất"):
         cleaned = "Đề xuất ngành nghề chính\n\n" + cleaned
 
     return cleaned
+
+
+def _normalize_report_voice(text: str) -> str:
+    replacements = {
+        "Tôi đã phân tích": "Hệ thống đã phân tích",
+        "Tôi xác định": "Hệ thống xác định",
+        "Tôi khuyến nghị": "Khuyến nghị",
+        "tôi đã phân tích": "hệ thống đã phân tích",
+        "tôi xác định": "hệ thống xác định",
+        "tôi khuyến nghị": "khuyến nghị",
+        "của mình": "của ứng viên",
+        "của tôi": "của ứng viên",
+        "tôi có": "ứng viên có",
+        "tôi sẽ": "ứng viên nên",
+        "Tôi có": "Ứng viên có",
+        "Tôi sẽ": "Ứng viên nên",
+        "Next 30 days": "30 ngày đầu",
+        "Next 60 days": "60 ngày",
+        "Next 90 days": "90 ngày",
+        "next 30 days": "30 ngày đầu",
+        "next 60 days": "60 ngày",
+        "next 90 days": "90 ngày",
+        "mini project": "dự án nhỏ",
+        "Mini project": "Dự án nhỏ",
+        "case study": "bài phân tích tình huống",
+        "Case study": "Bài phân tích tình huống",
+        "portfolio": "hồ sơ dự án",
+        "Portfolio": "Hồ sơ dự án",
+        "matching": "đối sánh",
+        "Matching": "Đối sánh",
+        "apply": "ứng tuyển",
+        "Apply": "Ứng tuyển",
+        "job mục tiêu": "vị trí mục tiêu",
+        "job phù hợp": "vị trí phù hợp",
+        "job ": "công việc ",
+        "Job ": "Công việc ",
+        "skill gap": "khoảng cách kỹ năng",
+        "Skill gap": "Khoảng cách kỹ năng",
+    }
+    output = text
+    for source, target in replacements.items():
+        output = output.replace(source, target)
+    return output
 
 
 def _resolve_candidate_level(cv_profile: dict) -> str:

@@ -273,8 +273,8 @@ it('lets admin manage billing plans prices and list operational records', functi
 
     $priceResponse = $this->actingAs($admin, 'sanctum')
         ->postJson('/api/v1/admin/billing/prices', [
-            'feature_code' => 'cv_tailoring',
-            'ten_hien_thi' => 'One-click CV Tailoring',
+            'feature_code' => 'cover_letter_generation',
+            'ten_hien_thi' => 'Cover Letter AI',
             'don_gia' => 4000,
             'don_vi_tinh' => 'request',
             'trang_thai' => BangGiaTinhNangAi::TRANG_THAI_HOAT_DONG,
@@ -282,7 +282,7 @@ it('lets admin manage billing plans prices and list operational records', functi
 
     $priceResponse
         ->assertCreated()
-        ->assertJsonPath('data.feature_code', 'cv_tailoring');
+        ->assertJsonPath('data.feature_code', 'cover_letter_generation');
 
     $this->actingAs($admin, 'sanctum')
         ->getJson('/api/v1/admin/billing/payments?q=ADMIN-LIST')

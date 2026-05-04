@@ -37,8 +37,6 @@ const featureLabels = {
   cv_jd_matching: 'Matching CV-JD',
   cover_letter: 'Cover letter',
   career_report: 'Career report',
-  cv_tailoring: 'CV Tailoring',
-  semantic_job_search: 'Semantic Search',
   career_chat: 'Career Chat',
   career_chat_stream: 'Career Chat Stream',
   mock_interview_question: 'Mock Interview Question',
@@ -259,100 +257,6 @@ onMounted(async () => {
       </article>
     </div>
 
-    <div class="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.65fr)_420px]">
-      <section class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <div class="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h3 class="text-lg font-bold text-slate-950 dark:text-white">Xu hướng request</h3>
-            <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Tổng request, lỗi và fallback theo ngày.</p>
-          </div>
-          <span class="inline-flex w-fit items-center gap-2 rounded-full px-3 py-1 text-xs font-bold" :class="issueCount ? 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300' : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300'">
-            <span class="material-symbols-outlined text-[16px]">{{ issueCount ? 'warning' : 'check_circle' }}</span>
-            {{ issueCount ? `${formatNumber(issueCount)} issue` : 'Ổn định' }}
-          </span>
-        </div>
-
-        <div class="flex h-[300px] items-end gap-2 overflow-x-auto pb-2">
-          <div v-for="item in dailyTrend" :key="item.date" class="flex h-full min-w-10 flex-1 flex-col items-center justify-end gap-2">
-            <div class="flex w-full flex-1 items-end rounded-t-lg bg-slate-100 dark:bg-slate-800">
-              <div class="relative w-full rounded-t-lg bg-[#2463eb] transition-all hover:bg-blue-700" :style="{ height: barHeight(item) }">
-                <div v-if="item.error_count || item.fallback_count" class="absolute bottom-0 left-0 right-0 rounded-t-lg bg-amber-400" :style="{ height: `${Math.min(100, Math.max(12, ((item.error_count + item.fallback_count) / Math.max(item.total, 1)) * 100))}%` }"></div>
-              </div>
-            </div>
-            <div class="text-center">
-              <p class="text-xs font-bold text-slate-900 dark:text-white">{{ item.total }}</p>
-              <p class="mt-1 text-[11px] text-slate-500 dark:text-slate-400">{{ item.label }}</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <div class="mb-5 flex items-center justify-between gap-3">
-          <h3 class="text-lg font-bold text-slate-950 dark:text-white">Top tính năng</h3>
-          <span class="text-xs font-bold uppercase text-slate-400">Theo request</span>
-        </div>
-        <div class="space-y-4">
-          <div v-for="feature in featureStats" :key="feature.feature" class="space-y-2">
-            <div class="flex items-center justify-between gap-3 text-sm">
-              <span class="min-w-0 truncate font-semibold text-slate-800 dark:text-slate-100">{{ featureLabel(feature.feature) }}</span>
-              <span class="shrink-0 text-slate-500 dark:text-slate-400">{{ formatNumber(feature.total) }}</span>
-            </div>
-            <div class="h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
-              <div class="h-full rounded-full bg-[#2463eb]" :style="{ width: `${Math.min(100, Math.max(8, feature.success_rate || 0))}%` }"></div>
-            </div>
-            <div class="flex items-center justify-between text-[11px] font-medium text-slate-500 dark:text-slate-400">
-              <span>{{ feature.success_rate }}% success</span>
-              <span>{{ formatDuration(feature.avg_duration_ms) }}</span>
-            </div>
-          </div>
-          <p v-if="!featureStats.length && !loading" class="rounded-xl bg-slate-50 p-4 text-sm text-slate-500 dark:bg-slate-950 dark:text-slate-400">Chưa có usage log trong kỳ này.</p>
-        </div>
-      </section>
-    </div>
-
-    <div class="grid grid-cols-1 gap-6 xl:grid-cols-2">
-      <section class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <div class="mb-5 flex items-center justify-between gap-3">
-          <h3 class="text-lg font-bold text-slate-950 dark:text-white">Request chậm nhất</h3>
-          <span class="material-symbols-outlined text-slate-400">timer</span>
-        </div>
-        <div class="space-y-3">
-          <div v-for="log in slowestRequests" :key="`slow-${log.id}`" class="flex items-center justify-between gap-4 rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950">
-            <div class="min-w-0">
-              <p class="truncate text-sm font-bold text-slate-900 dark:text-white">{{ featureLabel(log.feature) }}</p>
-              <p class="mt-1 truncate text-xs text-slate-500 dark:text-slate-400">{{ log.user?.email || log.company?.ten_cong_ty || log.endpoint || 'System' }}</p>
-            </div>
-            <span class="shrink-0 rounded-full bg-cyan-50 px-3 py-1 text-xs font-bold text-cyan-700 dark:bg-cyan-500/10 dark:text-cyan-300">{{ formatDuration(log.duration_ms) }}</span>
-          </div>
-          <p v-if="!slowestRequests.length && !loading" class="text-sm text-slate-500 dark:text-slate-400">Chưa có request có duration để hiển thị.</p>
-        </div>
-      </section>
-
-      <section class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <div class="mb-5 flex items-center justify-between gap-3">
-          <h3 class="text-lg font-bold text-slate-950 dark:text-white">Lỗi & fallback gần đây</h3>
-          <span class="material-symbols-outlined text-slate-400">running_with_errors</span>
-        </div>
-        <div class="space-y-3">
-          <div v-for="log in recentIssues" :key="`issue-${log.id}`" class="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950">
-            <div class="flex items-start justify-between gap-3">
-              <div class="min-w-0">
-                <p class="truncate text-sm font-bold text-slate-900 dark:text-white">{{ featureLabel(log.feature) }}</p>
-                <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">{{ formatDateTime(log.created_at) }}</p>
-              </div>
-              <span class="inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold" :class="logStatusMeta(log).classes">
-                <span class="h-1.5 w-1.5 rounded-full" :class="logStatusMeta(log).dot"></span>
-                {{ logStatusMeta(log).label }}
-              </span>
-            </div>
-            <p v-if="log.error_message" class="mt-2 line-clamp-2 text-xs leading-5 text-slate-500 dark:text-slate-400">{{ log.error_message }}</p>
-          </div>
-          <p v-if="!recentIssues.length && !loading" class="text-sm text-slate-500 dark:text-slate-400">Chưa có lỗi hoặc fallback trong kỳ này.</p>
-        </div>
-      </section>
-    </div>
-
     <section class="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
       <div class="border-b border-slate-200 p-5 dark:border-slate-800">
         <div class="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
@@ -452,5 +356,100 @@ onMounted(async () => {
         </div>
       </div>
     </section>
+
+    <div class="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.65fr)_420px]">
+      <section class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div class="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 class="text-lg font-bold text-slate-950 dark:text-white">Xu hướng request</h3>
+            <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Tổng request, lỗi và fallback theo ngày.</p>
+          </div>
+          <span class="inline-flex w-fit items-center gap-2 rounded-full px-3 py-1 text-xs font-bold" :class="issueCount ? 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300' : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300'">
+            <span class="material-symbols-outlined text-[16px]">{{ issueCount ? 'warning' : 'check_circle' }}</span>
+            {{ issueCount ? `${formatNumber(issueCount)} issue` : 'Ổn định' }}
+          </span>
+        </div>
+
+        <div class="flex h-[300px] items-end gap-2 overflow-x-auto pb-2">
+          <div v-for="item in dailyTrend" :key="item.date" class="flex h-full min-w-10 flex-1 flex-col items-center justify-end gap-2">
+            <div class="flex w-full flex-1 items-end rounded-t-lg bg-slate-100 dark:bg-slate-800">
+              <div class="relative w-full rounded-t-lg bg-[#2463eb] transition-all hover:bg-blue-700" :style="{ height: barHeight(item) }">
+                <div v-if="item.error_count || item.fallback_count" class="absolute bottom-0 left-0 right-0 rounded-t-lg bg-amber-400" :style="{ height: `${Math.min(100, Math.max(12, ((item.error_count + item.fallback_count) / Math.max(item.total, 1)) * 100))}%` }"></div>
+              </div>
+            </div>
+            <div class="text-center">
+              <p class="text-xs font-bold text-slate-900 dark:text-white">{{ item.total }}</p>
+              <p class="mt-1 text-[11px] text-slate-500 dark:text-slate-400">{{ item.label }}</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div class="mb-5 flex items-center justify-between gap-3">
+          <h3 class="text-lg font-bold text-slate-950 dark:text-white">Top tính năng</h3>
+          <span class="text-xs font-bold uppercase text-slate-400">Theo request</span>
+        </div>
+        <div class="space-y-4">
+          <div v-for="feature in featureStats" :key="feature.feature" class="space-y-2">
+            <div class="flex items-center justify-between gap-3 text-sm">
+              <span class="min-w-0 truncate font-semibold text-slate-800 dark:text-slate-100">{{ featureLabel(feature.feature) }}</span>
+              <span class="shrink-0 text-slate-500 dark:text-slate-400">{{ formatNumber(feature.total) }}</span>
+            </div>
+            <div class="h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+              <div class="h-full rounded-full bg-[#2463eb]" :style="{ width: `${Math.min(100, Math.max(8, feature.success_rate || 0))}%` }"></div>
+            </div>
+            <div class="flex items-center justify-between text-[11px] font-medium text-slate-500 dark:text-slate-400">
+              <span>{{ feature.success_rate }}% success</span>
+              <span>{{ formatDuration(feature.avg_duration_ms) }}</span>
+            </div>
+          </div>
+          <p v-if="!featureStats.length && !loading" class="rounded-xl bg-slate-50 p-4 text-sm text-slate-500 dark:bg-slate-950 dark:text-slate-400">Chưa có usage log trong kỳ này.</p>
+        </div>
+      </section>
+    </div>
+
+    <div class="grid grid-cols-1 gap-6 xl:grid-cols-2">
+      <section class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div class="mb-5 flex items-center justify-between gap-3">
+          <h3 class="text-lg font-bold text-slate-950 dark:text-white">Request chậm nhất</h3>
+          <span class="material-symbols-outlined text-slate-400">timer</span>
+        </div>
+        <div class="space-y-3">
+          <div v-for="log in slowestRequests" :key="`slow-${log.id}`" class="flex items-center justify-between gap-4 rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950">
+            <div class="min-w-0">
+              <p class="truncate text-sm font-bold text-slate-900 dark:text-white">{{ featureLabel(log.feature) }}</p>
+              <p class="mt-1 truncate text-xs text-slate-500 dark:text-slate-400">{{ log.user?.email || log.company?.ten_cong_ty || log.endpoint || 'System' }}</p>
+            </div>
+            <span class="shrink-0 rounded-full bg-cyan-50 px-3 py-1 text-xs font-bold text-cyan-700 dark:bg-cyan-500/10 dark:text-cyan-300">{{ formatDuration(log.duration_ms) }}</span>
+          </div>
+          <p v-if="!slowestRequests.length && !loading" class="text-sm text-slate-500 dark:text-slate-400">Chưa có request có duration để hiển thị.</p>
+        </div>
+      </section>
+
+      <section class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div class="mb-5 flex items-center justify-between gap-3">
+          <h3 class="text-lg font-bold text-slate-950 dark:text-white">Lỗi & fallback gần đây</h3>
+          <span class="material-symbols-outlined text-slate-400">running_with_errors</span>
+        </div>
+        <div class="space-y-3">
+          <div v-for="log in recentIssues" :key="`issue-${log.id}`" class="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950">
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <p class="truncate text-sm font-bold text-slate-900 dark:text-white">{{ featureLabel(log.feature) }}</p>
+                <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">{{ formatDateTime(log.created_at) }}</p>
+              </div>
+              <span class="inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold" :class="logStatusMeta(log).classes">
+                <span class="h-1.5 w-1.5 rounded-full" :class="logStatusMeta(log).dot"></span>
+                {{ logStatusMeta(log).label }}
+              </span>
+            </div>
+            <p v-if="log.error_message" class="mt-2 line-clamp-2 text-xs leading-5 text-slate-500 dark:text-slate-400">{{ log.error_message }}</p>
+          </div>
+          <p v-if="!recentIssues.length && !loading" class="text-sm text-slate-500 dark:text-slate-400">Chưa có lỗi hoặc fallback trong kỳ này.</p>
+        </div>
+      </section>
+    </div>
+
   </div>
 </template>

@@ -1,12 +1,10 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
-import { RouterLink, useRoute, useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { employerBillingService } from '@/services/api'
 import { useNotify } from '@/composables/useNotify'
 import {
   getBillingFeatureLabel,
-  getEntitlementLabel,
-  sortEntitlementsByFeature,
 } from '@/utils/billing'
 
 const notify = useNotify()
@@ -20,7 +18,6 @@ const selectedAmount = ref(100000)
 const selectedGateway = ref('momo')
 const wallet = ref(null)
 const pricing = ref([])
-const entitlements = ref([])
 const transactions = ref([])
 const paymentDraft = ref(null)
 
@@ -53,7 +50,6 @@ const walletStats = computed(() => ({
   available: Number(wallet.value?.so_du_kha_dung || 0),
 }))
 
-const entitlementCards = computed(() => sortEntitlementsByFeature(entitlements.value))
 const featuredPricing = computed(() =>
   pricing.value.filter((item) => String(item.feature_code || '').startsWith('employer_featured_job_'))
 )
@@ -77,22 +73,6 @@ const getGatewayLabel = (gateway) => {
   if (gateway === 'vnpay') return 'VNPay'
   if (gateway === 'momo') return 'MoMo'
   return 'cổng thanh toán'
-}
-
-const getWalletPriceText = (item) => {
-  if (item?.wallet_price === null || item?.wallet_price === undefined) return 'Chưa cấu hình'
-  return `${formatCurrency(item.wallet_price)}/${item.wallet_unit || 'lượt'}`
-}
-
-const getQuotaText = (item) => {
-  if (item?.subscription_is_unlimited) return 'Không giới hạn'
-  if (Number(item?.subscription_quota_total || 0) > 0) {
-    return `${Number(item?.subscription_quota_remaining || 0)}/${Number(item?.subscription_quota_total || 0)} lượt gói`
-  }
-  if (Number(item?.free_quota_total || 0) > 0) {
-    return `${Number(item?.free_quota_remaining || 0)}/${Number(item?.free_quota_total || 0)} lượt miễn phí`
-  }
-  return 'Dùng ví AI'
 }
 
 const getFeatureDescription = (featureCode) => {
@@ -168,10 +148,9 @@ const loadBillingData = async (page = pagination.current_page, showLoading = tru
   }
 
   try {
-    const [walletResponse, pricingResponse, entitlementsResponse, transactionsResponse] = await Promise.all([
+    const [walletResponse, pricingResponse, transactionsResponse] = await Promise.all([
       employerBillingService.getWallet(),
       employerBillingService.getPricing(),
-      employerBillingService.getEntitlements(),
       employerBillingService.getTransactions({
         page,
         per_page: pagination.per_page,
@@ -180,7 +159,6 @@ const loadBillingData = async (page = pagination.current_page, showLoading = tru
 
     wallet.value = walletResponse?.data?.wallet || null
     pricing.value = pricingResponse?.data || []
-    entitlements.value = entitlementsResponse?.data?.entitlements || []
     normalizeTransactions(transactionsResponse)
   } catch (error) {
     notify.apiError(error, 'Không thể tải dữ liệu ví employer.')
@@ -308,46 +286,6 @@ onMounted(async () => {
         </h2>
       </article>
     </div>
-
-    <section class="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-      <div class="flex flex-col gap-3 border-b border-slate-200 pb-5 md:flex-row md:items-end md:justify-between">
-        <div>
-          <h2 class="text-2xl font-bold text-slate-900">Giá và hạn mức hiện tại</h2>
-          <p class="mt-2 text-sm text-slate-600">
-            Các tính năng employer đang bật theo mô hình pay-per-use từ ví AI.
-          </p>
-        </div>
-        <RouterLink
-          to="/employer/jobs"
-          class="inline-flex items-center gap-2 text-sm font-bold text-[#2463eb] hover:underline"
-        >
-          Quay lại quản lý tin
-          <span class="material-symbols-outlined text-[18px]">arrow_forward</span>
-        </RouterLink>
-      </div>
-
-      <div class="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        <article
-          v-for="item in entitlementCards"
-          :key="item.feature_code"
-          class="flex h-full flex-col rounded-2xl border border-slate-200 bg-slate-50 p-4"
-        >
-          <p class="text-sm font-bold leading-7 text-slate-900">{{ getEntitlementLabel(item) }}</p>
-          <p class="mt-2 text-sm leading-6 text-slate-600">{{ getFeatureDescription(item.feature_code) }}</p>
-
-          <div class="mt-4 space-y-2 text-sm">
-            <div class="flex items-center justify-between rounded-xl bg-white px-3 py-2">
-              <span class="text-slate-500">Quota</span>
-              <span class="font-bold text-slate-900">{{ getQuotaText(item) }}</span>
-            </div>
-            <div class="flex items-center justify-between rounded-xl bg-white px-3 py-2">
-              <span class="text-slate-500">Giá ví</span>
-              <span class="font-bold text-slate-900">{{ getWalletPriceText(item) }}</span>
-            </div>
-          </div>
-        </article>
-      </div>
-    </section>
 
     <div class="grid gap-6 xl:grid-cols-[380px_minmax(0,1fr)]">
       <aside class="space-y-6">

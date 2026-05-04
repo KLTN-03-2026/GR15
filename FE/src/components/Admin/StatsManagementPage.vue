@@ -1,7 +1,6 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import {
-  adminMarketService,
   adminStatsService,
 } from '@/services/api'
 
@@ -19,7 +18,6 @@ const applicationBreakdown = reactive({
   tu_choi: 0,
 })
 
-const marketOverview = ref(null)
 const topSavedJobs = ref([])
 const matchingStats = ref([])
 const careerStats = ref([])
@@ -41,9 +39,6 @@ const applicationBars = computed(() => {
 
 const topMatchingModels = computed(() => matchingStats.value.slice(0, 5))
 const topCareerSuggestions = computed(() => careerStats.value.slice(0, 6))
-const topMarketSkills = computed(() => marketOverview.value?.top_skills?.slice(0, 6) || [])
-const topCategories = computed(() => marketOverview.value?.top_categories?.slice(0, 5) || [])
-const monthlyTrend = computed(() => marketOverview.value?.monthly_job_trend || [])
 const totalAiMatches = computed(() => matchingStats.value.reduce((total, item) => total + Number(item.total_matches || 0), 0))
 const averageAiScore = computed(() => {
   const totalMatches = totalAiMatches.value
@@ -56,11 +51,6 @@ const averageAiScore = computed(() => {
   return weightedScore / totalMatches
 })
 const totalCareerSuggestions = computed(() => careerStats.value.reduce((total, item) => total + Number(item.total_suggestions || 0), 0))
-
-const formatCurrency = (value) => {
-  if (value === null || value === undefined || value === '') return 'N/A'
-  return new Intl.NumberFormat('vi-VN').format(Number(value)) + ' đ'
-}
 
 const formatDecimal = (value) => {
   if (value === null || value === undefined || value === '') return '0.0'
@@ -113,13 +103,11 @@ const loadStats = async () => {
   try {
     const [
       applicationStatsResponse,
-      marketDashboardResponse,
       savedJobResponse,
       matchingStatsResponse,
       careerStatsResponse,
     ] = await Promise.all([
       adminStatsService.getApplicationStats(),
-      adminMarketService.getDashboard(),
       adminStatsService.getSavedJobTop(),
       adminStatsService.getMatchingStats(),
       adminStatsService.getCareerStats(),
@@ -140,7 +128,6 @@ const loadStats = async () => {
     applicationBreakdown.trung_tuyen = hiredCount
     applicationBreakdown.tu_choi = applicationStats.chi_tiet?.tu_choi || 0
 
-    marketOverview.value = marketDashboardResponse?.data || marketDashboardResponse || {}
     topSavedJobs.value = savedJobResponse?.data || []
     matchingStats.value = matchingStatsResponse?.data || []
     careerStats.value = careerStatsResponse?.data || []
@@ -165,7 +152,7 @@ onMounted(() => {
     <p class="text-xs font-bold uppercase tracking-[0.24em] text-[#2463eb]">Báo cáo chuyên sâu</p>
     <h1 class="text-2xl font-bold">Báo cáo & phân tích hệ thống</h1>
     <p class="text-slate-500 dark:text-slate-400">
-      Tập trung vào hiệu quả ứng tuyển, AI Matching, hành vi lưu tin và tín hiệu thị trường thay vì lặp lại KPI tổng quan.
+      Tập trung vào hiệu quả ứng tuyển, AI Matching, hành vi lưu tin và báo cáo AI career thay vì lặp lại KPI tổng quan.
     </p>
   </div>
 
@@ -204,25 +191,6 @@ onMounted(() => {
           <div class="h-2 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-700">
             <div class="h-full rounded-full" :class="item.color" :style="{ width: item.width }"></div>
           </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-800">
-      <div class="mb-5 flex items-center justify-between">
-        <h3 class="flex items-center gap-2 font-bold">
-          <span class="material-symbols-outlined text-[#2463eb]">timeline</span>
-          Xu hướng tuyển dụng theo tháng
-        </h3>
-      </div>
-      <div class="flex h-64 items-end justify-between gap-3 overflow-hidden rounded-lg bg-slate-50 px-4 pb-4 pt-6 dark:bg-slate-900/50">
-        <div v-for="month in monthlyTrend" :key="month.month" class="flex flex-1 flex-col items-center justify-end gap-2">
-          <div
-            class="w-full max-w-[36px] rounded-t-md bg-[#2463eb]"
-            :style="{ height: `${Math.max(12, month.count * 6)}px` }"
-          ></div>
-          <span class="text-[11px] text-slate-400">{{ month.month }}</span>
-          <span class="text-[11px] font-bold">{{ month.count }}</span>
         </div>
       </div>
     </div>
@@ -292,35 +260,5 @@ onMounted(() => {
       </div>
     </div>
 
-    <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-800">
-      <div class="mb-5 flex items-center justify-between">
-        <h3 class="flex items-center gap-2 font-bold">
-          <span class="material-symbols-outlined text-[#2463eb]">workspace_premium</span>
-          Điểm nhấn thị trường
-        </h3>
-      </div>
-      <div class="space-y-4">
-        <div>
-          <p class="text-xs uppercase text-slate-400">Lương trung bình</p>
-          <p class="mt-1 text-xl font-bold">{{ formatCurrency(marketOverview?.overview?.average_salary) }}</p>
-        </div>
-        <div>
-          <p class="text-xs uppercase text-slate-400">Top kỹ năng</p>
-          <div class="mt-2 flex flex-wrap gap-2">
-            <span v-for="skill in topMarketSkills" :key="skill.name" class="rounded-full bg-[#2463eb]/10 px-3 py-1 text-xs font-bold text-[#2463eb]">
-              {{ skill.name || skill.skill }} ({{ skill.count }})
-            </span>
-          </div>
-        </div>
-        <div>
-          <p class="text-xs uppercase text-slate-400">Top ngành</p>
-          <div class="mt-2 flex flex-wrap gap-2">
-            <span v-for="category in topCategories" :key="category.name" class="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600 dark:bg-slate-700 dark:text-slate-200">
-              {{ category.name }} ({{ category.count }})
-            </span>
-          </div>
-        </div>
-      </div>
-    </div>
   </div>
 </template>

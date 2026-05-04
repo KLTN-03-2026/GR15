@@ -238,7 +238,7 @@ onMounted(loadIndustryDetail)
               <p class="text-sm font-bold uppercase tracking-[0.35em] text-white/70">Khám phá sâu hơn</p>
               <h3 class="mt-4 text-2xl font-black">Tìm cơ hội theo đúng năng lực</h3>
               <p class="mt-3 text-sm leading-7 text-white/80">
-                Dùng semantic search để mô tả vị trí bạn muốn bằng ngôn ngữ tự nhiên, sau đó so sánh với các job trong ngành này.
+                Xem các việc làm thuộc ngành này, rồi kết hợp thêm kỹ năng và địa điểm để thu hẹp danh sách vị trí phù hợp.
               </p>
               <div class="mt-6 flex flex-wrap gap-3">
                 <RouterLink

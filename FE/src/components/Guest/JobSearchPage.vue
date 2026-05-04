@@ -21,18 +21,8 @@ const jobs = ref([])
 const industries = ref([])
 const savedJobIds = ref(new Set())
 const loading = ref(false)
-const semanticLoading = ref(false)
 const industriesLoading = ref(false)
 const togglingJobId = ref(null)
-const semanticQuery = ref(route.query.semantic_q || '')
-const semanticResults = ref([])
-const semanticMeta = reactive({
-  total_documents: 0,
-  model_version: '',
-  search_engine: '',
-  no_relevant_results: false,
-  message: '',
-})
 const pagination = reactive({
   current_page: 1,
   last_page: 1,
@@ -46,7 +36,6 @@ const hasActiveFilters = computed(() =>
   Boolean(filters.search || filters.nganh_nghe_id || filters.dia_diem)
 )
 
-const hasSemanticResults = computed(() => semanticResults.value.length > 0)
 const showAllIndustries = ref(false)
 const pageSizeOptions = [6, 9, 12, 15]
 
@@ -100,8 +89,6 @@ const getAcceptedCount = (job) => Number(job?.so_luong_da_nhan || 0)
 const getRemainingSlots = (job) => Number(job?.so_luong_con_lai || 0)
 const isQuotaFull = (job) => Boolean(job?.da_tuyen_du) || (Number(job?.so_luong_tuyen || 0) > 0 && getRemainingSlots(job) <= 0)
 
-const formatPercent = (value) => `${Math.round(Number(value || 0) * 100)}%`
-
 const buildQuery = (page = 1, extra = {}) => {
   const query = {}
 
@@ -110,7 +97,6 @@ const buildQuery = (page = 1, extra = {}) => {
   if (filters.dia_diem) query.dia_diem = filters.dia_diem
   if (filters.per_page !== 9) query.per_page = filters.per_page
   if (page > 1) query.page = page
-  if (semanticQuery.value) query.semantic_q = semanticQuery.value
 
   return {
     ...query,
@@ -167,48 +153,6 @@ const fetchJobs = async (page = Number(route.query.page || 1)) => {
   } finally {
     loading.value = false
   }
-}
-
-const runSemanticSearch = async () => {
-  if (!semanticQuery.value.trim()) {
-    notify.warning('Vui lòng nhập mô tả công việc hoặc kỹ năng bạn muốn tìm bằng AI.')
-    return
-  }
-
-  semanticQuery.value = semanticQuery.value.trim()
-  syncQuery(Number(route.query.page || 1))
-  semanticLoading.value = true
-  try {
-    const response = await jobService.semanticSearch(semanticQuery.value.trim(), 8)
-    const payload = response?.data || {}
-    semanticResults.value = payload.results || []
-    semanticMeta.total_documents = Number(payload.total_documents || 0)
-    semanticMeta.model_version = payload.model_version || ''
-    semanticMeta.search_engine = payload.search_engine || ''
-    semanticMeta.no_relevant_results = Boolean(payload.no_relevant_results)
-    semanticMeta.message = payload.message || ''
-  } catch (error) {
-    semanticResults.value = []
-    semanticMeta.total_documents = 0
-    semanticMeta.model_version = ''
-    semanticMeta.search_engine = ''
-    semanticMeta.no_relevant_results = false
-    semanticMeta.message = ''
-    notify.apiError(error, 'Không thể tìm kiếm việc làm bằng AI.')
-  } finally {
-    semanticLoading.value = false
-  }
-}
-
-const clearSemanticSearch = () => {
-  semanticQuery.value = ''
-  semanticResults.value = []
-  semanticMeta.total_documents = 0
-  semanticMeta.model_version = ''
-  semanticMeta.search_engine = ''
-  semanticMeta.no_relevant_results = false
-  semanticMeta.message = ''
-  syncQuery(Number(route.query.page || 1), { semantic_q: undefined })
 }
 
 const syncSavedState = async () => {
@@ -278,10 +222,6 @@ const toggleSavedJob = async (jobId) => {
 
 onMounted(async () => {
   await Promise.all([fetchIndustries(), fetchJobs(Number(route.query.page || 1))])
-  if (typeof route.query.semantic_q === 'string' && route.query.semantic_q.trim()) {
-    semanticQuery.value = route.query.semantic_q.trim()
-    await runSemanticSearch()
-  }
 })
 
 watch(
@@ -291,7 +231,6 @@ watch(
     filters.nganh_nghe_id = query.nganh_nghe_id || ''
     filters.dia_diem = query.dia_diem || ''
     filters.per_page = Number(query.per_page || 9)
-    semanticQuery.value = query.semantic_q || ''
   }
 )
 </script>
@@ -448,215 +387,6 @@ watch(
       </aside>
 
       <section class="min-w-0 flex-1 space-y-6">
-        <div class="rounded-[24px] border border-blue-200 bg-gradient-to-r from-blue-50 via-white to-indigo-50 px-5 py-5 shadow-sm">
-          <div class="grid gap-5 xl:grid-cols-[minmax(0,1fr)_220px] xl:items-end">
-            <div class="min-w-0">
-              <div class="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-white/80 px-3 py-1 text-xs font-semibold uppercase tracking-[0.28em] text-blue-700">
-                <span class="material-symbols-outlined text-base">auto_awesome</span>
-                Semantic Search
-              </div>
-              <h2 class="mt-3 text-2xl font-bold text-slate-900">Tìm việc bằng mô tả tự nhiên</h2>
-              <p class="mt-2 text-sm leading-7 text-slate-600">
-                Hãy mô tả công việc bạn muốn theo cách tự nhiên, ví dụ: “backend Laravel remote, ưu tiên REST API và MySQL”.
-              </p>
-            </div>
-
-            <div class="rounded-2xl border border-blue-100 bg-white px-4 py-3 text-sm text-slate-600 xl:self-start">
-              {{ semanticMeta.total_documents || pagination.total }} tin đang được AI đối chiếu
-            </div>
-          </div>
-
-          <div class="mt-5 grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto_auto] xl:items-center">
-            <div class="relative min-w-0">
-              <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">psychology</span>
-              <input
-                v-model="semanticQuery"
-                class="w-full rounded-2xl border border-blue-100 bg-white py-3 pl-12 pr-4 text-sm text-slate-700 outline-none transition focus:border-blue-500"
-                placeholder="Ví dụ: tìm việc backend Laravel có Docker, REST API, ưu tiên Đà Nẵng hoặc remote"
-                type="text"
-                @keyup.enter="runSemanticSearch"
-              />
-            </div>
-
-            <div class="flex gap-3 xl:justify-end">
-              <button
-                class="whitespace-nowrap rounded-2xl bg-blue-600 px-5 py-3 text-sm font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
-                type="button"
-                :disabled="semanticLoading"
-                @click="runSemanticSearch"
-              >
-                {{ semanticLoading ? 'Đang phân tích...' : 'Tìm bằng AI' }}
-              </button>
-              <button
-                class="whitespace-nowrap rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-                type="button"
-                @click="clearSemanticSearch"
-              >
-                Xóa AI search
-              </button>
-            </div>
-          </div>
-
-          <div v-if="hasSemanticResults || semanticMeta.message" class="mt-4 flex flex-wrap gap-2">
-            <span
-              v-if="semanticMeta.search_engine"
-              class="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700"
-            >
-              Engine: {{ semanticMeta.search_engine }}
-            </span>
-            <span
-              v-if="semanticMeta.model_version"
-              class="rounded-full bg-indigo-100 px-3 py-1 text-xs font-semibold text-indigo-700"
-            >
-              Model: {{ semanticMeta.model_version }}
-            </span>
-            <span
-              v-if="semanticMeta.message"
-              class="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700"
-            >
-              {{ semanticMeta.message }}
-            </span>
-          </div>
-        </div>
-
-        <div v-if="semanticLoading" class="mt-6 grid gap-4">
-          <div
-            v-for="index in 2"
-            :key="`semantic-loading-${index}`"
-            class="h-52 animate-pulse rounded-[24px] border border-blue-100 bg-white"
-          />
-        </div>
-
-        <div v-else-if="hasSemanticResults" class="mt-6 space-y-4">
-          <div class="flex items-center justify-between">
-            <div>
-              <h2 class="text-2xl font-bold text-slate-900">Kết quả semantic search</h2>
-              <p class="mt-2 text-sm text-slate-500">Các job được AI xếp hạng theo mức độ phù hợp với mô tả của bạn.</p>
-            </div>
-            <div class="rounded-2xl bg-slate-900 px-4 py-3 text-right text-white">
-              <p class="text-xs uppercase tracking-[0.28em] text-slate-400">Top kết quả</p>
-              <p class="mt-2 text-2xl font-bold">{{ semanticResults.length }}</p>
-            </div>
-          </div>
-
-          <article
-            v-for="result in semanticResults"
-            :key="`semantic-${result.job?.id}`"
-            class="rounded-[28px] border border-blue-100 bg-white p-6 shadow-sm"
-          >
-            <div class="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-              <div class="min-w-0 flex-1">
-                <div class="flex flex-wrap items-start justify-between gap-4">
-                  <div class="min-w-0">
-                    <div class="flex flex-wrap items-center gap-3">
-                      <RouterLink
-                        :to="{ name: 'JobDetail', params: { id: result.job.id } }"
-                        class="text-xl font-bold text-slate-900 transition hover:text-blue-600"
-                      >
-                        {{ result.job.tieu_de }}
-                      </RouterLink>
-                      <span
-                        v-if="result.job?.is_featured"
-                        class="rounded-full bg-amber-400/15 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-amber-700"
-                      >
-                        Featured
-                      </span>
-                      <span class="rounded-full bg-blue-600 px-3 py-1 text-xs font-bold text-white">
-                        {{ formatPercent(result.final_score) }} match
-                      </span>
-                    </div>
-                    <p class="mt-2 text-sm font-semibold text-blue-600">
-                      {{ result.job.cong_ty?.ten_cong_ty || 'Công ty đang cập nhật' }}
-                    </p>
-                  </div>
-                  <div class="rounded-2xl bg-slate-50 px-3 py-2 text-right">
-                    <p class="text-lg font-bold text-slate-900">{{ formatSalary(result.job) }}</p>
-                    <p class="mt-1 text-xs text-slate-500">{{ formatRelativeDate(result.job.created_at) }}</p>
-                  </div>
-                </div>
-
-                <div class="mt-4 grid gap-3 md:grid-cols-5">
-                  <div class="rounded-2xl bg-slate-50 px-3 py-3">
-                    <p class="text-[11px] uppercase tracking-[0.25em] text-slate-400">Semantic</p>
-                    <p class="mt-2 text-lg font-bold text-slate-900">{{ formatPercent(result.semantic_score) }}</p>
-                  </div>
-                  <div class="rounded-2xl bg-slate-50 px-3 py-3">
-                    <p class="text-[11px] uppercase tracking-[0.25em] text-slate-400">Keyword</p>
-                    <p class="mt-2 text-lg font-bold text-slate-900">{{ formatPercent(result.keyword_score) }}</p>
-                  </div>
-                  <div class="rounded-2xl bg-slate-50 px-3 py-3">
-                    <p class="text-[11px] uppercase tracking-[0.25em] text-slate-400">Skill</p>
-                    <p class="mt-2 text-lg font-bold text-slate-900">{{ formatPercent(result.skill_score) }}</p>
-                  </div>
-                  <div class="rounded-2xl bg-slate-50 px-3 py-3">
-                    <p class="text-[11px] uppercase tracking-[0.25em] text-slate-400">Category</p>
-                    <p class="mt-2 text-lg font-bold text-slate-900">{{ formatPercent(result.category_score) }}</p>
-                  </div>
-                  <div class="rounded-2xl bg-slate-50 px-3 py-3">
-                    <p class="text-[11px] uppercase tracking-[0.25em] text-slate-400">Title</p>
-                    <p class="mt-2 text-lg font-bold text-slate-900">{{ formatPercent(result.title_score) }}</p>
-                  </div>
-                </div>
-
-                <div class="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-500">
-                  <span class="inline-flex items-center gap-1.5">
-                    <span class="material-symbols-outlined text-base">location_on</span>
-                    {{ result.job.dia_diem_lam_viec || 'Địa điểm đang cập nhật' }}
-                  </span>
-                  <span class="inline-flex items-center gap-1.5">
-                    <span class="material-symbols-outlined text-base">schedule</span>
-                    {{ result.job.hinh_thuc_lam_viec || 'Đang cập nhật' }}
-                  </span>
-                  <span class="inline-flex items-center gap-1.5">
-                    <span class="material-symbols-outlined text-base">workspace_premium</span>
-                    {{ result.job.cap_bac || 'Chưa rõ cấp bậc' }}
-                  </span>
-                </div>
-
-                <div v-if="result.semantic_reason" class="mt-4 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-4 text-sm leading-7 text-slate-700">
-                  <span class="font-semibold text-blue-700">AI reason:</span>
-                  {{ result.semantic_reason }}
-                </div>
-
-                <div v-if="(result.matched_keywords || []).length" class="mt-4 flex flex-wrap gap-2">
-                  <span
-                    v-for="keyword in result.matched_keywords"
-                    :key="keyword"
-                    class="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700"
-                  >
-                    {{ keyword }}
-                  </span>
-                </div>
-              </div>
-
-              <div class="flex shrink-0 gap-3 lg:flex-col">
-                <button
-                  class="rounded-2xl border px-4 py-3 text-sm font-semibold transition"
-                  :class="isSaved(result.job.id)
-                    ? 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
-                    : 'border-slate-200 text-slate-700 hover:bg-slate-50'"
-                  type="button"
-                  @click="toggleSavedJob(result.job.id)"
-                >
-                  {{
-                    togglingJobId === result.job.id
-                      ? 'Đang xử lý...'
-                      : isSaved(result.job.id)
-                        ? 'Đã lưu'
-                        : 'Lưu tin'
-                  }}
-                </button>
-                <RouterLink
-                  :to="{ name: 'JobDetail', params: { id: result.job.id } }"
-                  class="rounded-2xl bg-blue-600 px-5 py-3 text-center text-sm font-bold text-white transition hover:bg-blue-700"
-                >
-                  Xem chi tiết
-                </RouterLink>
-              </div>
-            </div>
-          </article>
-        </div>
-
         <div class="flex flex-col gap-4 rounded-[24px] border border-slate-200 bg-white px-5 py-5 shadow-sm md:flex-row md:items-center md:justify-between">
           <div>
             <h2 class="text-2xl font-bold text-slate-900">Danh sách việc làm</h2>

@@ -74,7 +74,7 @@ export const ADMIN_PERMISSION_DEFINITIONS = [
   {
     key: 'stats',
     label: 'Báo cáo & phân tích',
-    description: 'Xem báo cáo tổng hợp và tín hiệu thị trường.',
+    description: 'Xem báo cáo tổng hợp về ứng tuyển, lưu tin và hiệu suất AI.',
   },
 ]
 

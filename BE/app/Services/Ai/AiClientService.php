@@ -79,16 +79,6 @@ class AiClientService
         ], 'career_report');
     }
 
-    public function tailorCvForJob(int $hoSoId, int $tinTuyenDungId, array $cvProfile = [], array $jdProfile = []): array
-    {
-        return $this->post('/generate/cv-tailoring', [
-            'ho_so_id' => $hoSoId,
-            'tin_tuyen_dung_id' => $tinTuyenDungId,
-            'cv_profile' => $cvProfile,
-            'jd_profile' => $jdProfile,
-        ], 'cv_tailoring');
-    }
-
     public function generateCvBuilderWriting(array $cvProfile = [], string $section = 'summary', array $options = []): array
     {
         return $this->post('/generate/cv-builder-writing', [
@@ -96,15 +86,6 @@ class AiClientService
             'section' => $section,
             'options' => $options,
         ], 'cv_builder_ai_writing');
-    }
-
-    public function semanticSearchJobs(string $query, array $documents, int $topK = 10): array
-    {
-        return $this->post('/search/semantic/jobs', [
-            'query' => $query,
-            'top_k' => $topK,
-            'documents' => $documents,
-        ], 'semantic_job_search');
     }
 
     public function careerChat(int $sessionId, string $message, array $history = [], array $context = [], bool $forceModel = false): array

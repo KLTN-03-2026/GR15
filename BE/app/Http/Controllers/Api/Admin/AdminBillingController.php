@@ -120,7 +120,7 @@ class AdminBillingController extends Controller
             'trang_thai' => ['nullable', 'string'],
             'gateway' => ['nullable', 'string'],
             'q' => ['nullable', 'string', 'max:120'],
-        ]);
+        ], $this->billingValidationMessages(), $this->billingValidationAttributes());
 
         $search = trim((string) ($validated['q'] ?? ''));
 
@@ -387,7 +387,7 @@ class AdminBillingController extends Controller
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
             'trang_thai' => ['nullable', 'string'],
             'q' => ['nullable', 'string', 'max:120'],
-        ]);
+        ], $this->billingValidationMessages(), $this->billingValidationAttributes());
 
         $search = trim((string) ($validated['q'] ?? ''));
 
@@ -493,7 +493,7 @@ class AdminBillingController extends Controller
             'features.*.quota' => ['nullable', 'integer', 'min:0'],
             'features.*.reset_cycle' => ['nullable', 'string', 'max:32'],
             'features.*.is_unlimited' => ['nullable', 'boolean'],
-        ]);
+        ], $this->billingValidationMessages(), $this->billingValidationAttributes());
     }
 
     private function validatePrice(Request $request, ?BangGiaTinhNangAi $price = null): array
@@ -509,7 +509,50 @@ class AdminBillingController extends Controller
             'don_gia' => ['required', 'integer', 'min:0'],
             'don_vi_tinh' => ['required', 'string', 'max:50'],
             'trang_thai' => ['required', Rule::in([BangGiaTinhNangAi::TRANG_THAI_HOAT_DONG, BangGiaTinhNangAi::TRANG_THAI_TAM_NGUNG])],
-        ]);
+        ], $this->billingValidationMessages(), $this->billingValidationAttributes());
+    }
+
+    private function billingValidationMessages(): array
+    {
+        return [
+            'required' => 'Trường :attribute là bắt buộc.',
+            'required_with' => 'Trường :attribute là bắt buộc khi có :values.',
+            'string' => 'Trường :attribute phải là chuỗi ký tự.',
+            'integer' => 'Trường :attribute phải là số nguyên.',
+            'boolean' => 'Trường :attribute chỉ được nhận giá trị đúng hoặc sai.',
+            'array' => 'Trường :attribute phải là một danh sách.',
+            'min.numeric' => 'Trường :attribute phải lớn hơn hoặc bằng :min.',
+            'max.numeric' => 'Trường :attribute không được lớn hơn :max.',
+            'max.string' => 'Trường :attribute không được vượt quá :max ký tự.',
+            'unique' => ':attribute đã tồn tại.',
+            'in' => 'Giá trị của :attribute không hợp lệ.',
+        ];
+    }
+
+    private function billingValidationAttributes(): array
+    {
+        return [
+            'per_page' => 'số bản ghi mỗi trang',
+            'loai_giao_dich' => 'loại giao dịch',
+            'trang_thai' => 'trạng thái',
+            'gateway' => 'cổng thanh toán',
+            'q' => 'từ khóa tìm kiếm',
+            'ma_goi' => 'mã gói',
+            'ten_goi' => 'tên gói',
+            'mo_ta' => 'mô tả gói',
+            'gia' => 'giá gói',
+            'chu_ky' => 'chu kỳ',
+            'is_free' => 'loại gói miễn phí',
+            'features' => 'danh sách tính năng',
+            'features.*.feature_code' => 'mã tính năng',
+            'features.*.quota' => 'hạn mức',
+            'features.*.reset_cycle' => 'chu kỳ làm mới',
+            'features.*.is_unlimited' => 'cờ không giới hạn',
+            'feature_code' => 'mã tính năng',
+            'ten_hien_thi' => 'tên hiển thị',
+            'don_gia' => 'đơn giá',
+            'don_vi_tinh' => 'đơn vị tính',
+        ];
     }
 
     private function syncPlanFeatures(GoiDichVu $plan, array $features): void
