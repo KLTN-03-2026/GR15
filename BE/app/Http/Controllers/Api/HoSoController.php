@@ -118,6 +118,16 @@ class HoSoController extends Controller
         ], 401);
     }
 
+    private function mapOwnedProfile(HoSo $hoSo): array
+    {
+        return [
+            ...$hoSo->toArray(),
+            'file_cv_url' => $hoSo->file_cv
+                ? route('ung-vien.ho-sos.cv', ['id' => $hoSo->id])
+                : null,
+        ];
+    }
+
     /**
      * GET /api/v1/ung-vien/ho-sos
      * Danh sách hồ sơ của người dùng đang đăng nhập.
@@ -147,6 +157,9 @@ class HoSoController extends Controller
 
         $perPage = min((int) $request->get('per_page', 10), 50);
         $hoSos = $query->paginate($perPage);
+        $hoSos->setCollection(
+            $hoSos->getCollection()->map(fn (HoSo $hoSo) => $this->mapOwnedProfile($hoSo))
+        );
 
         return response()->json([
             'success' => true,
@@ -208,8 +221,27 @@ class HoSoController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $hoSo,
+            'data' => $this->mapOwnedProfile($hoSo),
         ]);
+    }
+
+    public function viewCv(Request $request, int $id)
+    {
+        $nguoiDung = $request->user();
+
+        if (!$nguoiDung) {
+            return $this->unauthorizedResponse();
+        }
+
+        $hoSo = HoSo::where('nguoi_dung_id', $nguoiDung->id)
+            ->findOrFail($id);
+
+        abort_unless($hoSo->file_cv, 404, 'Hồ sơ này chưa có file CV tải lên.');
+
+        $path = storage_path('app/public/' . ltrim($hoSo->file_cv, '/'));
+        abort_unless(file_exists($path), 404, 'Không tìm thấy file CV.');
+
+        return response()->file($path);
     }
 
     /**

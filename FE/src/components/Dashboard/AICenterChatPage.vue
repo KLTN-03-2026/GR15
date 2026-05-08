@@ -3,7 +3,12 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { aiChatService, jobService, profileService, walletService } from '@/services/api'
 import { useNotify } from '@/composables/useNotify'
-import { getCompactAiQuotaText } from '@/utils/billing'
+import {
+  getBillingFeatureLabel,
+  getCompactAiQuotaText,
+  getEntitlementCoverageNote,
+  getEntitlementUsageHint,
+} from '@/utils/billing'
 
 const emit = defineEmits(['refresh-overview'])
 
@@ -11,7 +16,10 @@ const notify = useNotify()
 
 const profiles = ref([])
 const jobs = ref([])
+const wallet = ref(null)
+const pricing = ref([])
 const entitlements = ref([])
+const currentSubscription = ref(null)
 const loadingBootstrap = ref(false)
 const loadingChatSessions = ref(false)
 const loadingChatMessages = ref(false)
@@ -50,13 +58,45 @@ const chatCanSend = computed(() => Boolean(activeChatSessionId.value && chatMess
 const chatEntitlement = computed(() =>
   entitlements.value.find((item) => item.feature_code === 'chatbot_message') || null
 )
+const chatMessagePrice = computed(() =>
+  Number(pricing.value.find((item) => item.feature_code === 'chatbot_message')?.don_gia || chatEntitlement.value?.wallet_price || 0)
+)
+const walletAvailable = computed(() => Number(wallet.value?.so_du_kha_dung || 0))
+const hasIncludedChatQuota = computed(() =>
+  Boolean(chatEntitlement.value?.subscription_is_unlimited)
+  || Number(chatEntitlement.value?.subscription_quota_remaining || 0) > 0
+  || Number(chatEntitlement.value?.free_quota_remaining || 0) > 0
+)
 const chatAiQuotaText = computed(() =>
-  loadingAiQuota.value
-    ? 'Đang tải...'
-    : getCompactAiQuotaText(chatEntitlement.value, {
+  {
+    if (loadingAiQuota.value) return 'Đang tải...'
+    if (
+      chatEntitlement.value?.has_free_quota
+      && Number(chatEntitlement.value?.free_quota_total || 0) > 0
+      && !hasIncludedChatQuota.value
+    ) {
+      return `${Number(chatEntitlement.value.free_quota_remaining || 0)}/${Number(chatEntitlement.value.free_quota_total || 0)} prompts miễn phí`
+    }
+
+    return getCompactAiQuotaText(chatEntitlement.value, {
       unit: 'prompts',
       inactiveLabel: 'Dùng ví AI',
     })
+  }
+)
+const chatBillingNote = computed(() =>
+  getEntitlementCoverageNote(chatEntitlement.value, {
+    currentSubscription: currentSubscription.value,
+    featureLabel: getBillingFeatureLabel('chatbot_message'),
+    price: chatMessagePrice.value,
+    formatCurrency,
+  })
+)
+const chatUsageHint = computed(() =>
+  getEntitlementUsageHint(chatEntitlement.value, {
+    currentSubscription: currentSubscription.value,
+    successOutcomeText: 'AI trả lời thành công',
+  })
 )
 const chatStatusTone = computed(() =>
   chatStreaming.value
@@ -76,6 +116,9 @@ const formatDateTime = (value) => {
     timeStyle: 'short',
   }).format(new Date(value))
 }
+
+const formatCurrency = (value) =>
+  `${new Intl.NumberFormat('vi-VN').format(Number(value || 0))} đ`
 
 const truncate = (value, max = 120) => {
   if (!value) return ''
@@ -228,13 +271,39 @@ const fetchBootstrapData = async () => {
 const fetchAiEntitlements = async () => {
   loadingAiQuota.value = true
   try {
-    const response = await walletService.getEntitlements()
-    entitlements.value = response?.data?.entitlements || []
+    const [walletResponse, pricingResponse, entitlementsResponse] = await Promise.all([
+      walletService.getWallet(),
+      walletService.getPricing(),
+      walletService.getEntitlements(),
+    ])
+    wallet.value = walletResponse?.data?.wallet || null
+    pricing.value = pricingResponse?.data || []
+    currentSubscription.value = entitlementsResponse?.data?.current_subscription || null
+    entitlements.value = entitlementsResponse?.data?.entitlements || []
   } catch (error) {
     notify.apiError(error, 'Không tải được hạn mức AI.')
   } finally {
     loadingAiQuota.value = false
   }
+}
+
+const handleChatBillingError = (error) => {
+  if (error?.code === 'WALLET_INSUFFICIENT_BALANCE') {
+    notify.warning('Bạn đã hết quota chatbot và số dư ví AI không đủ để gửi prompt tiếp theo. Vui lòng nạp thêm ví hoặc nâng cấp gói.')
+    return true
+  }
+
+  if (error?.code === 'AI_FEATURE_PRICE_MISSING') {
+    notify.warning('Chatbot đã hết quota nhưng chưa được cấu hình giá ví AI. Vui lòng liên hệ quản trị viên.')
+    return true
+  }
+
+  if (error?.code === 'BILLING_DUPLICATE_REQUEST') {
+    notify.info('Prompt trước đó vẫn đang xử lý. Vui lòng chờ thêm một chút.')
+    return true
+  }
+
+  return false
 }
 
 const fetchChatSessions = async () => {
@@ -418,6 +487,11 @@ const sendChatMessage = async () => {
   if (!chatCanSend.value) return
 
   const message = chatMessageInput.value.trim()
+  if (!hasIncludedChatQuota.value && chatMessagePrice.value > 0 && walletAvailable.value < chatMessagePrice.value) {
+    notify.warning('Bạn đã hết quota chatbot và số dư ví AI không đủ để gửi prompt tiếp theo. Vui lòng nạp thêm ví hoặc nâng cấp gói.')
+    return
+  }
+
   sendingChatMessage.value = true
   chatStreamStatus.value = streamEnabled.value ? 'Đang gửi...' : 'Đang xử lý'
   try {
@@ -438,6 +512,7 @@ const sendChatMessage = async () => {
     )
     chatStreaming.value = false
     chatStreamStatus.value = 'Lỗi stream'
+    if (handleChatBillingError(error)) return
     notify.apiError(error, 'Không gửi được câu hỏi đến AI.')
   } finally {
     sendingChatMessage.value = false
@@ -473,7 +548,7 @@ watch(
 </script>
 
 <template>
-  <section class="grid min-h-[calc(100vh-5rem)] grid-cols-1 overflow-hidden bg-[#f8f4f1] xl:grid-cols-[400px_minmax(0,1fr)]">
+  <section class="grid min-h-[calc(100vh-5rem)] grid-cols-1 overflow-hidden bg-[#f8f4f1] xl:h-[calc(100dvh-5rem)] xl:max-h-[calc(100dvh-5rem)] xl:min-h-[calc(100dvh-5rem)] xl:grid-cols-[400px_minmax(0,1fr)]">
     <aside class="flex min-h-0 flex-col border-r border-slate-200 bg-white">
       <div class="border-b border-slate-200 p-5">
         <button
@@ -562,6 +637,11 @@ watch(
         <div class="rounded-xl bg-slate-50 px-4 py-3 text-sm font-medium text-slate-500">
           <span class="material-symbols-outlined mr-2 align-[-4px] text-[18px]">info</span>
           Hạn mức AI: {{ chatAiQuotaText }}
+          <p class="mt-2 text-xs leading-5 text-slate-500">{{ chatBillingNote }}</p>
+          <p class="mt-1 text-xs leading-5 text-slate-400">{{ chatUsageHint }}</p>
+          <p v-if="!hasIncludedChatQuota && chatMessagePrice > 0" class="mt-1 text-xs font-bold leading-5 text-slate-500">
+            Ví khả dụng: {{ formatCurrency(walletAvailable) }}
+          </p>
         </div>
         <div class="rounded-xl bg-slate-50 px-4 py-3 text-sm font-medium text-slate-500">
           <span class="material-symbols-outlined mr-2 align-[-4px] text-[18px]">bolt</span>
@@ -570,7 +650,7 @@ watch(
       </div>
     </aside>
 
-    <main ref="chatPanel" class="flex min-h-0 flex-col">
+    <main ref="chatPanel" class="flex min-h-0 flex-col xl:h-full">
       <header class="flex h-20 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-8">
         <div class="inline-flex rounded-2xl bg-slate-100 p-1">
           <span class="rounded-xl bg-white px-5 py-3 text-sm font-black text-[#f45112] shadow-sm">Tư vấn lộ trình</span>
@@ -587,7 +667,7 @@ watch(
         </div>
       </header>
 
-      <div ref="chatMessagesContainer" class="min-h-0 flex-1 overflow-y-auto px-8 py-7">
+      <div ref="chatMessagesContainer" class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-8 py-7">
         <div v-if="loadingChatMessages" class="space-y-5">
           <div v-for="index in 4" :key="index" class="h-24 animate-pulse rounded-[24px] bg-white" />
         </div>
@@ -664,7 +744,7 @@ watch(
               <span class="material-symbols-outlined text-[18px]">attach_file</span>
               Gợi ý job
             </button>
-            <button type="button" class="inline-flex items-center gap-1 hover:text-[#f45112]" @click="chatMessageInput = 'Tôi đang thiếu những kỹ năng nào để phù hợp hơn với vị trí backend này?'">
+            <button type="button" class="inline-flex items-center gap-1 hover:text-[#f45112]" @click="chatMessageInput = 'Tôi đang thiếu những kỹ năng nào để phù hợp hơn với vị trí này?'">
               <span class="material-symbols-outlined text-[18px]">mic</span>
               Kỹ năng thiếu
             </button>

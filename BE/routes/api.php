@@ -236,6 +236,14 @@ Route::get('v1/nha-tuyen-dung/vi/nap-tien/{maGiaoDichNoiBo}', [MomoTopUpControll
     ->middleware(['auth:sanctum', 'role:nha_tuyen_dung', 'company_role:permission:billing'])
     ->name('nha-tuyen-dung.vi.topup.show');
 
+Route::get('v1/nha-tuyen-dung/payments', [WalletController::class, 'payments'])
+    ->middleware(['auth:sanctum', 'role:nha_tuyen_dung', 'company_role:permission:billing'])
+    ->name('nha-tuyen-dung.payments.index');
+
+Route::get('v1/nha-tuyen-dung/payments/{maGiaoDichNoiBo}', [WalletController::class, 'paymentDetail'])
+    ->middleware(['auth:sanctum', 'role:nha_tuyen_dung', 'company_role:permission:billing'])
+    ->name('nha-tuyen-dung.payments.show');
+
 Route::get('v1/payments/momo/return', [MomoTopUpController::class, 'handleReturn'])
     ->name('payments.momo.return');
 
@@ -407,6 +415,11 @@ Route::post('v1/ung-vien/ho-sos', [HoSoController::class, 'store'])
 Route::get('v1/ung-vien/ho-sos/{id}', [HoSoController::class, 'show'])
     ->middleware(['auth:sanctum', 'role:ung_vien'])
     ->name('ung-vien.ho-sos.show');
+
+// Xem file CV đã tải lên của chính mình
+Route::get('v1/ung-vien/ho-sos/{id}/cv', [HoSoController::class, 'viewCv'])
+    ->middleware(['auth:sanctum', 'role:ung_vien'])
+    ->name('ung-vien.ho-sos.cv');
 
 // Cập nhật hồ sơ (chỉ sửa được của mình, hỗ trợ upload file CV)
 Route::put('v1/ung-vien/ho-sos/{id}', [HoSoController::class, 'update'])

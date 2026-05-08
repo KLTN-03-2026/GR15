@@ -14,6 +14,7 @@ const checking = ref(false)
 const polling = ref(false)
 const pollAttempts = ref(0)
 const redirectCountdown = ref(2)
+const hasAutoRedirected = ref(false)
 let pollTimer = null
 let redirectTimer = null
 
@@ -21,6 +22,7 @@ const paymentCode = computed(() => String(route.params.maGiaoDichNoiBo || ''))
 const resultCode = computed(() => String(route.query.resultCode || ''))
 const gatewayMessage = computed(() => String(route.query.message || ''))
 const paymentStorageKey = computed(() => `wallet-payment-draft:${paymentCode.value}`)
+const successRedirectStorageKey = computed(() => `wallet-payment-result-redirected:${paymentCode.value}`)
 
 const formatCurrency = (value) =>
   `${new Intl.NumberFormat('vi-VN').format(Number(value || 0))} đ`
@@ -102,7 +104,7 @@ const statusLabel = computed(() => {
   return 'Đang xử lý'
 })
 
-const shouldAutoRedirectToWallet = computed(() => paymentStatus.value === 'success')
+const shouldAutoRedirectToWallet = computed(() => paymentStatus.value === 'success' && !hasAutoRedirected.value)
 
 const startSuccessRedirect = () => {
   clearRedirectTimer()
@@ -113,7 +115,9 @@ const startSuccessRedirect = () => {
   redirectTimer = window.setInterval(async () => {
     if (redirectCountdown.value <= 1) {
       clearRedirectTimer()
-      await router.replace('/wallet')
+      hasAutoRedirected.value = true
+      sessionStorage.setItem(successRedirectStorageKey.value, '1')
+      await router.push('/wallet')
       return
     }
 
@@ -180,6 +184,7 @@ const refreshPayment = async () => {
 }
 
 onMounted(async () => {
+  hasAutoRedirected.value = sessionStorage.getItem(successRedirectStorageKey.value) === '1'
   await loadPayment({})
   scheduleStatusPolling()
 })

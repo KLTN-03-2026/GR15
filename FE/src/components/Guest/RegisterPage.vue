@@ -146,15 +146,6 @@ const handleRegister = async () => {
 
   try {
     const registeredEmail = registerForm.email.trim()
-    const companyDraft = isEmployer.value
-      ? {
-        ten_cong_ty: registerForm.companyName.trim(),
-        email: registeredEmail,
-        dien_thoai: registerForm.phone.trim(),
-        nguoi_lien_he: registerForm.contactPerson.trim(),
-      }
-      : null
-
     const response = isEmployer.value
       ? await authService.registerEmployer(
         registerForm.companyName.trim(),
@@ -173,10 +164,6 @@ const handleRegister = async () => {
       )
 
     if (response.success || response.message) {
-      if (companyDraft) {
-        window.sessionStorage.setItem('employer_company_draft', JSON.stringify(companyDraft))
-      }
-
       successMessage.value = 'Đăng ký thành công! Vui lòng đăng nhập.'
       Object.assign(registerForm, {
         fullName: '',

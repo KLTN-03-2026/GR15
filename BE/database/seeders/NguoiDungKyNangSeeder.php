@@ -9,188 +9,151 @@ use Illuminate\Database\Seeder;
 
 class NguoiDungKyNangSeeder extends Seeder
 {
-    /**
-     * Seed dữ liệu bảng nguoi_dung_ky_nangs.
-     * Gắn kỹ năng + chứng chỉ cá nhân cho các ứng viên.
-     */
     public function run(): void
     {
-        $ungViens = NguoiDung::where('vai_tro', 0)->get();
+        $skillsByCandidate = [
+            'ungvien.backend@demo.vn' => [
+                ['PHP', 4, 3, 1],
+                ['Laravel', 4, 3, 1],
+                ['REST API', 5, 3, 0],
+                ['MySQL', 4, 3, 1],
+                ['Redis', 3, 2, 0],
+                ['Docker', 3, 2, 0],
+                ['Git', 4, 4, 0],
+                ['JavaScript', 3, 2, 0],
+                ['Vue.js', 3, 1, 0],
+            ],
+            'ungvien.frontend@demo.vn' => [
+                ['JavaScript', 4, 3, 0],
+                ['TypeScript', 4, 2, 0],
+                ['Vue.js', 4, 2, 0],
+                ['React', 4, 2, 0],
+                ['Tailwind CSS', 4, 2, 0],
+                ['HTML/CSS', 5, 4, 0],
+                ['Figma', 4, 3, 1],
+                ['Git', 3, 2, 0],
+            ],
+            'ungvien.data@demo.vn' => [
+                ['SQL', 5, 4, 0],
+                ['Power BI', 4, 3, 1],
+                ['Microsoft Excel', 5, 5, 1],
+                ['Python', 3, 2, 0],
+                ['Data Analysis', 5, 4, 0],
+                ['Data Visualization', 4, 3, 0],
+                ['ETL', 3, 2, 0],
+                ['Presentation', 4, 4, 0],
+            ],
+            'ungvien.marketing@demo.vn' => [
+                ['Facebook Ads', 4, 2, 1],
+                ['Google Ads', 4, 2, 1],
+                ['TikTok Ads', 3, 1, 0],
+                ['Content Marketing', 4, 2, 0],
+                ['SEO', 3, 2, 0],
+                ['Google Analytics', 4, 2, 0],
+                ['Social Media Marketing', 4, 3, 0],
+            ],
+            'ungvien.qa@demo.vn' => [
+                ['Manual Testing', 5, 5, 0],
+                ['Postman', 4, 4, 0],
+                ['TestRail', 4, 3, 0],
+                ['Automation Testing', 3, 2, 0],
+                ['Selenium', 3, 2, 0],
+                ['Problem Solving', 4, 5, 0],
+            ],
+            'ungvien.sales@demo.vn' => [
+                ['Sales B2B', 4, 3, 0],
+                ['Sales B2C', 4, 3, 0],
+                ['Telesales', 4, 2, 0],
+                ['CRM', 4, 3, 0],
+                ['Negotiation', 4, 3, 0],
+                ['Customer Service', 4, 4, 0],
+                ['Lead Generation', 3, 2, 0],
+            ],
+            'ungvien.accounting@demo.vn' => [
+                ['Accounting', 5, 4, 1],
+                ['Bookkeeping', 4, 4, 0],
+                ['Tax Declaration', 4, 3, 0],
+                ['Payroll', 3, 2, 0],
+                ['MISA', 4, 3, 1],
+                ['Microsoft Excel', 5, 5, 1],
+                ['Financial Analysis', 3, 2, 0],
+            ],
+            'ungvien.hr@demo.vn' => [
+                ['Recruitment', 5, 3, 0],
+                ['Talent Acquisition', 4, 3, 0],
+                ['Interviewing', 4, 3, 0],
+                ['Onboarding', 4, 2, 0],
+                ['Employee Relations', 3, 2, 0],
+                ['Communication', 5, 5, 0],
+            ],
+            'ungvien.teacher@demo.vn' => [
+                ['Lesson Planning', 4, 3, 0],
+                ['Classroom Management', 4, 3, 0],
+                ['Online Teaching', 4, 3, 0],
+                ['LMS', 3, 2, 0],
+                ['Tiếng Anh', 5, 6, 1],
+                ['Presentation', 4, 4, 0],
+            ],
+            'ungvien.nurse@demo.vn' => [
+                ['Patient Care', 5, 4, 1],
+                ['Medical Records', 4, 3, 0],
+                ['Nursing Care', 5, 4, 1],
+                ['Clinical Assistance', 4, 3, 0],
+                ['Customer Service', 4, 4, 0],
+                ['Communication', 4, 4, 0],
+            ],
+            'ungvien.construction@demo.vn' => [
+                ['AutoCAD', 5, 5, 1],
+                ['Revit', 4, 3, 0],
+                ['SketchUp', 4, 3, 0],
+                ['Project Management', 3, 2, 0],
+                ['Document Control', 4, 4, 0],
+                ['Problem Solving', 4, 5, 0],
+            ],
+            'ungvien.logistics@demo.vn' => [
+                ['Warehouse Management', 4, 3, 0],
+                ['Inventory Management', 4, 3, 0],
+                ['Procurement', 3, 2, 0],
+                ['Transportation Management', 4, 3, 0],
+                ['Supply Chain', 4, 3, 0],
+                ['Microsoft Excel', 4, 4, 0],
+            ],
+        ];
 
-        if ($ungViens->isEmpty()) {
-            $this->command->warn('⚠️ Chưa có ứng viên. Hãy chạy NguoiDungSeeder trước.');
-            return;
-        }
+        $skillCatalog = KyNang::all()->keyBy('ten_ky_nang');
+        $count = 0;
 
-        $kyNangs = KyNang::all();
+        foreach ($skillsByCandidate as $email => $skills) {
+            $candidate = NguoiDung::where('email', $email)->first();
 
-        if ($kyNangs->isEmpty()) {
-            $this->command->warn('⚠️ Chưa có kỹ năng. Hãy chạy KyNangSeeder trước.');
-            return;
-        }
+            if (!$candidate) {
+                continue;
+            }
 
-        $tong = 0;
+            foreach ($skills as [$skillName, $level, $years, $certificates]) {
+                $skill = $skillCatalog->get($skillName);
 
-        $uv1 = $ungViens->firstWhere('email', 'ung.vien1@kltn.com');
-        if ($uv1) {
-            $kyNangUV1 = [
-                ['ten' => 'PHP', 'muc_do' => 4, 'nam' => 3, 'cc' => 1, 'anh' => 'php-cert.jpg'],
-                ['ten' => 'Laravel', 'muc_do' => 4, 'nam' => 3, 'cc' => 1, 'anh' => 'laravel-cert.jpg'],
-                ['ten' => 'JavaScript', 'muc_do' => 3, 'nam' => 2, 'cc' => 0, 'anh' => null],
-                ['ten' => 'React', 'muc_do' => 3, 'nam' => 2, 'cc' => 0, 'anh' => null],
-                ['ten' => 'MySQL', 'muc_do' => 4, 'nam' => 3, 'cc' => 1, 'anh' => 'mysql-cert.jpg'],
-                ['ten' => 'Docker', 'muc_do' => 2, 'nam' => 1, 'cc' => 0, 'anh' => null],
-                ['ten' => 'Git', 'muc_do' => 4, 'nam' => 3, 'cc' => 0, 'anh' => null],
-                ['ten' => 'REST API', 'muc_do' => 5, 'nam' => 3, 'cc' => 0, 'anh' => null],
-                ['ten' => 'Tiếng Anh', 'muc_do' => 3, 'nam' => 5, 'cc' => 2, 'anh' => 'ielts-cert.jpg'],
-            ];
-
-            foreach ($kyNangUV1 as $kn) {
-                $kyNang = $kyNangs->firstWhere('ten_ky_nang', $kn['ten']);
-                if ($kyNang) {
-                    NguoiDungKyNang::create([
-                        'nguoi_dung_id' => $uv1->id,
-                        'ky_nang_id' => $kyNang->id,
-                        'muc_do' => $kn['muc_do'],
-                        'nam_kinh_nghiem' => $kn['nam'],
-                        'so_chung_chi' => $kn['cc'],
-                        'hinh_anh' => $kn['anh'],
-                    ]);
-                    $tong++;
+                if (!$skill) {
+                    continue;
                 }
+
+                NguoiDungKyNang::updateOrCreate(
+                    [
+                        'nguoi_dung_id' => $candidate->id,
+                        'ky_nang_id' => $skill->id,
+                    ],
+                    [
+                        'muc_do' => $level,
+                        'nam_kinh_nghiem' => $years,
+                        'so_chung_chi' => $certificates,
+                        'hinh_anh' => $certificates > 0 ? \Illuminate\Support\Str::slug($skillName) . '-certificate.pdf' : null,
+                    ]
+                );
+
+                $count++;
             }
         }
 
-        $uv2 = $ungViens->firstWhere('email', 'ung.vien2@kltn.com');
-        if ($uv2) {
-            $kyNangUV2 = [
-                ['ten' => 'JavaScript', 'muc_do' => 4, 'nam' => 2, 'cc' => 0, 'anh' => null],
-                ['ten' => 'TypeScript', 'muc_do' => 4, 'nam' => 2, 'cc' => 0, 'anh' => null],
-                ['ten' => 'React', 'muc_do' => 4, 'nam' => 2, 'cc' => 0, 'anh' => null],
-                ['ten' => 'Vue.js', 'muc_do' => 3, 'nam' => 1, 'cc' => 0, 'anh' => null],
-                ['ten' => 'Figma', 'muc_do' => 5, 'nam' => 3, 'cc' => 1, 'anh' => 'figma-cert.png'],
-                ['ten' => 'UI Design', 'muc_do' => 4, 'nam' => 2, 'cc' => 0, 'anh' => null],
-                ['ten' => 'UX Research', 'muc_do' => 3, 'nam' => 1, 'cc' => 0, 'anh' => null],
-                ['ten' => 'Git', 'muc_do' => 3, 'nam' => 2, 'cc' => 0, 'anh' => null],
-            ];
-
-            foreach ($kyNangUV2 as $kn) {
-                $kyNang = $kyNangs->firstWhere('ten_ky_nang', $kn['ten']);
-                if ($kyNang) {
-                    NguoiDungKyNang::create([
-                        'nguoi_dung_id' => $uv2->id,
-                        'ky_nang_id' => $kyNang->id,
-                        'muc_do' => $kn['muc_do'],
-                        'nam_kinh_nghiem' => $kn['nam'],
-                        'so_chung_chi' => $kn['cc'],
-                        'hinh_anh' => $kn['anh'],
-                    ]);
-                    $tong++;
-                }
-            }
-        }
-
-        $uv3 = $ungViens->firstWhere('email', 'ung.vien3@kltn.com');
-        if ($uv3) {
-            $kyNangUV3 = [
-                ['ten' => 'SQL', 'muc_do' => 5, 'nam' => 4, 'cc' => 0, 'anh' => null],
-                ['ten' => 'Power BI', 'muc_do' => 4, 'nam' => 3, 'cc' => 1, 'anh' => 'powerbi-cert.png'],
-                ['ten' => 'Python', 'muc_do' => 3, 'nam' => 2, 'cc' => 0, 'anh' => null],
-                ['ten' => 'Excel', 'muc_do' => 5, 'nam' => 5, 'cc' => 1, 'anh' => 'excel-cert.png'],
-                ['ten' => 'Data Analysis', 'muc_do' => 5, 'nam' => 4, 'cc' => 0, 'anh' => null],
-            ];
-
-            foreach ($kyNangUV3 as $kn) {
-                $kyNang = $kyNangs->firstWhere('ten_ky_nang', $kn['ten']);
-                if ($kyNang) {
-                    NguoiDungKyNang::create([
-                        'nguoi_dung_id' => $uv3->id,
-                        'ky_nang_id' => $kyNang->id,
-                        'muc_do' => $kn['muc_do'],
-                        'nam_kinh_nghiem' => $kn['nam'],
-                        'so_chung_chi' => $kn['cc'],
-                        'hinh_anh' => $kn['anh'],
-                    ]);
-                    $tong++;
-                }
-            }
-        }
-
-        $uv4 = $ungViens->firstWhere('email', 'ung.vien4@kltn.com');
-        if ($uv4) {
-            $kyNangUV4 = [
-                ['ten' => 'Facebook Ads', 'muc_do' => 4, 'nam' => 2, 'cc' => 1, 'anh' => 'meta-ads-cert.png'],
-                ['ten' => 'Google Ads', 'muc_do' => 4, 'nam' => 2, 'cc' => 1, 'anh' => 'google-ads-cert.png'],
-                ['ten' => 'Content Marketing', 'muc_do' => 4, 'nam' => 2, 'cc' => 0, 'anh' => null],
-                ['ten' => 'SEO', 'muc_do' => 3, 'nam' => 1, 'cc' => 0, 'anh' => null],
-                ['ten' => 'Google Analytics', 'muc_do' => 3, 'nam' => 2, 'cc' => 0, 'anh' => null],
-            ];
-
-            foreach ($kyNangUV4 as $kn) {
-                $kyNang = $kyNangs->firstWhere('ten_ky_nang', $kn['ten']);
-                if ($kyNang) {
-                    NguoiDungKyNang::create([
-                        'nguoi_dung_id' => $uv4->id,
-                        'ky_nang_id' => $kyNang->id,
-                        'muc_do' => $kn['muc_do'],
-                        'nam_kinh_nghiem' => $kn['nam'],
-                        'so_chung_chi' => $kn['cc'],
-                        'hinh_anh' => $kn['anh'],
-                    ]);
-                    $tong++;
-                }
-            }
-        }
-
-        $uv5 = $ungViens->firstWhere('email', 'ung.vien5@kltn.com');
-        if ($uv5) {
-            $kyNangUV5 = [
-                ['ten' => 'Manual Testing', 'muc_do' => 5, 'nam' => 5, 'cc' => 0, 'anh' => null],
-                ['ten' => 'Postman', 'muc_do' => 4, 'nam' => 3, 'cc' => 0, 'anh' => null],
-                ['ten' => 'API Testing', 'muc_do' => 4, 'nam' => 3, 'cc' => 0, 'anh' => null],
-                ['ten' => 'Test Case Design', 'muc_do' => 5, 'nam' => 5, 'cc' => 0, 'anh' => null],
-                ['ten' => 'Jira', 'muc_do' => 4, 'nam' => 4, 'cc' => 0, 'anh' => null],
-            ];
-
-            foreach ($kyNangUV5 as $kn) {
-                $kyNang = $kyNangs->firstWhere('ten_ky_nang', $kn['ten']);
-                if ($kyNang) {
-                    NguoiDungKyNang::create([
-                        'nguoi_dung_id' => $uv5->id,
-                        'ky_nang_id' => $kyNang->id,
-                        'muc_do' => $kn['muc_do'],
-                        'nam_kinh_nghiem' => $kn['nam'],
-                        'so_chung_chi' => $kn['cc'],
-                        'hinh_anh' => $kn['anh'],
-                    ]);
-                    $tong++;
-                }
-            }
-        }
-
-        $uvConLai = $ungViens->whereNotIn('email', [
-            'ung.vien1@kltn.com',
-            'ung.vien2@kltn.com',
-            'ung.vien3@kltn.com',
-            'ung.vien4@kltn.com',
-            'ung.vien5@kltn.com',
-        ]);
-
-        foreach ($uvConLai as $uv) {
-            $randomKyNangs = $kyNangs->random(min(rand(3, 6), $kyNangs->count()));
-            foreach ($randomKyNangs as $kn) {
-                NguoiDungKyNang::create([
-                    'nguoi_dung_id' => $uv->id,
-                    'ky_nang_id' => $kn->id,
-                    'muc_do' => rand(1, 5),
-                    'nam_kinh_nghiem' => rand(0, 8),
-                    'so_chung_chi' => rand(0, 2),
-                    'hinh_anh' => null,
-                ]);
-                $tong++;
-            }
-        }
-
-        $this->command->info("✅ NguoiDungKyNangSeeder: Đã tạo {$tong} bản ghi kỹ năng (kèm chứng chỉ) cho ứng viên!");
+        $this->command->info("✅ NguoiDungKyNangSeeder: Đã tạo {$count} kỹ năng cá nhân khớp catalog AI.");
     }
 }

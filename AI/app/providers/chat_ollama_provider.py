@@ -7,6 +7,13 @@ from urllib.error import URLError
 from urllib.request import Request, urlopen
 
 from app.core.config import settings
+from app.services.chatbot_intent_engine import (
+    ensure_chat_list,
+    ensure_chat_mapping,
+    extract_report_skill_hints,
+    normalize_chat_history_items,
+    normalize_match_entries,
+)
 
 
 class OllamaChatProvider:
@@ -102,6 +109,8 @@ class OllamaChatProvider:
 
 
 def _build_prompt(question: str, context: dict, history: list[dict]) -> str:
+    context = ensure_chat_mapping(context)
+    history = normalize_chat_history_items(history)
     compact_context = _compact_context(context)
     resolved_intent = context.get("_chat_intent") or "general_career"
     history_text = "\n".join(
@@ -115,7 +124,7 @@ Yêu cầu bắt buộc:
 - Trả lời trực tiếp, không suy nghĩ thành nhiều bước.
 - Không tự xưng "tôi"; khi cần gọi vai trò, dùng "hệ thống" hoặc "trợ lý này".
 - Khi nói về người dùng, dùng "bạn"; khi nói về dữ liệu CV, dùng "hồ sơ" hoặc "ứng viên".
-- Không dùng cụm tiếng Anh phổ thông trong nội dung tư vấn. Bắt buộc Việt hóa: "Next 30 days" thành "30 ngày đầu", "Next 60 days" thành "60 ngày", "Next 90 days" thành "90 ngày", "mini project" thành "dự án nhỏ", "case study" thành "bài phân tích tình huống", "portfolio" thành "hồ sơ dự án", "matching" thành "đối sánh", "job" thành "công việc/vị trí", "apply" thành "ứng tuyển", "cover letter" thành "thư xin việc".
+- Không dùng cụm tiếng Anh phổ thông trong nội dung tư vấn. Bắt buộc Việt hóa: "Next 30 days" thành "30 ngày", "Next 60 days" thành "60 ngày", "Next 90 days" thành "90 ngày", "mini project" thành "dự án nhỏ", "case study" thành "bài phân tích tình huống", "portfolio" thành "hồ sơ dự án", "matching" thành "đối sánh", "job" thành "công việc/vị trí", "apply" thành "ứng tuyển", "cover letter" thành "thư xin việc".
 - Chỉ giữ tiếng Anh khi đó là tên riêng công nghệ, tên vị trí gốc, viết tắt kỹ thuật hoặc tên framework như iOS, Swift, SwiftUI, Firebase, REST API, Docker.
 - Chỉ trả lời trong phạm vi: hồ sơ CV, kết quả đối sánh, nghề nghiệp phù hợp, kỹ năng cần bổ sung, công việc trong hệ thống, thư xin việc, chuẩn bị phỏng vấn.
 - Câu hỏi hiện tại đã được hệ thống xác nhận là thuộc phạm vi tư vấn nghề nghiệp. Không được trả lời bằng thông báo ngoài phạm vi nếu câu hỏi đang nói về hồ sơ, CV, kỹ năng, nghề phù hợp, công việc, đối sánh hoặc lộ trình phát triển.
@@ -147,7 +156,7 @@ Hướng thay thế:
 - Nếu người dùng hỏi về lộ trình, kế hoạch 3 tháng hoặc 6 tháng, phải chia rõ theo từng giai đoạn:
 Mô phỏng lộ trình nghề nghiệp 30/60/90 ngày:
 - ...
-30 ngày đầu:
+30 ngày:
 - ...
 60 ngày:
 - ...
@@ -170,11 +179,13 @@ Câu hỏi hiện tại:
 
 
 def _compact_context(context: dict) -> dict:
-    candidate = context.get("candidate_profile") or {}
-    report = context.get("career_report") or {}
-    matches = context.get("top_matching_jobs") or []
-    related_job = context.get("related_job") or {}
+    context = ensure_chat_mapping(context)
+    candidate = ensure_chat_mapping(context.get("candidate_profile"))
+    report = ensure_chat_mapping(context.get("career_report"))
+    matches = normalize_match_entries(context.get("top_matching_jobs"))
+    related_job = ensure_chat_mapping(context.get("related_job"))
     conversation_summary = context.get("conversation_summary")
+    report_hints = extract_report_skill_hints(report)
 
     return {
         "conversation_summary": conversation_summary,
@@ -185,24 +196,24 @@ def _compact_context(context: dict) -> dict:
             "ten_nganh_nghe_muc_tieu": candidate.get("ten_nganh_nghe_muc_tieu"),
             "kinh_nghiem_nam": candidate.get("kinh_nghiem_nam"),
             "trinh_do": candidate.get("trinh_do"),
-            "parsed_skills": (candidate.get("parsed_skills") or [])[:8],
-            "builder_skills": (candidate.get("builder_skills") or [])[:8],
+            "parsed_skills": ensure_chat_list(candidate.get("parsed_skills"))[:8],
+            "builder_skills": ensure_chat_list(candidate.get("builder_skills"))[:8],
         },
         "career_report": {
             "nghe_de_xuat": report.get("nghe_de_xuat"),
             "muc_do_phu_hop": report.get("muc_do_phu_hop"),
             "goi_y_ky_nang_bo_sung": {
-                "skills": ((report.get("goi_y_ky_nang_bo_sung") or {}).get("skills") or [])[:6],
-                "strength_categories": ((report.get("goi_y_ky_nang_bo_sung") or {}).get("strength_categories") or [])[:4],
-                "recommended_roles": ((report.get("goi_y_ky_nang_bo_sung") or {}).get("recommended_roles") or [])[:3],
+                "skills": report_hints.get("skills", [])[:6],
+                "strength_categories": report_hints.get("strength_categories", [])[:4],
+                "recommended_roles": report_hints.get("recommended_roles", [])[:3],
             },
         } if report else None,
         "top_matching_jobs": [
             {
                 "job_title": item.get("job_title"),
                 "score": item.get("score"),
-                "matched_skills": (item.get("matched_skills") or [])[:5],
-                "missing_skills": (item.get("missing_skills") or [])[:5],
+                "matched_skills": ensure_chat_list(item.get("matched_skills"))[:5],
+                "missing_skills": ensure_chat_list(item.get("missing_skills"))[:5],
                 "explanation": item.get("explanation"),
             }
             for item in matches[:2]
@@ -210,7 +221,7 @@ def _compact_context(context: dict) -> dict:
         "related_job": {
             "title": related_job.get("title"),
             "level": related_job.get("level"),
-            "skills": (related_job.get("skills") or [])[:5],
+            "skills": ensure_chat_list(related_job.get("skills"))[:5],
         } if related_job else None,
     }
 

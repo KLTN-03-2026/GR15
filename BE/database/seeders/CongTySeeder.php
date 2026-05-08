@@ -6,186 +6,299 @@ use App\Models\CongTy;
 use App\Models\NganhNghe;
 use App\Models\NguoiDung;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\DB;
 
 class CongTySeeder extends Seeder
 {
     public function run(): void
     {
-        $ntds = NguoiDung::where('vai_tro', NguoiDung::VAI_TRO_NHA_TUYEN_DUNG)->get();
-        $skipCompanyEmails = [
-            'tuyen.dung.nocongty@kltn.com',
-        ];
-
-        if ($ntds->isEmpty()) {
-            $this->command->warn('⚠️ Chưa có nhà tuyển dụng. Hãy chạy NguoiDungSeeder trước.');
-            return;
-        }
-
-        $nganhNghes = NganhNghe::where('trang_thai', NganhNghe::TRANG_THAI_HIEN_THI)->get();
-        $tong = 0;
-
-        $congTyTheoEmail = [
-            'tuyen.dung1@kltn.com' => [
+        $companies = [
+            [
+                'owner_email' => 'hr.techviet@demo.vn',
                 'ten_cong_ty' => 'TechViet Solutions',
                 'ma_so_thue' => '0314827561',
-                'mo_ta' => 'Doanh nghiệp công nghệ phát triển nền tảng SaaS cho bán lẻ, logistics và vận hành nội bộ. Đội ngũ tập trung vào web app, mobile app và tích hợp dữ liệu thời gian thực.',
-                'dia_chi' => '25 Nguyễn Thị Minh Khai, Quận 1, TP. Hồ Chí Minh',
-                'dien_thoai' => '02838246891',
-                'email' => 'careers@techviet.vn',
-                'website' => 'https://techviet.vn',
                 'nganh' => 'Công nghệ thông tin',
                 'quy_mo' => '51-200',
+                'dia_chi' => '25 Nguyễn Thị Minh Khai, Quận 1, TP. Hồ Chí Minh',
+                'dien_thoai' => '02838246891',
+                'email' => 'careers@techviet-solutions.vn',
+                'website' => 'https://techviet-solutions.vn',
+                'mo_ta' => 'Công ty product outsourcing phát triển hệ thống SaaS cho bán lẻ, logistics và vận hành nội bộ. Đội ngũ tập trung vào Laravel, Vue.js, mobile app, realtime dashboard và tích hợp API doanh nghiệp.',
             ],
-            'tuyen.dung2@kltn.com' => [
-                'ten_cong_ty' => 'DigiGrowth Agency',
-                'ma_so_thue' => '0401985236',
-                'mo_ta' => 'Agency chuyên performance marketing, social commerce và vận hành nội dung đa nền tảng cho doanh nghiệp SME và startup.',
-                'dia_chi' => '88 Bạch Đằng, Hải Châu, Đà Nẵng',
-                'dien_thoai' => '02363876543',
-                'email' => 'talent@digigrowth.vn',
-                'website' => 'https://digigrowth.vn',
-                'nganh' => 'Marketing / Truyền thông',
-                'quy_mo' => '11-50',
+            [
+                'owner_email' => 'hr.saigoncloud@demo.vn',
+                'ten_cong_ty' => 'SaigonCloud Infrastructure',
+                'ma_so_thue' => '0315901842',
+                'nganh' => 'Công nghệ thông tin',
+                'quy_mo' => '51-200',
+                'dia_chi' => '18 Tôn Đức Thắng, Quận 1, TP. Hồ Chí Minh',
+                'dien_thoai' => '02839112233',
+                'email' => 'talent@saigoncloud.vn',
+                'website' => 'https://saigoncloud.vn',
+                'mo_ta' => 'Doanh nghiệp cung cấp cloud managed service, DevOps outsourcing, monitoring, backup và bảo mật hạ tầng cho khách hàng thương mại điện tử, fintech và giáo dục.',
             ],
-            'tuyen.dung3@kltn.com' => [
+            [
+                'owner_email' => 'hr.northstar@demo.vn',
                 'ten_cong_ty' => 'NorthStar Analytics',
                 'ma_so_thue' => '0109172648',
-                'mo_ta' => 'Công ty tư vấn dữ liệu và phân tích vận hành, triển khai dashboard BI, data warehouse và các mô hình dự báo cho khối tài chính và bán lẻ.',
+                'nganh' => 'Công nghệ thông tin',
+                'quy_mo' => '11-50',
                 'dia_chi' => '14 Duy Tân, Cầu Giấy, Hà Nội',
                 'dien_thoai' => '02437654321',
                 'email' => 'jobs@northstar-analytics.vn',
                 'website' => 'https://northstar-analytics.vn',
+                'mo_ta' => 'Công ty tư vấn dữ liệu triển khai data warehouse, dashboard BI, phân tích vận hành và mô hình dự báo cho khối tài chính, bán lẻ và sản xuất.',
+            ],
+            [
+                'owner_email' => 'hr.mobilewave@demo.vn',
+                'ten_cong_ty' => 'MobileWave Studio',
+                'ma_so_thue' => '0402135789',
                 'nganh' => 'Công nghệ thông tin',
                 'quy_mo' => '11-50',
+                'dia_chi' => '86 Nguyễn Văn Linh, Hải Châu, Đà Nẵng',
+                'dien_thoai' => '02363881234',
+                'email' => 'recruitment@mobilewave.vn',
+                'website' => 'https://mobilewave.vn',
+                'mo_ta' => 'Studio phát triển ứng dụng iOS, Android, Flutter và React Native cho startup trong lĩnh vực đặt lịch, giáo dục và thương mại dịch vụ.',
             ],
-            'tuyen.dung.khoa@kltn.com' => [
-                'ten_cong_ty' => 'UrbanHire Services',
+            [
+                'owner_email' => 'hr.mekongcommerce@demo.vn',
+                'ten_cong_ty' => 'Mekong Commerce',
+                'ma_so_thue' => '1801674520',
+                'nganh' => 'Kinh doanh / Bán hàng',
+                'quy_mo' => '51-200',
+                'dia_chi' => '9 Trần Văn Khéo, Ninh Kiều, Cần Thơ',
+                'dien_thoai' => '02923880011',
+                'email' => 'hr@mekongcommerce.vn',
+                'website' => 'https://mekongcommerce.vn',
+                'mo_ta' => 'Doanh nghiệp thương mại điện tử vận hành gian hàng đa sàn, kho nội vùng, livestream bán hàng và hệ thống CRM chăm sóc khách hàng miền Tây.',
+            ],
+            [
+                'owner_email' => 'hr.anphatretail@demo.vn',
+                'ten_cong_ty' => 'An Phát Retail Group',
+                'ma_so_thue' => '0108293741',
+                'nganh' => 'Kinh doanh / Bán hàng',
+                'quy_mo' => '201-500',
+                'dia_chi' => '312 Nguyễn Trãi, Thanh Xuân, Hà Nội',
+                'dien_thoai' => '02435556677',
+                'email' => 'tuyendung@anphatretail.vn',
+                'website' => 'https://anphatretail.vn',
+                'mo_ta' => 'Chuỗi bán lẻ hàng tiêu dùng nhanh và thiết bị gia dụng, có đội ngũ bán hàng B2C, quản lý cửa hàng, vận hành CRM và thương mại điện tử.',
+            ],
+            [
+                'owner_email' => 'hr.digigrowth@demo.vn',
+                'ten_cong_ty' => 'DigiGrowth Agency',
+                'ma_so_thue' => '0401985236',
+                'nganh' => 'Marketing / Truyền thông',
+                'quy_mo' => '11-50',
+                'dia_chi' => '88 Bạch Đằng, Hải Châu, Đà Nẵng',
+                'dien_thoai' => '02363876543',
+                'email' => 'talent@digigrowth.vn',
+                'website' => 'https://digigrowth.vn',
+                'mo_ta' => 'Agency chuyên performance marketing, social commerce, SEO, content và vận hành chiến dịch tăng trưởng cho doanh nghiệp SME và startup.',
+            ],
+            [
+                'owner_email' => 'hr.bloommedia@demo.vn',
+                'ten_cong_ty' => 'Bloom Media House',
+                'ma_so_thue' => '0317042158',
+                'nganh' => 'Marketing / Truyền thông',
+                'quy_mo' => '51-200',
+                'dia_chi' => '43 Võ Văn Tần, Quận 3, TP. Hồ Chí Minh',
+                'dien_thoai' => '02839334455',
+                'email' => 'people@bloommedia.vn',
+                'website' => 'https://bloommedia.vn',
+                'mo_ta' => 'Đơn vị truyền thông tích hợp, sản xuất nội dung số, key visual, social campaign và booking KOL cho thương hiệu tiêu dùng, giáo dục và lifestyle.',
+            ],
+            [
+                'owner_email' => 'hr.lotusfinance@demo.vn',
+                'ten_cong_ty' => 'Lotus Finance Advisory',
+                'ma_so_thue' => '0107753184',
+                'nganh' => 'Kế toán / Tài chính',
+                'quy_mo' => '11-50',
+                'dia_chi' => '55 Phan Chu Trinh, Hoàn Kiếm, Hà Nội',
+                'dien_thoai' => '02439998877',
+                'email' => 'career@lotusfinance.vn',
+                'website' => 'https://lotusfinance.vn',
+                'mo_ta' => 'Công ty tư vấn tài chính doanh nghiệp, kế toán quản trị, thuế, kiểm toán nội bộ và lập kế hoạch ngân sách cho SME.',
+            ],
+            [
+                'owner_email' => 'hr.fincore@demo.vn',
+                'ten_cong_ty' => 'FinCore Accounting Services',
+                'ma_so_thue' => '0318123654',
+                'nganh' => 'Kế toán / Tài chính',
+                'quy_mo' => '11-50',
+                'dia_chi' => '17 Nguyễn Thị Minh Khai, Quận 1, TP. Hồ Chí Minh',
+                'dien_thoai' => '02837776655',
+                'email' => 'jobs@fincore.vn',
+                'website' => 'https://fincore.vn',
+                'mo_ta' => 'Đơn vị cung cấp dịch vụ kế toán, báo cáo thuế, payroll và tư vấn phần mềm kế toán MISA/QuickBooks cho doanh nghiệp dịch vụ.',
+            ],
+            [
+                'owner_email' => 'hr.talentbridge@demo.vn',
+                'ten_cong_ty' => 'TalentBridge Vietnam',
                 'ma_so_thue' => '0319158420',
-                'mo_ta' => 'Đơn vị cung ứng nhân sự văn phòng và dịch vụ tuyển dụng thuê ngoài cho doanh nghiệp vừa và nhỏ.',
+                'nganh' => 'Nhân sự / Hành chính',
+                'quy_mo' => '51-200',
                 'dia_chi' => '201 Hoàng Văn Thụ, Phú Nhuận, TP. Hồ Chí Minh',
                 'dien_thoai' => '02839995566',
-                'email' => 'contact@urbanhire.vn',
-                'website' => 'https://urbanhire.vn',
+                'email' => 'hiring@talentbridge.vn',
+                'website' => 'https://talentbridge.vn',
+                'mo_ta' => 'Công ty dịch vụ tuyển dụng, RPO, headhunt và đào tạo kỹ năng phỏng vấn cho các doanh nghiệp công nghệ, tài chính, bán lẻ.',
+            ],
+            [
+                'owner_email' => 'hr.peoplesphere@demo.vn',
+                'ten_cong_ty' => 'PeopleSphere HR Consulting',
+                'ma_so_thue' => '0108724612',
                 'nganh' => 'Nhân sự / Hành chính',
                 'quy_mo' => '11-50',
-                'trang_thai' => CongTy::TRANG_THAI_TAM_NGUNG,
+                'dia_chi' => '24 Lý Thường Kiệt, Hoàn Kiếm, Hà Nội',
+                'dien_thoai' => '02436669988',
+                'email' => 'career@peoplesphere.vn',
+                'website' => 'https://peoplesphere.vn',
+                'mo_ta' => 'Đơn vị tư vấn xây dựng khung năng lực, lộ trình đào tạo nội bộ, chính sách nhân sự và hệ thống onboarding cho doanh nghiệp vừa.',
+            ],
+            [
+                'owner_email' => 'hr.eduspark@demo.vn',
+                'ten_cong_ty' => 'EduSpark Learning',
+                'ma_so_thue' => '0402267891',
+                'nganh' => 'Giáo dục / Đào tạo',
+                'quy_mo' => '51-200',
+                'dia_chi' => '42 Lê Lợi, Hải Châu, Đà Nẵng',
+                'dien_thoai' => '02363555123',
+                'email' => 'teachers@eduspark.vn',
+                'website' => 'https://eduspark.vn',
+                'mo_ta' => 'Trung tâm đào tạo tiếng Anh, kỹ năng số và lớp học online cho học sinh, sinh viên, có đội ngũ giáo viên, học vụ và LMS riêng.',
+            ],
+            [
+                'owner_email' => 'hr.sunriseacademy@demo.vn',
+                'ten_cong_ty' => 'Sunrise Academy',
+                'ma_so_thue' => '0316689021',
+                'nganh' => 'Giáo dục / Đào tạo',
+                'quy_mo' => '11-50',
+                'dia_chi' => '66 Điện Biên Phủ, Bình Thạnh, TP. Hồ Chí Minh',
+                'dien_thoai' => '02836661122',
+                'email' => 'hr@sunriseacademy.vn',
+                'website' => 'https://sunriseacademy.vn',
+                'mo_ta' => 'Học viện đào tạo kỹ năng văn phòng, phân tích dữ liệu, digital marketing và lớp kèm online cho người đi làm.',
+            ],
+            [
+                'owner_email' => 'hr.medilink@demo.vn',
+                'ten_cong_ty' => 'MediLink Clinic Network',
+                'ma_so_thue' => '0315456782',
+                'nganh' => 'Y tế / Sức khoẻ',
+                'quy_mo' => '201-500',
+                'dia_chi' => '210 Điện Biên Phủ, Bình Thạnh, TP. Hồ Chí Minh',
+                'dien_thoai' => '02838990012',
+                'email' => 'recruitment@medilink.vn',
+                'website' => 'https://medilink.vn',
+                'mo_ta' => 'Mạng lưới phòng khám đa khoa vận hành hồ sơ bệnh án điện tử, chăm sóc khách hàng y tế và quy trình điều dưỡng theo tiêu chuẩn nội bộ.',
+            ],
+            [
+                'owner_email' => 'hr.healcare@demo.vn',
+                'ten_cong_ty' => 'HealCare Pharmacy',
+                'ma_so_thue' => '1801776543',
+                'nganh' => 'Y tế / Sức khoẻ',
+                'quy_mo' => '51-200',
+                'dia_chi' => '35 Nguyễn Văn Cừ, Ninh Kiều, Cần Thơ',
+                'dien_thoai' => '02923994455',
+                'email' => 'jobs@healcare.vn',
+                'website' => 'https://healcare.vn',
+                'mo_ta' => 'Chuỗi nhà thuốc và tư vấn dược phẩm cộng đồng, tập trung vào chăm sóc khách hàng, hồ sơ thuốc và chuẩn hóa quy trình bán lẻ dược.',
+            ],
+            [
+                'owner_email' => 'hr.skylinebuild@demo.vn',
+                'ten_cong_ty' => 'Skyline Build Design',
+                'ma_so_thue' => '0316234789',
+                'nganh' => 'Xây dựng / Bất động sản',
+                'quy_mo' => '51-200',
+                'dia_chi' => '6A Nguyễn Hữu Thọ, Quận 7, TP. Hồ Chí Minh',
+                'dien_thoai' => '02838887766',
+                'email' => 'hr@skylinebuild.vn',
+                'website' => 'https://skylinebuild.vn',
+                'mo_ta' => 'Công ty thiết kế và thi công công trình dân dụng, văn phòng, nhà phố; sử dụng AutoCAD, Revit, BIM và quản lý dự án xây dựng.',
+            ],
+            [
+                'owner_email' => 'hr.greenhome@demo.vn',
+                'ten_cong_ty' => 'GreenHome Real Estate',
+                'ma_so_thue' => '0109345681',
+                'nganh' => 'Xây dựng / Bất động sản',
+                'quy_mo' => '201-500',
+                'dia_chi' => '12 Tố Hữu, Nam Từ Liêm, Hà Nội',
+                'dien_thoai' => '02435557788',
+                'email' => 'tuyendung@greenhome.vn',
+                'website' => 'https://greenhome.vn',
+                'mo_ta' => 'Doanh nghiệp phát triển và phân phối dự án nhà ở xanh, có đội ngũ kinh doanh bất động sản, thiết kế, pháp lý và chăm sóc khách hàng.',
+            ],
+            [
+                'owner_email' => 'hr.vietlogix@demo.vn',
+                'ten_cong_ty' => 'VietLogix Supply Chain',
+                'ma_so_thue' => '0317559312',
+                'nganh' => 'Kinh doanh / Bán hàng',
+                'quy_mo' => '201-500',
+                'dia_chi' => '128 Xa Lộ Hà Nội, TP. Thủ Đức, TP. Hồ Chí Minh',
+                'dien_thoai' => '02837220011',
+                'email' => 'people@vietlogix.vn',
+                'website' => 'https://vietlogix.vn',
+                'mo_ta' => 'Doanh nghiệp vận hành kho, giao nhận nội địa, quản lý tồn kho, procurement và tối ưu chuỗi cung ứng cho thương mại điện tử.',
+            ],
+            [
+                'owner_email' => 'hr.lumieretravel@demo.vn',
+                'ten_cong_ty' => 'Lumiere Travel & Hospitality',
+                'ma_so_thue' => '4201897654',
+                'nganh' => 'Kinh doanh / Bán hàng',
+                'quy_mo' => '51-200',
+                'dia_chi' => '76 Trần Phú, Nha Trang, Khánh Hòa',
+                'dien_thoai' => '02583889900',
+                'email' => 'jobs@lumieretravel.vn',
+                'website' => 'https://lumieretravel.vn',
+                'mo_ta' => 'Đơn vị vận hành tour, khách sạn boutique, sự kiện doanh nghiệp và dịch vụ front office cho khách du lịch nội địa/quốc tế.',
             ],
         ];
 
-        foreach ($congTyTheoEmail as $email => $data) {
-            $ntd = $ntds->firstWhere('email', $email);
-            if (!$ntd) {
+        $now = now();
+        $count = 0;
+
+        foreach ($companies as $data) {
+            $owner = NguoiDung::where('email', $data['owner_email'])->first();
+
+            if (!$owner) {
                 continue;
             }
 
-            $nganh = $nganhNghes->firstWhere('ten_nganh', $data['nganh']);
+            $nganh = NganhNghe::where('ten_nganh', $data['nganh'])->first()
+                ?? NganhNghe::whereNull('danh_muc_cha_id')->first();
 
-            CongTy::create([
-                'nguoi_dung_id' => $ntd->id,
-                'ten_cong_ty' => $data['ten_cong_ty'],
-                'ma_so_thue' => $data['ma_so_thue'],
-                'mo_ta' => $data['mo_ta'],
-                'dia_chi' => $data['dia_chi'],
-                'dien_thoai' => $data['dien_thoai'],
-                'email' => $data['email'],
-                'website' => $data['website'],
-                'nganh_nghe_id' => $nganh?->id,
-                'quy_mo' => $data['quy_mo'],
-                'trang_thai' => $data['trang_thai'] ?? CongTy::TRANG_THAI_HOAT_DONG,
-            ]);
-            $tong++;
+            $company = CongTy::updateOrCreate(
+                ['email' => $data['email']],
+                [
+                    'nguoi_dung_id' => $owner->id,
+                    'ten_cong_ty' => $data['ten_cong_ty'],
+                    'ma_so_thue' => $data['ma_so_thue'],
+                    'mo_ta' => $data['mo_ta'],
+                    'dia_chi' => $data['dia_chi'],
+                    'dien_thoai' => $data['dien_thoai'],
+                    'website' => $data['website'],
+                    'nganh_nghe_id' => $nganh?->id,
+                    'quy_mo' => $data['quy_mo'],
+                    'trang_thai' => CongTy::TRANG_THAI_HOAT_DONG,
+                ]
+            );
+
+            DB::table('cong_ty_nguoi_dungs')->updateOrInsert(
+                ['nguoi_dung_id' => $owner->id],
+                [
+                    'cong_ty_id' => $company->id,
+                    'vai_tro_noi_bo' => CongTy::VAI_TRO_NOI_BO_OWNER,
+                    'quyen_noi_bo' => json_encode(CongTy::defaultHrPermissions(), JSON_UNESCAPED_UNICODE),
+                    'duoc_tao_boi' => $owner->id,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ]
+            );
+
+            $count++;
         }
 
-        $mauCongTyChoFactory = [
-            [
-                'ten_cong_ty' => 'Mekong Commerce',
-                'mo_ta' => 'Đơn vị thương mại điện tử vận hành chuỗi gian hàng đa sàn, chú trọng growth và tối ưu chuyển đổi.',
-                'dia_chi' => '9 Trần Văn Khéo, Ninh Kiều, Cần Thơ',
-                'quy_mo' => '51-200',
-                'email_domain' => 'mekongcommerce.vn',
-                'nganh' => 'Kinh doanh / Bán hàng',
-            ],
-            [
-                'ten_cong_ty' => 'BlueOrbit Cloud',
-                'mo_ta' => 'Công ty hạ tầng cloud và managed services phục vụ khách hàng doanh nghiệp trong khu vực Đông Nam Á.',
-                'dia_chi' => '6A Tôn Đức Thắng, Ba Đình, Hà Nội',
-                'quy_mo' => '51-200',
-                'email_domain' => 'blueorbitcloud.vn',
-                'nganh' => 'Công nghệ thông tin',
-            ],
-            [
-                'ten_cong_ty' => 'Sunrise Education Hub',
-                'mo_ta' => 'Tổ chức edtech phát triển nền tảng học trực tuyến, quản lý khóa học và nội dung đào tạo cho doanh nghiệp.',
-                'dia_chi' => '42 Lê Lợi, Hải Châu, Đà Nẵng',
-                'quy_mo' => '11-50',
-                'email_domain' => 'sunriseedu.vn',
-                'nganh' => 'Giáo dục / Đào tạo',
-            ],
-            [
-                'ten_cong_ty' => 'GreenLog Supply Chain',
-                'mo_ta' => 'Doanh nghiệp tối ưu vận tải, kho bãi và phân phối bằng hệ thống theo dõi đơn hàng và dữ liệu vận hành thời gian thực.',
-                'dia_chi' => '128 Xa Lộ Hà Nội, TP. Thủ Đức, TP. Hồ Chí Minh',
-                'quy_mo' => '201-500',
-                'email_domain' => 'greenlog.vn',
-                'nganh' => 'Vận chuyển / Giao nhận',
-            ],
-            [
-                'ten_cong_ty' => 'Lumiere Creative Studio',
-                'mo_ta' => 'Studio sáng tạo nội dung, branding và thiết kế trải nghiệm số cho thương hiệu tiêu dùng và startup.',
-                'dia_chi' => '17 Nguyễn Văn Cừ, Ninh Kiều, Cần Thơ',
-                'quy_mo' => '11-50',
-                'email_domain' => 'lumierestudio.vn',
-                'nganh' => 'Thiết kế / Sáng tạo nghệ thuật',
-            ],
-            [
-                'ten_cong_ty' => 'FinCore Advisory',
-                'mo_ta' => 'Đơn vị tư vấn tài chính doanh nghiệp, kế toán quản trị và chuyển đổi số cho khối SME.',
-                'dia_chi' => '55 Phan Chu Trinh, Hoàn Kiếm, Hà Nội',
-                'quy_mo' => '11-50',
-                'email_domain' => 'fincoreadvisory.vn',
-                'nganh' => 'Tài chính / Đầu tư',
-            ],
-            [
-                'ten_cong_ty' => 'Healium Care Network',
-                'mo_ta' => 'Mạng lưới dịch vụ y tế số kết nối phòng khám, chăm sóc khách hàng và vận hành hồ sơ sức khỏe điện tử.',
-                'dia_chi' => '210 Điện Biên Phủ, Bình Thạnh, TP. Hồ Chí Minh',
-                'quy_mo' => '51-200',
-                'email_domain' => 'healiumcare.vn',
-                'nganh' => 'Y tế / Chăm sóc sức khỏe',
-            ],
-        ];
-
-        $ntdConLai = $ntds->filter(function ($ntd) use ($skipCompanyEmails) {
-            return !in_array($ntd->email, [
-                'tuyen.dung1@kltn.com',
-                'tuyen.dung2@kltn.com',
-                'tuyen.dung3@kltn.com',
-                'tuyen.dung.khoa@kltn.com',
-                ...$skipCompanyEmails,
-            ], true);
-        })->values();
-
-        foreach ($ntdConLai as $index => $ntd) {
-            $mau = $mauCongTyChoFactory[$index % count($mauCongTyChoFactory)];
-            $nganh = $nganhNghes->firstWhere('ten_nganh', $mau['nganh']) ?? $nganhNghes->first();
-
-            CongTy::create([
-                'nguoi_dung_id' => $ntd->id,
-                'ten_cong_ty' => $mau['ten_cong_ty'] . ' ' . ($index + 1),
-                'ma_so_thue' => '1000000' . str_pad((string) ($index + 1), 3, '0', STR_PAD_LEFT),
-                'mo_ta' => $mau['mo_ta'],
-                'dia_chi' => $mau['dia_chi'],
-                'dien_thoai' => '0283' . str_pad((string) (456700 + $index), 6, '0', STR_PAD_LEFT),
-                'email' => 'hr' . ($index + 1) . '@' . $mau['email_domain'],
-                'website' => 'https://www.' . $mau['email_domain'],
-                'logo' => null,
-                'nganh_nghe_id' => $nganh?->id,
-                'quy_mo' => $mau['quy_mo'],
-                'trang_thai' => $ntd->trang_thai ? CongTy::TRANG_THAI_HOAT_DONG : CongTy::TRANG_THAI_TAM_NGUNG,
-            ]);
-            $tong++;
-        }
-
-        $this->command->info("✅ CongTySeeder: Đã tạo {$tong} công ty với thông tin gần thực tế.");
+        $this->command->info("✅ CongTySeeder: Đã tạo {$count} công ty demo chi tiết và membership owner đầy đủ.");
     }
 }

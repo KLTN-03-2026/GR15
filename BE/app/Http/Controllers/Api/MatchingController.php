@@ -46,6 +46,13 @@ class MatchingController extends Controller
             'cap_bac' => $tin->cap_bac,
             'kinh_nghiem_yeu_cau' => $tin->kinh_nghiem_yeu_cau,
             'trinh_do_yeu_cau' => $tin->trinh_do_yeu_cau,
+            'dia_diem_lam_viec' => $tin->dia_diem_lam_viec,
+            'hinh_thuc_lam_viec' => $tin->hinh_thuc_lam_viec,
+            'muc_luong_tu' => $tin->muc_luong_tu,
+            'muc_luong_den' => $tin->muc_luong_den,
+            'don_vi_luong' => $tin->don_vi_luong,
+            'parsed_salary_json' => $tin->parsing?->parsed_salary_json ?? [],
+            'parsed_location_json' => $tin->parsing?->parsed_location_json ?? [],
             'raw_text' => $tin->parsing?->raw_text ?? $tin->mo_ta_cong_viec,
             'parsed_skills' => $tin->parsing?->parsed_skills_json ?? [],
             'required_skills' => $tin->kyNangYeuCaus

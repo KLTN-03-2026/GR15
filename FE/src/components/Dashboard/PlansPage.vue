@@ -66,6 +66,15 @@ const sortedPlans = computed(() =>
   [...plans.value].sort((left, right) => Number(left.is_free || 0) - Number(right.is_free || 0) || Number(left.gia || 0) - Number(right.gia || 0))
 )
 
+const buildSubscriptionReturnStorageKey = () => {
+  const status = typeof route.query.subscription === 'string' ? route.query.subscription : ''
+  const orderId = typeof route.query.orderId === 'string' ? route.query.orderId : ''
+
+  if (!status && !orderId) return ''
+
+  return `plans-subscription-return:${status || 'unknown'}:${orderId || 'no-order'}`
+}
+
 const loadPlans = async () => {
   loading.value = true
   try {
@@ -89,7 +98,15 @@ const loadPlans = async () => {
 
 const maybeHandleReturn = async () => {
   const status = typeof route.query.subscription === 'string' ? route.query.subscription : ''
-  if (!status) return
+  const orderId = typeof route.query.orderId === 'string' ? route.query.orderId : ''
+  if (!status && !orderId) return false
+
+  const handledKey = buildSubscriptionReturnStorageKey()
+  const alreadyHandled = handledKey && window.sessionStorage.getItem(handledKey) === '1'
+
+  if (alreadyHandled) {
+    return false
+  }
 
   await loadPlans()
 
@@ -109,7 +126,12 @@ const maybeHandleReturn = async () => {
     notify.error(message)
   }
 
-  await router.replace({ path: '/plans' })
+  if (handledKey) {
+    window.sessionStorage.setItem(handledKey, '1')
+  }
+
+  await router.push({ path: '/plans' })
+  return true
 }
 
 const purchasePlan = async (planCode) => {
@@ -144,9 +166,9 @@ const purchasePlan = async (planCode) => {
 }
 
 onMounted(async () => {
-  await maybeHandleReturn()
+  const handledReturn = await maybeHandleReturn()
 
-  if (typeof route.query.subscription !== 'string') {
+  if (!handledReturn) {
     await loadPlans()
   }
 })

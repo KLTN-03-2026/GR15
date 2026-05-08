@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import re
 from typing import Iterable
 
 from app.services.skill_catalog import normalize_search_text
@@ -63,10 +65,129 @@ INTENT_LABELS = {
 }
 
 
+def ensure_chat_mapping(value) -> dict:
+    if isinstance(value, dict):
+        return value
+
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return {}
+
+        try:
+            decoded = json.loads(stripped)
+        except json.JSONDecodeError:
+            return {}
+
+        return decoded if isinstance(decoded, dict) else {}
+
+    return {}
+
+
+def ensure_chat_list(value) -> list:
+    if isinstance(value, list):
+        return value
+
+    if isinstance(value, (tuple, set)):
+        return list(value)
+
+    if isinstance(value, dict):
+        return [value]
+
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return []
+
+        try:
+            decoded = json.loads(stripped)
+        except json.JSONDecodeError:
+            decoded = None
+
+        if isinstance(decoded, list):
+            return decoded
+        if isinstance(decoded, dict):
+            return [decoded]
+        if isinstance(decoded, str):
+            stripped = decoded.strip()
+            if not stripped:
+                return []
+
+        parts = [
+            re.sub(r"^[\-\*\u2022]+\s*", "", part).strip()
+            for part in re.split(r"[\r\n,;]+", stripped)
+        ]
+        parts = [part for part in parts if part]
+        return parts if parts else [stripped]
+
+    return []
+
+
+def normalize_chat_history_items(history: list[dict] | None) -> list[dict]:
+    normalized: list[dict] = []
+
+    for item in history or []:
+        if isinstance(item, dict):
+            normalized.append(item)
+            continue
+
+        if isinstance(item, str) and item.strip():
+            normalized.append({
+                "role": "user",
+                "content": item.strip(),
+                "intent": None,
+            })
+
+    return normalized
+
+
+def normalize_match_entries(matches) -> list[dict]:
+    normalized: list[dict] = []
+
+    for item in ensure_chat_list(matches):
+        if isinstance(item, dict):
+            normalized.append(item)
+            continue
+
+        if isinstance(item, str) and item.strip():
+            normalized.append({
+                "job_title": item.strip(),
+                "matched_skills": [],
+                "missing_skills": [],
+                "explanation": None,
+            })
+
+    return normalized
+
+
+def extract_report_skill_hints(report) -> dict:
+    report_map = ensure_chat_mapping(report)
+    raw_payload = report_map.get("goi_y_ky_nang_bo_sung")
+    payload_map = ensure_chat_mapping(raw_payload)
+
+    if payload_map:
+        return {
+            "skills": _normalize_string_list(payload_map.get("skills")),
+            "strength_categories": _normalize_string_list(payload_map.get("strength_categories")),
+            "recommended_roles": _normalize_string_list(payload_map.get("recommended_roles")),
+            "raw_text": str(payload_map.get("raw_text") or "").strip() or None,
+        }
+
+    normalized_list = _normalize_string_list(raw_payload)
+    raw_text = raw_payload.strip() if isinstance(raw_payload, str) and raw_payload.strip() else None
+
+    return {
+        "skills": normalized_list,
+        "strength_categories": [],
+        "recommended_roles": [],
+        "raw_text": raw_text,
+    }
+
+
 def resolve_intent(message: str, *, history: list[dict] | None = None, context: dict | None = None) -> str:
     normalized = normalize_search_text(message)
-    history = history or []
-    context = context or {}
+    history = normalize_chat_history_items(history)
+    context = ensure_chat_mapping(context)
 
     if _looks_like_learning_plan_request(normalized):
         return INTENT_LEARNING_PLAN
@@ -116,10 +237,12 @@ def should_use_fast_path(message: str, *, intent: str | None = None) -> bool:
 
 
 def build_template_answer(question: str, context: dict, history: list[dict], intent: str) -> str:
-    candidate = context.get("candidate_profile") or {}
-    report = context.get("career_report") or {}
-    matches = context.get("top_matching_jobs") or []
-    related_job = context.get("related_job") or {}
+    context = ensure_chat_mapping(context)
+    candidate = ensure_chat_mapping(context.get("candidate_profile"))
+    report = ensure_chat_mapping(context.get("career_report"))
+    matches = normalize_match_entries(context.get("top_matching_jobs"))
+    related_job = ensure_chat_mapping(context.get("related_job"))
+    rag_context = ensure_chat_mapping(context.get("rag_context"))
     normalized = normalize_search_text(question)
 
     if intent == INTENT_SKILL_GAP:
@@ -164,7 +287,11 @@ def build_template_answer(question: str, context: dict, history: list[dict], int
 
     if intent == INTENT_JOB_RECOMMENDATION:
         jobs = _job_candidates(matches)
+        rag_jobs = _rag_job_candidates(rag_context)
         wants_apply = any(keyword in normalized for keyword in ["apply", "ứng tuyển", "ung tuyen", "apply ngay"])
+        if not jobs and rag_jobs:
+            jobs = rag_jobs
+
         if not jobs:
             return (
                 "Hiện chưa có đủ dữ liệu để gợi ý job cụ thể.\n"
@@ -175,6 +302,12 @@ def build_template_answer(question: str, context: dict, history: list[dict], int
             "Gợi ý công việc nên xem:",
             *[f"- {job}" for job in jobs[:3]],
         ]
+        if rag_jobs:
+            lines.extend([
+                "",
+                "Nguồn tham chiếu:",
+                "- Gợi ý được lọc từ dữ liệu hồ sơ, kỹ năng và tin tuyển dụng hiện có trong hệ thống.",
+            ])
         if wants_apply:
             lines.extend([
                 "",
@@ -229,7 +362,7 @@ def build_template_answer(question: str, context: dict, history: list[dict], int
         return "\n".join(lines)
 
     if intent == INTENT_LEARNING_PLAN:
-        return _build_career_path_simulator_answer(candidate, report, matches, related_job)
+        return _build_career_path_simulator_answer(question, candidate, report, matches, related_job)
 
     if intent == INTENT_CV_IMPROVEMENT:
         parsed_skills = candidate.get("parsed_skills") or []
@@ -275,7 +408,7 @@ def build_template_answer(question: str, context: dict, history: list[dict], int
 
     if intent == INTENT_GENERAL_CAREER:
         role = report.get("nghe_de_xuat") or related_job.get("title") or "hướng nghề hiện tại"
-        strengths = ((report.get("goi_y_ky_nang_bo_sung") or {}).get("strength_categories") or [])
+        strengths = extract_report_skill_hints(report).get("strength_categories") or []
         lines = [
             f"Hướng nghề phù hợp nhất hiện tại là: {role}.",
         ]
@@ -472,7 +605,7 @@ def _is_follow_up_question(normalized: str) -> bool:
 
 
 def _last_in_scope_intent(history: list[dict]) -> str | None:
-    for item in reversed(history[-6:]):
+    for item in reversed(normalize_chat_history_items(history)[-6:]):
         intent = item.get("intent")
         if intent and intent != INTENT_OUT_OF_SCOPE:
             return intent
@@ -480,9 +613,10 @@ def _last_in_scope_intent(history: list[dict]) -> str | None:
 
 
 def _has_chat_context(context: dict) -> bool:
+    context = ensure_chat_mapping(context)
     return bool(
         context.get("conversation_summary")
-        or (context.get("candidate_profile") or {}).get("parsed_skills")
+        or ensure_chat_mapping(context.get("candidate_profile")).get("parsed_skills")
         or context.get("career_report")
         or context.get("top_matching_jobs")
         or context.get("related_job")
@@ -490,7 +624,7 @@ def _has_chat_context(context: dict) -> bool:
 
 
 def _history_is_in_scope(history: list[dict]) -> bool:
-    for item in reversed(history[-6:]):
+    for item in reversed(normalize_chat_history_items(history)[-6:]):
         normalized = normalize_search_text(item.get("content", ""))
         if any(keyword in normalized for keyword in DOMAIN_KEYWORDS):
             return True
@@ -499,12 +633,12 @@ def _history_is_in_scope(history: list[dict]) -> bool:
 
 def _collect_missing_skills(matches: list[dict], report: dict) -> list[str]:
     result: list[str] = []
-    for item in matches:
-        for skill in item.get("missing_skills", []) or []:
+    for item in normalize_match_entries(matches):
+        for skill in _normalize_string_list(item.get("missing_skills")):
             if skill and skill not in result:
                 result.append(skill)
 
-    extra = ((report.get("goi_y_ky_nang_bo_sung") or {}).get("skills") or [])
+    extra = extract_report_skill_hints(report).get("skills") or []
     for skill in extra:
         if skill and skill not in result:
             result.append(skill)
@@ -513,22 +647,22 @@ def _collect_missing_skills(matches: list[dict], report: dict) -> list[str]:
 
 def _collect_matched_skills(matches: list[dict]) -> list[str]:
     result: list[str] = []
-    for item in matches:
-        for skill in item.get("matched_skills", []) or []:
+    for item in normalize_match_entries(matches):
+        for skill in _normalize_string_list(item.get("matched_skills")):
             if skill and skill not in result:
                 result.append(skill)
     return result
 
 
 def _alternative_roles(report: dict, primary_role: str) -> list[str]:
-    roles = ((report.get("goi_y_ky_nang_bo_sung") or {}).get("recommended_roles") or [])
+    roles = extract_report_skill_hints(report).get("recommended_roles") or []
     return [item for item in roles if item and item != primary_role]
 
 
 def _direction_reasons(candidate: dict, report: dict, matches: list[dict]) -> list[str]:
     reasons: list[str] = []
     parsed_skills = candidate.get("parsed_skills") or []
-    strengths = ((report.get("goi_y_ky_nang_bo_sung") or {}).get("strength_categories") or [])
+    strengths = extract_report_skill_hints(report).get("strength_categories") or []
     missing = _collect_missing_skills(matches, report)
 
     if parsed_skills:
@@ -543,7 +677,7 @@ def _direction_reasons(candidate: dict, report: dict, matches: list[dict]) -> li
 def _job_candidates(matches: list[dict]) -> list[str]:
     jobs: list[str] = []
 
-    for item in matches[:3]:
+    for item in normalize_match_entries(matches)[:3]:
         title = item.get("job_title")
         if title and title not in jobs:
             jobs.append(title)
@@ -551,12 +685,40 @@ def _job_candidates(matches: list[dict]) -> list[str]:
     return jobs
 
 
+def _rag_job_candidates(rag_context: dict) -> list[str]:
+    jobs = []
+    for item in ensure_chat_list(rag_context.get("job_snippets")):
+        if not isinstance(item, dict):
+            continue
+        title = str(item.get("title") or "").strip()
+        company = str(item.get("company") or "").strip()
+        location = str(item.get("location") or "").strip()
+        skills = _normalize_string_list(item.get("skills"))[:3]
+        if not title:
+            continue
+        label = title
+        if company:
+            label += f" tại {company}"
+        extras = []
+        if location:
+            extras.append(location)
+        if skills:
+            extras.append("kỹ năng: " + ", ".join(skills))
+        if extras:
+            label += " (" + "; ".join(extras) + ")"
+        jobs.append(label)
+    return jobs[:5]
+
+
 def _build_career_path_simulator_answer(
+    question: str,
     candidate: dict,
     report: dict,
     matches: list[dict],
     related_job: dict,
 ) -> str:
+    explicit_focus = _extract_learning_focus(question)
+    target_industry = candidate.get("ten_nganh_nghe_muc_tieu")
     target_role = (
         candidate.get("vi_tri_ung_tuyen_muc_tieu")
         or report.get("nghe_de_xuat")
@@ -564,12 +726,19 @@ def _build_career_path_simulator_answer(
         or (matches[0].get("job_title") if matches else None)
         or "vị trí mục tiêu hiện tại"
     )
-    target_industry = candidate.get("ten_nganh_nghe_muc_tieu")
     current_skills = _unique_list([
         *(candidate.get("parsed_skills") or []),
         *(candidate.get("builder_skills") or []),
         *_collect_matched_skills(matches),
     ])
+
+    if explicit_focus:
+        return _build_explicit_learning_focus_answer(
+            explicit_focus,
+            current_skills=current_skills,
+            target_industry=target_industry,
+        )
+
     missing_skills = _collect_missing_skills(matches, report)
     jobs = _job_candidates(matches)
     alternative_roles = _alternative_roles(report, str(target_role))
@@ -599,7 +768,7 @@ def _build_career_path_simulator_answer(
 
     lines.extend([
         "",
-        "30 ngày đầu:",
+        "30 ngày:",
         "- Chốt 1 phiên bản CV bám sát mục tiêu, ưu tiên đưa kỹ năng và dự án liên quan lên phần đầu.",
         "- Ôn lại nền tảng cốt lõi của vị trí mục tiêu và ghi lại 3 ví dụ kinh nghiệm/dự án có thể kể khi phỏng vấn.",
     ])
@@ -645,6 +814,54 @@ def _build_career_path_simulator_answer(
     return "\n".join(lines)
 
 
+def _build_explicit_learning_focus_answer(
+    focus: dict,
+    *,
+    current_skills: list[str],
+    target_industry: str | None = None,
+) -> str:
+    label = focus["label"]
+    track = focus["track"]
+    track_config = _learning_track_config(track)
+    relevant_skills = _filter_focus_relevant_skills(current_skills, track_config["keywords"])
+    current_level = _infer_focus_level(relevant_skills)
+
+    lines = [
+        "Mô phỏng lộ trình nghề nghiệp 30/60/90 ngày:",
+        f"- Mục tiêu chính: {label}.",
+        f"- Mức hiện tại: {current_level}.",
+    ]
+    if target_industry:
+        lines.append(f"- Ngành mục tiêu đang quan tâm: {target_industry}.")
+
+    if relevant_skills:
+        lines.extend([
+            "",
+            "Nền tảng đang có thể tận dụng:",
+            "- " + ", ".join(relevant_skills[:6]) + ".",
+        ])
+
+    lines.extend([
+        "",
+        "Trọng tâm nên học:",
+        *[f"- {topic}" for topic in track_config["core_topics"]],
+        "",
+        "30 ngày:",
+        *[f"- {item}" for item in track_config["day30"]],
+        "",
+        "60 ngày:",
+        *[f"- {item}" for item in track_config["day60"]],
+        "",
+        "90 ngày:",
+        *[f"- {item}" for item in track_config["day90"]],
+        "",
+        "Mốc kiểm tra:",
+        *[f"- {item}" for item in track_config["checkpoints"]],
+    ])
+
+    return "\n".join(lines)
+
+
 def _infer_current_level(candidate: dict, matches: list[dict]) -> str:
     years = candidate.get("kinh_nghiem_nam")
     try:
@@ -653,9 +870,10 @@ def _infer_current_level(candidate: dict, matches: list[dict]) -> str:
         years = 0
 
     top_score = 0.0
-    if matches:
+    normalized_matches = normalize_match_entries(matches)
+    if normalized_matches:
         try:
-            top_score = float(matches[0].get("score") or 0)
+            top_score = float(normalized_matches[0].get("score") or 0)
         except (TypeError, ValueError):
             top_score = 0.0
 
@@ -679,3 +897,291 @@ def _unique_list(items: Iterable) -> list[str]:
         seen.add(key)
         result.append(value)
     return result
+
+
+def _normalize_string_list(value) -> list[str]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+
+    for item in ensure_chat_list(value):
+        text = ""
+
+        if isinstance(item, dict):
+            text = str(
+                item.get("skill_name")
+                or item.get("name")
+                or item.get("ten")
+                or item.get("title")
+                or ""
+            ).strip()
+        else:
+            text = str(item or "").strip()
+
+        if not text:
+            continue
+
+        key = normalize_search_text(text)
+        if key in seen:
+            continue
+
+        seen.add(key)
+        normalized.append(text)
+
+    return normalized
+
+
+def _extract_learning_focus(question: str) -> dict | None:
+    match = re.search(r"\b(?:hoc|học)\s+(.+?)(?:[?.!,]|$)", question, flags=re.IGNORECASE)
+    if not match:
+        return None
+
+    raw_topic = re.sub(
+        r"^(?:ve|về|theo|hướng|huong|cho|làm|lam)\s+",
+        "",
+        match.group(1).strip(),
+        flags=re.IGNORECASE,
+    ).strip(" \t\r\n.:;!?")
+
+    if not raw_topic:
+        return None
+
+    normalized = normalize_search_text(raw_topic)
+
+    if "vue" in normalized:
+        return {"label": "Frontend Vue.js", "track": "frontend_vue"}
+    if "react" in normalized:
+        return {"label": "Frontend React", "track": "frontend_react"}
+    if "laravel" in normalized:
+        return {"label": "Backend Laravel", "track": "backend_laravel"}
+    if any(marker in normalized for marker in ["frontend", "html", "css", "javascript", "typescript", "web ui"]):
+        return {"label": _pretty_topic_label(raw_topic), "track": "frontend_web"}
+    if any(marker in normalized for marker in ["backend", "api", "node", "spring", "django", "php", "java"]):
+        return {"label": _pretty_topic_label(raw_topic), "track": "backend_web"}
+
+    if len(normalized.split()) > 8:
+        return None
+
+    return {"label": _pretty_topic_label(raw_topic), "track": "generic_learning"}
+
+
+def _pretty_topic_label(value: str) -> str:
+    compact = re.sub(r"\s+", " ", value).strip()
+    if not compact:
+        return "chủ đề học hiện tại"
+
+    lower = compact.lower()
+    replacements = {
+        "vuejs": "Vue.js",
+        "reactjs": "React",
+        "nodejs": "Node.js",
+        "javascript": "JavaScript",
+        "typescript": "TypeScript",
+        "frontend": "Frontend",
+        "backend": "Backend",
+        "laravel": "Laravel",
+        "php": "PHP",
+        "html": "HTML",
+        "css": "CSS",
+    }
+
+    words = []
+    for part in compact.split():
+        words.append(replacements.get(part.lower(), part.capitalize() if part.islower() else part))
+
+    return " ".join(words)
+
+
+def _learning_track_config(track: str) -> dict:
+    configs = {
+        "frontend_vue": {
+            "keywords": ["vue", "javascript", "typescript", "html", "css", "frontend", "pinia", "router", "api"],
+            "core_topics": [
+                "HTML/CSS responsive, JavaScript hiện đại và cách tổ chức component.",
+                "Vue.js nền tảng: props/emit, computed, watch, lifecycle, form binding.",
+                "Vue Router, Pinia và cách gọi API để nối giao diện với dữ liệu thật.",
+            ],
+            "day30": [
+                "Ôn HTML, CSS, JavaScript ES6+, DOM, async/await và cách đọc dữ liệu từ API.",
+                "Học Vue.js nền tảng: component, props/emit, computed, watch, lifecycle và xử lý form.",
+                "Làm 2-3 bài thực hành nhỏ như todo list, bộ lọc sản phẩm hoặc form validation bằng Vue.",
+            ],
+            "day60": [
+                "Học Vue Router, Pinia, tổ chức thư mục dự án và tái sử dụng component.",
+                "Kết nối API thật bằng fetch/axios, xử lý loading, lỗi và trạng thái đăng nhập cơ bản.",
+                "Hoàn thiện một dự án nhỏ như dashboard quản trị, job board mini hoặc trang bán hàng đơn giản.",
+            ],
+            "day90": [
+                "Nâng dự án lên mức có CRUD đầy đủ, auth cơ bản, responsive và deploy được.",
+                "Tối ưu code: tách component hợp lý, lazy loading, quy ước đặt tên và README rõ ràng.",
+                "Chuẩn bị 1-2 case study để đưa vào CV hoặc hồ sơ dự án khi ứng tuyển frontend Vue.js.",
+            ],
+            "checkpoints": [
+                "Sau 30 ngày: tự dựng được giao diện nhỏ bằng Vue và hiểu reactivity/component.",
+                "Sau 60 ngày: có một dự án Vue hoàn chỉnh kết nối API thật.",
+                "Sau 90 ngày: có thể trình bày dự án, tối ưu CV và bắt đầu ứng tuyển vị trí frontend Vue.js.",
+            ],
+        },
+        "frontend_react": {
+            "keywords": ["react", "javascript", "typescript", "html", "css", "frontend", "redux", "router", "api"],
+            "core_topics": [
+                "HTML/CSS responsive, JavaScript hiện đại và tư duy chia UI thành component.",
+                "React nền tảng: props, state, effect, form, lifecycle theo tư duy hàm.",
+                "Routing, quản lý state và kết nối API để xây giao diện có dữ liệu thật.",
+            ],
+            "day30": [
+                "Ôn HTML, CSS, JavaScript ES6+, array methods, async/await và fetch API.",
+                "Học React nền tảng: JSX, props, state, useEffect, form control, component composition.",
+                "Làm 2-3 bài thực hành nhỏ như todo list, form tìm kiếm hoặc bộ lọc dữ liệu.",
+            ],
+            "day60": [
+                "Học React Router, state management cơ bản và tổ chức cấu trúc dự án.",
+                "Kết nối API thật, xử lý loading, lỗi, pagination và auth flow cơ bản.",
+                "Hoàn thiện một dự án nhỏ như dashboard, trang quản trị hoặc job board mini.",
+            ],
+            "day90": [
+                "Nâng dự án lên mức có CRUD đầy đủ, auth cơ bản, responsive và deploy được.",
+                "Viết README, làm sạch component tree và chuẩn hóa luồng state.",
+                "Chuẩn bị 1-2 case study để đưa vào CV hoặc hồ sơ dự án khi ứng tuyển frontend React.",
+            ],
+            "checkpoints": [
+                "Sau 30 ngày: tự dựng được giao diện React nhỏ với state và form cơ bản.",
+                "Sau 60 ngày: có một dự án React hoàn chỉnh kết nối API thật.",
+                "Sau 90 ngày: có thể trình bày dự án và bắt đầu ứng tuyển vị trí frontend React.",
+            ],
+        },
+        "frontend_web": {
+            "keywords": ["frontend", "javascript", "typescript", "html", "css", "ui", "ux", "api", "responsive"],
+            "core_topics": [
+                "HTML/CSS responsive, JavaScript hiện đại và cấu trúc giao diện web.",
+                "Tư duy component, form, gọi API và quản lý trạng thái giao diện.",
+                "Dự án thực hành có dữ liệu thật và quy trình tối ưu CV/portfolio frontend.",
+            ],
+            "day30": [
+                "Ôn HTML, CSS, JavaScript ES6+, DOM, async/await và responsive layout.",
+                "Làm 2-3 bài thực hành nhỏ như landing page, bộ lọc dữ liệu hoặc form validation.",
+                "Chọn một framework frontend chính để theo sâu và dựng lại giao diện thật bằng framework đó.",
+            ],
+            "day60": [
+                "Học routing, state management cơ bản và cách nối giao diện với API thật.",
+                "Hoàn thiện một dự án frontend nhỏ có dữ liệu động và trải nghiệm người dùng rõ ràng.",
+                "Viết README, chụp màn hình dự án và mô tả vai trò bản thân trong từng phần.",
+            ],
+            "day90": [
+                "Nâng dự án lên mức có CRUD, auth cơ bản, responsive và deploy được.",
+                "Rà soát accessibility, tốc độ tải trang và quy ước đặt tên component.",
+                "Chuẩn bị hồ sơ dự án để đưa vào CV khi ứng tuyển vị trí frontend.",
+            ],
+            "checkpoints": [
+                "Sau 30 ngày: nắm chắc nền tảng giao diện web và tự dựng được trang hoàn chỉnh.",
+                "Sau 60 ngày: có một dự án frontend nhỏ kết nối dữ liệu thật.",
+                "Sau 90 ngày: có thể dùng dự án làm minh chứng khi ứng tuyển vị trí frontend.",
+            ],
+        },
+        "backend_laravel": {
+            "keywords": ["laravel", "php", "mysql", "sql", "backend", "api", "eloquent", "composer", "docker", "redis"],
+            "core_topics": [
+                "PHP nền tảng, OOP, Composer và vòng đời request trong Laravel.",
+                "Routing, controller, form request, migration, Eloquent và auth/API.",
+                "Dự án REST API có validation, phân quyền, test và deploy cơ bản.",
+            ],
+            "day30": [
+                "Ôn PHP, OOP, Composer và cách Laravel tổ chức route, controller, model, request.",
+                "Học migration, Eloquent ORM, validation, quan hệ dữ liệu và xử lý lỗi API JSON.",
+                "Làm một dự án CRUD nhỏ bằng Laravel như quản lý bài viết, công việc hoặc sản phẩm.",
+            ],
+            "day60": [
+                "Mở rộng sang REST API, auth bằng Sanctum, upload file, filter, pagination và policy cơ bản.",
+                "Học queue, cache, event hoặc mail ở mức đủ dùng cho một dự án backend thực tế.",
+                "Hoàn thiện một API project có tài liệu endpoint và dữ liệu mẫu rõ ràng.",
+            ],
+            "day90": [
+                "Bổ sung test, logging, cấu hình môi trường, Docker hoặc deploy demo lên server.",
+                "Rà soát performance: query, eager loading, validation flow và cấu trúc service/repository nếu cần.",
+                "Chuẩn bị 1-2 case study backend Laravel để đưa vào CV khi ứng tuyển.",
+            ],
+            "checkpoints": [
+                "Sau 30 ngày: tự dựng được CRUD Laravel có migration, relation và validation.",
+                "Sau 60 ngày: có một API project hoàn chỉnh với auth và tài liệu endpoint.",
+                "Sau 90 ngày: có thể trình bày dự án, test/deploy cơ bản và bắt đầu ứng tuyển backend Laravel.",
+            ],
+        },
+        "backend_web": {
+            "keywords": ["backend", "api", "server", "database", "sql", "docker", "auth", "queue", "cache"],
+            "core_topics": [
+                "HTTP, REST API, database, auth và cấu trúc service phía server.",
+                "Validation, logging, query tối ưu và xử lý lỗi rõ ràng.",
+                "Dự án backend có tài liệu endpoint, test và deploy cơ bản.",
+            ],
+            "day30": [
+                "Ôn nền tảng HTTP, REST API, database, auth cơ bản và cách tổ chức code backend.",
+                "Làm một dự án CRUD nhỏ có validation, filter, pagination và error handling rõ ràng.",
+                "Hiểu cách thiết kế bảng dữ liệu, relation và vòng đời request-response.",
+            ],
+            "day60": [
+                "Bổ sung auth, phân quyền, upload file, logging và background job nếu stack hỗ trợ.",
+                "Hoàn thiện một API project có tài liệu endpoint và dữ liệu mẫu rõ ràng.",
+                "Học cách đọc log, debug lỗi và tối ưu query chậm.",
+            ],
+            "day90": [
+                "Bổ sung test, Docker hoặc deploy demo để mô phỏng môi trường thật.",
+                "Rà soát performance, cấu trúc service và khả năng mở rộng của dự án.",
+                "Chuẩn bị 1-2 case study backend để đưa vào CV khi ứng tuyển.",
+            ],
+            "checkpoints": [
+                "Sau 30 ngày: dựng được CRUD API với relation và validation rõ ràng.",
+                "Sau 60 ngày: có một API project có auth và tài liệu endpoint.",
+                "Sau 90 ngày: có thể trình bày dự án backend như một minh chứng ứng tuyển.",
+            ],
+        },
+        "generic_learning": {
+            "keywords": [],
+            "core_topics": [
+                "Nền tảng cốt lõi của chủ đề đang học.",
+                "Bài thực hành nhỏ để chuyển từ lý thuyết sang làm thật.",
+                "Một dự án hoàn chỉnh đủ để đưa vào hồ sơ dự án hoặc CV.",
+            ],
+            "day30": [
+                "Ôn lại khái niệm nền tảng, cài môi trường và làm 2-3 bài thực hành ngắn bám sát chủ đề.",
+                "Ghi chú lại các kiến thức cốt lõi theo ngôn ngữ của bản thân để dễ ôn tập.",
+                "Chốt một mini project nhỏ để kiểm tra khả năng áp dụng kiến thức vừa học.",
+            ],
+            "day60": [
+                "Mở rộng mini project thành một dự án nhỏ có đầu ra đo được và dữ liệu rõ ràng.",
+                "Bù các phần còn yếu xuất hiện lặp lại trong lúc làm dự án.",
+                "Viết README hoặc tài liệu ngắn mô tả mục tiêu, chức năng và cách chạy dự án.",
+            ],
+            "day90": [
+                "Hoàn thiện một dự án có thể dùng làm minh chứng năng lực.",
+                "Rà soát lại code, cấu trúc, tài liệu và các phần có thể giải thích khi phỏng vấn.",
+                "Tổng hợp lại phần đã học để đưa vào CV hoặc hồ sơ dự án nếu cần ứng tuyển.",
+            ],
+            "checkpoints": [
+                "Sau 30 ngày: hiểu khái niệm nền tảng và hoàn thành được bài thực hành nhỏ.",
+                "Sau 60 ngày: có một dự án nhỏ hoạt động được và giải thích được lựa chọn kỹ thuật.",
+                "Sau 90 ngày: có một minh chứng năng lực đủ rõ để đưa vào hồ sơ ứng tuyển.",
+            ],
+        },
+    }
+
+    return configs.get(track, configs["generic_learning"])
+
+
+def _filter_focus_relevant_skills(skills: list[str], keywords: list[str]) -> list[str]:
+    if not keywords:
+        return []
+
+    result: list[str] = []
+    for skill in skills:
+        normalized_skill = normalize_search_text(skill)
+        if any(keyword in normalized_skill for keyword in keywords) and skill not in result:
+            result.append(skill)
+
+    return result
+
+
+def _infer_focus_level(relevant_skills: list[str]) -> str:
+    if len(relevant_skills) >= 4:
+        return "đã có nền tảng ban đầu, nên chuyển dần sang dự án thực chiến và hồ sơ dự án"
+    if len(relevant_skills) >= 2:
+        return "đã chạm vào chủ đề này, nên hệ thống hóa kiến thức và tăng thực hành có đầu ra"
+    return "đang ở giai đoạn xây nền, nên ưu tiên học chắc khái niệm cốt lõi trước khi mở rộng"

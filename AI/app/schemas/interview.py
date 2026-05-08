@@ -6,7 +6,7 @@ class MockInterviewQuestionRequest(BaseModel):
     interview_context: dict | None = None
     transcript: list[dict] = Field(default_factory=list)
     question_index: int = Field(default=1, ge=1)
-    max_questions: int = Field(default=5, ge=3, le=7)
+    max_questions: int = Field(default=5, ge=2)
 
 
 class MockInterviewAnswerRequest(BaseModel):
@@ -15,7 +15,7 @@ class MockInterviewAnswerRequest(BaseModel):
     answer: str = Field(min_length=2)
     interview_context: dict | None = None
     transcript: list[dict] = Field(default_factory=list)
-    max_questions: int = Field(default=5, ge=3, le=7)
+    max_questions: int = Field(default=5, ge=2)
 
 
 class MockInterviewReportRequest(BaseModel):

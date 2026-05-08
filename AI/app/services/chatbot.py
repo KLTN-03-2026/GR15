@@ -8,17 +8,19 @@ from app.core.config import settings
 from app.core.logger import get_logger
 from app.providers.chat_ollama_provider import OllamaChatProvider
 from app.providers.chat_openai_provider import OpenAIChatProvider
-from app.providers.chat_template_provider import TemplateChatProvider
 from app.services.chatbot_intent_engine import (
     DETERMINISTIC_INTENTS,
     INTENT_OUT_OF_SCOPE,
     MODEL_PREFERRED_INTENTS,
     OUT_OF_SCOPE_MESSAGE,
     build_template_answer,
+    ensure_chat_mapping,
+    normalize_chat_history_items,
     resolve_intent,
     should_use_fast_path,
 )
-
+from app.services.skill_catalog import normalize_search_text
+from app.services.vietnamese_text import normalize_vietnamese_ai_text
 
 logger = get_logger(__name__)
 
@@ -34,8 +36,8 @@ def generate_career_chat_reply(
     force_model: bool = False,
 ) -> dict:
     logger.info("Generate chatbot reply for session_id=%s", session_id)
-    history = history or []
-    context = context or {}
+    history = normalize_chat_history_items(history)
+    context = ensure_chat_mapping(context)
     intent = resolve_intent(message, history=history, context=context)
     context = {**context, "_chat_intent": intent}
 
@@ -52,45 +54,35 @@ def generate_career_chat_reply(
             "error": None,
         }
 
+    template_provider = _resolve_template_provider(message, intent=intent)
+    if template_provider:
+        answer = _normalize_answer(build_template_answer(message, context, history, intent))
+        return {
+            "success": True,
+            "model_version": f"{MODEL_VERSION}::{template_provider}",
+            "data": {
+                "answer": answer,
+                "provider": template_provider,
+                "guardrail_triggered": False,
+                "intent": intent,
+            },
+            "error": None,
+        }
+
     provider_name, provider = _resolve_provider()
-    prefers_model = provider_name in {"ollama", "openai"}
-
-    if intent in DETERMINISTIC_INTENTS and not (force_model and intent in MODEL_PREFERRED_INTENTS):
-        answer = _normalize_answer(build_template_answer(message, context, history, intent))
-        return {
-            "success": True,
-            "model_version": f"{MODEL_VERSION}::intent_template",
-            "data": {
-                "answer": answer,
-                "provider": "intent_template",
-                "guardrail_triggered": False,
-                "intent": intent,
-            },
-            "error": None,
-        }
-
-    if not prefers_model and not force_model and should_use_fast_path(message, intent=intent):
-        answer = _normalize_answer(build_template_answer(message, context, history, intent))
-        return {
-            "success": True,
-            "model_version": f"{MODEL_VERSION}::fast_template",
-            "data": {
-                "answer": answer,
-                "provider": "fast_template",
-                "guardrail_triggered": False,
-                "intent": intent,
-            },
-            "error": None,
-        }
 
     try:
         answer = _normalize_answer(provider.generate(message, context, history))
     except Exception as exc:
-        logger.warning("Chat provider failed, fallback to template. provider=%s error=%s", provider_name, exc)
-        answer = _normalize_answer(build_template_answer(message, context, history, intent))
-        provider_name = "template_fallback"
+        logger.exception("Required chat LLM provider failed. provider=%s", provider_name)
+        return {
+            "success": False,
+            "model_version": f"{MODEL_VERSION}::{provider_name}",
+            "data": {},
+            "error": f"Không thể gọi LLM cho chatbot: {exc}",
+        }
 
-    if _looks_like_provider_guardrail(answer):
+    if _looks_like_provider_guardrail(answer) or _looks_off_intent(answer, intent=intent):
         answer = _normalize_answer(build_template_answer(message, context, history, intent))
         provider_name = "template_fallback"
 
@@ -115,8 +107,8 @@ def stream_career_chat_reply(
     context: dict | None = None,
     force_model: bool = False,
 ) -> Iterator[str]:
-    history = history or []
-    context = context or {}
+    history = normalize_chat_history_items(history)
+    context = ensure_chat_mapping(context)
     intent = resolve_intent(message, history=history, context=context)
     context = {**context, "_chat_intent": intent}
 
@@ -144,58 +136,33 @@ def stream_career_chat_reply(
         )
         return
 
+    template_provider = _resolve_template_provider(message, intent=intent)
+    if template_provider:
+        answer = _normalize_answer(build_template_answer(message, context, history, intent))
+        yield _sse_event(
+            "meta",
+            {
+                "success": True,
+                "model_version": f"{MODEL_VERSION}::{template_provider}",
+                "provider": template_provider,
+                "guardrail_triggered": False,
+                "intent": intent,
+            },
+        )
+        yield from _emit_chunked_sse(answer)
+        yield _sse_event(
+            "done",
+            {
+                "answer": answer,
+                "model_version": f"{MODEL_VERSION}::{template_provider}",
+                "provider": template_provider,
+                "guardrail_triggered": False,
+                "intent": intent,
+            },
+        )
+        return
+
     provider_name, provider = _resolve_provider()
-    prefers_model = provider_name in {"ollama", "openai"}
-
-    if intent in DETERMINISTIC_INTENTS and not (force_model and intent in MODEL_PREFERRED_INTENTS):
-        answer = _normalize_answer(build_template_answer(message, context, history, intent))
-        yield _sse_event(
-            "meta",
-            {
-                "success": True,
-                "model_version": f"{MODEL_VERSION}::intent_template",
-                "provider": "intent_template",
-                "guardrail_triggered": False,
-                "intent": intent,
-            },
-        )
-        yield from _emit_chunked_sse(answer)
-        yield _sse_event(
-            "done",
-            {
-                "answer": answer,
-                "model_version": f"{MODEL_VERSION}::intent_template",
-                "provider": "intent_template",
-                "guardrail_triggered": False,
-                "intent": intent,
-            },
-        )
-        return
-
-    if not prefers_model and not force_model and should_use_fast_path(message, intent=intent):
-        answer = _normalize_answer(build_template_answer(message, context, history, intent))
-        yield _sse_event(
-            "meta",
-            {
-                "success": True,
-                "model_version": f"{MODEL_VERSION}::fast_template",
-                "provider": "fast_template",
-                "guardrail_triggered": False,
-                "intent": intent,
-            },
-        )
-        yield from _emit_chunked_sse(answer)
-        yield _sse_event(
-            "done",
-            {
-                "answer": answer,
-                "model_version": f"{MODEL_VERSION}::fast_template",
-                "provider": "fast_template",
-                "guardrail_triggered": False,
-                "intent": intent,
-            },
-        )
-        return
 
     model_version = f"{MODEL_VERSION}::{provider_name}"
 
@@ -224,29 +191,21 @@ def stream_career_chat_reply(
                 yield _sse_event("chunk", {"content": chunk})
                 time.sleep(0.035)
     except Exception as exc:
-        logger.warning("Chat stream provider failed, fallback to generate. provider=%s error=%s", provider_name, exc)
-        try:
-            answer = _normalize_answer(provider.generate(message, context, history))
-            for chunk in _chunk_text(answer):
-                chunks.append(chunk)
-                yield _sse_event("chunk", {"content": chunk})
-                time.sleep(0.035)
-        except Exception as fallback_exc:
-            yield _sse_event(
-                "error",
-                {
-                    "message": str(fallback_exc),
-                    "model_version": model_version,
-                    "provider": provider_name,
-                    "intent": intent,
-                },
-            )
-            return
+        yield _sse_event(
+            "error",
+            {
+                "message": f"Không thể gọi LLM cho chatbot: {exc}",
+                "model_version": model_version,
+                "provider": provider_name,
+                "intent": intent,
+            },
+        )
+        return
 
     final_answer = _normalize_answer(
         "".join(chunks).strip() if provider_name in {"ollama", "openai"} else " ".join(chunks).strip()
     )
-    if _looks_like_provider_guardrail(final_answer):
+    if _looks_like_provider_guardrail(final_answer) or _looks_off_intent(final_answer, intent=intent):
         provider_name = "template_fallback"
         model_version = f"{MODEL_VERSION}::{provider_name}"
         final_answer = _normalize_answer(build_template_answer(message, context, history, intent))
@@ -264,12 +223,23 @@ def stream_career_chat_reply(
 
 
 def _resolve_provider():
-    provider = settings.chatbot_provider
+    provider = (settings.chatbot_provider or "ollama").strip().lower()
     if provider == "ollama":
         return provider, OllamaChatProvider()
     if provider == "openai":
         return provider, OpenAIChatProvider()
-    return "template", TemplateChatProvider()
+    logger.warning("Unknown CHATBOT_PROVIDER=%s, forcing ollama LLM provider.", settings.chatbot_provider)
+    return "ollama", OllamaChatProvider()
+
+
+def _resolve_template_provider(message: str, *, intent: str) -> str | None:
+    if should_use_fast_path(message, intent=intent):
+        return "fast_template"
+
+    if intent in DETERMINISTIC_INTENTS and intent not in MODEL_PREFERRED_INTENTS:
+        return "intent_template"
+
+    return None
 
 
 def _chunk_text(text: str, chunk_size: int = 60) -> list[str]:
@@ -308,30 +278,7 @@ def _emit_chunked_sse(text: str, delay_seconds: float = 0.04) -> Iterator[str]:
 
 
 def _normalize_answer(text: str) -> str:
-    cleaned = (
-        text.replace("**", "")
-        .replace("__", "")
-        .replace("`", "")
-        .replace("#", "")
-        .strip()
-    )
-
-    normalized_lines: list[str] = []
-    previous_blank = False
-    for raw_line in cleaned.splitlines():
-        line = " ".join(raw_line.split())
-        if not line:
-            if normalized_lines and not previous_blank:
-                normalized_lines.append("")
-            previous_blank = True
-            continue
-
-        normalized_lines.append(line)
-        previous_blank = False
-
-    cleaned = "\n".join(normalized_lines).strip()
-    cleaned = _normalize_vietnamese_terms(cleaned)
-    cleaned = _trim_incomplete_tail(cleaned)
+    cleaned = normalize_vietnamese_ai_text(text, ensure_punctuation=False)
 
     if not cleaned:
         return cleaned
@@ -346,42 +293,6 @@ def _normalize_answer(text: str) -> str:
     return f"{cleaned}."
 
 
-def _normalize_vietnamese_terms(text: str) -> str:
-    replacements = {
-        "Next 30 days": "30 ngày đầu",
-        "Next 60 days": "60 ngày",
-        "Next 90 days": "90 ngày",
-        "next 30 days": "30 ngày đầu",
-        "next 60 days": "60 ngày",
-        "next 90 days": "90 ngày",
-        "Career Path Simulator": "Mô phỏng lộ trình nghề nghiệp",
-        "career path simulator": "mô phỏng lộ trình nghề nghiệp",
-        "mini project": "dự án nhỏ",
-        "Mini project": "Dự án nhỏ",
-        "case study": "bài phân tích tình huống",
-        "Case study": "Bài phân tích tình huống",
-        "portfolio": "hồ sơ dự án",
-        "Portfolio": "Hồ sơ dự án",
-        "matching": "đối sánh",
-        "Matching": "Đối sánh",
-        "apply": "ứng tuyển",
-        "Apply": "Ứng tuyển",
-        "cover letter": "thư xin việc",
-        "Cover letter": "Thư xin việc",
-        "job mục tiêu": "vị trí mục tiêu",
-        "job phù hợp": "vị trí phù hợp",
-        "job gần nhất": "vị trí gần nhất",
-        "job ": "công việc ",
-        "Job ": "Công việc ",
-        "skill gap": "khoảng cách kỹ năng",
-        "Skill gap": "Khoảng cách kỹ năng",
-    }
-    output = text
-    for source, target in replacements.items():
-        output = output.replace(source, target)
-    return output
-
-
 def _looks_like_provider_guardrail(answer: str) -> bool:
     if not answer:
         return False
@@ -391,28 +302,13 @@ def _looks_like_provider_guardrail(answer: str) -> bool:
     return normalized_guardrail[:80] in normalized_answer
 
 
-def _trim_incomplete_tail(text: str) -> str:
-    if not text:
-        return text
+def _looks_off_intent(answer: str, *, intent: str) -> bool:
+    normalized_answer = normalize_search_text(answer)
 
-    lines = [line.rstrip() for line in text.splitlines()]
-    while lines:
-        last_line = lines[-1].strip()
-        if not last_line:
-            lines.pop()
-            continue
+    if intent != "career_path_simulator" and "mo phong lo trinh nghe nghiep 30/60/90 ngay" in normalized_answer:
+        return True
 
-        if (
-            last_line.endswith((":", ",", ";", "-", "/", "("))
-            or last_line.count("(") > last_line.count(")")
-            or len(last_line) <= 4
-        ):
-            lines.pop()
-            continue
-
-        break
-
-    return "\n".join(lines).strip()
+    return False
 
 
 def _sse_event(event: str, payload: dict) -> str:

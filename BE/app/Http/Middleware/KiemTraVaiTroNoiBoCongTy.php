@@ -32,26 +32,6 @@ class KiemTraVaiTroNoiBoCongTy
             ->all();
     }
 
-    private function permissionsForRequiredRoles(array $roles): array
-    {
-        $permissions = [];
-
-        foreach ($roles as $role) {
-            $permissions = [
-                ...$permissions,
-                ...match ($role) {
-                    CongTy::VAI_TRO_NOI_BO_OWNER => ['members'],
-                    CongTy::VAI_TRO_NOI_BO_ADMIN_HR => ['company_profile', 'jobs', 'applications', 'interviews', 'offers', 'onboarding', 'exports', 'audit_logs'],
-                    CongTy::VAI_TRO_NOI_BO_RECRUITER => ['jobs', 'applications', 'interviews', 'offers', 'onboarding', 'exports'],
-                    CongTy::VAI_TRO_NOI_BO_INTERVIEWER => ['applications', 'interviews', 'exports'],
-                    default => [],
-                },
-            ];
-        }
-
-        return array_values(array_unique($permissions));
-    }
-
     public function handle(Request $request, Closure $next, string ...$vaiTrosNoiBo): Response
     {
         $explicitPermissions = collect($vaiTrosNoiBo)
@@ -62,6 +42,9 @@ class KiemTraVaiTroNoiBoCongTy
             ->all();
         $vaiTrosNoiBo = collect($vaiTrosNoiBo)
             ->reject(fn (string $value) => str_starts_with($value, 'permission:'))
+            ->map(fn (string $value) => CongTy::normalizeVaiTroNoiBo($value))
+            ->filter()
+            ->unique()
             ->values()
             ->all();
 
@@ -108,9 +91,11 @@ class KiemTraVaiTroNoiBoCongTy
             return $next($request);
         }
 
-        $requiredPermissions = $explicitPermissions ?: $this->permissionsForRequiredRoles($vaiTrosNoiBo);
+        $hasAccess = $explicitPermissions
+            ? $nguoiDung->coQuyenNoiBoCongTy($explicitPermissions, $congTy)
+            : $nguoiDung->coVaiTroNoiBoCongTy($vaiTrosNoiBo, $congTy);
 
-        if (!$nguoiDung->coQuyenNoiBoCongTy($requiredPermissions, $congTy)) {
+        if (!$hasAccess) {
             return $this->errorResponse(
                 'COMPANY_ROLE_FORBIDDEN',
                 'Vai trò nội bộ hiện tại không đủ quyền thực hiện thao tác này.',
@@ -119,7 +104,7 @@ class KiemTraVaiTroNoiBoCongTy
                     'company_id' => $congTy->id,
                     'required_company_roles' => $vaiTrosNoiBo,
                     'required_company_role_labels' => $this->roleLabels($vaiTrosNoiBo, $congTy),
-                    'required_company_permissions' => $requiredPermissions,
+                    'required_company_permissions' => $explicitPermissions,
                     'current_company_role' => $vaiTroNoiBo,
                     'current_company_role_label' => CongTy::nhanVaiTroNoiBo($vaiTroNoiBo, $congTy),
                 ],

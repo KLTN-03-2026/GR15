@@ -9,12 +9,10 @@ const notify = useNotify()
 
 const loading = ref(false)
 const saving = ref(false)
-const roleUpdatingIds = ref([])
 const company = ref(null)
 const industries = ref([])
 const logoPreview = ref('')
 const selectedLogoFile = ref(null)
-const removingMemberIds = ref([])
 const stats = ref({
   totalJobs: 0,
   activeJobs: 0,
@@ -42,10 +40,6 @@ const companyPermissions = computed(() => company.value?.quyen_noi_bo || {})
 const canManageCompanyProfile = computed(() => Boolean(companyPermissions.value?.company_profile) || !hasCompany.value)
 const canManageMembers = computed(() => Boolean(companyPermissions.value?.members))
 const totalHr = computed(() => Number(company.value?.tong_so_hr || companyMembers.value.length || 0))
-const internalRoleOptions = computed(() =>
-  Object.entries(company.value?.vai_tro_noi_bo_options || {}).filter(([role]) => role !== 'owner'),
-)
-
 const completionPercent = computed(() => {
   const fields = [
     form.ten_cong_ty,
@@ -92,7 +86,7 @@ const quickBenefits = computed(() => {
 const ownerSummary = computed(() => {
   if (!hasCompany.value) return 'Tạo công ty trước khi quản lý thành viên HR nội bộ.'
   if (canManageMembers.value) return 'Bạn đang là owner của công ty và có thể thêm hoặc gỡ HR nội bộ.'
-  return `Bạn đang đăng nhập với vai trò ${company.value?.ten_vai_tro_noi_bo_hien_tai || 'HR Member'}. Chỉ owner mới có thể quản lý thành viên nội bộ.`
+  return `Bạn đang đăng nhập với vai trò ${company.value?.ten_vai_tro_noi_bo_hien_tai || 'HR thường'}. Chỉ owner mới có thể quản lý thành viên nội bộ.`
 })
 
 const resetForm = () => {
@@ -277,67 +271,6 @@ const handleLogoChange = (event) => {
 const restoreFromServer = async () => {
   await fetchCompany()
   notify.info('Đã tải lại dữ liệu công ty từ hệ thống.')
-}
-
-const updateHrMemberRole = async (member, nextRole) => {
-  const memberId = Number(member?.id || 0)
-  const normalizedRole = String(nextRole || '').trim()
-
-  if (!memberId || !normalizedRole || member.la_chu_so_huu) return
-  if (normalizedRole === member.vai_tro_noi_bo) return
-
-  if (!canManageMembers.value) {
-    notify.warning('Chỉ owner mới có thể cập nhật vai trò HR.')
-    return
-  }
-
-  roleUpdatingIds.value = [...roleUpdatingIds.value, memberId]
-  try {
-    const response = await employerCompanyService.updateMemberRole(memberId, normalizedRole)
-    const nextCompany = response?.data?.cong_ty || response?.data?.data?.cong_ty || null
-
-    if (nextCompany) {
-      company.value = nextCompany
-      fillForm(nextCompany)
-    } else {
-      await fetchCompany()
-    }
-
-    notify.success('Đã cập nhật vai trò nội bộ.')
-  } catch (error) {
-    notify.apiError(error, 'Không thể cập nhật vai trò nội bộ.')
-  } finally {
-    roleUpdatingIds.value = roleUpdatingIds.value.filter((id) => id !== memberId)
-  }
-}
-
-const removeHrMember = async (member) => {
-  const memberId = Number(member?.id || 0)
-  if (!memberId) return
-
-  if (!canManageMembers.value) {
-    notify.warning('Chỉ owner mới có thể gỡ HR khỏi công ty.')
-    return
-  }
-
-  removingMemberIds.value = [...removingMemberIds.value, memberId]
-  try {
-    const response = await employerCompanyService.removeMember(memberId)
-    const nextCompany = response?.data?.cong_ty || response?.data?.data?.cong_ty || null
-
-    if (nextCompany) {
-      company.value = nextCompany
-      fillForm(nextCompany)
-    } else {
-      await fetchCompany()
-    }
-
-    notify.success('Đã gỡ HR khỏi công ty.')
-  } catch (error) {
-    notify.apiError(error, 'Không thể gỡ HR khỏi công ty.')
-  } finally {
-    removingMemberIds.value = removingMemberIds.value.filter((id) => id !== memberId)
-  }
 }
 
 onMounted(async () => {
@@ -597,7 +530,7 @@ onUnmounted(() => {
             <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-800/40">
               <p class="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Vai trò hiện tại</p>
               <p class="mt-2 text-2xl font-black text-slate-900 dark:text-white">
-                {{ company?.ten_vai_tro_noi_bo_hien_tai || (isCompanyOwner ? 'Owner' : 'HR Member') }}
+                {{ company?.ten_vai_tro_noi_bo_hien_tai || (isCompanyOwner ? 'Owner' : 'HR thường') }}
               </p>
             </div>
             <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-800/40">

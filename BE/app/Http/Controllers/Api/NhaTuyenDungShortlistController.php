@@ -44,7 +44,7 @@ class NhaTuyenDungShortlistController extends Controller
         $scope = $request->get('scope') === 'applied' ? 'applied' : 'public';
         $tin = TinTuyenDung::with([
                 'nganhNghes:id,ten_nganh',
-                'parsing:id,tin_tuyen_dung_id,parsed_skills_json,parsed_requirements_json,parse_status',
+                'parsing:id,tin_tuyen_dung_id,parsed_skills_json,parsed_requirements_json,parsed_salary_json,parsed_location_json,parse_status',
                 'kyNangYeuCaus.kyNang:id,ten_ky_nang',
             ])
             ->where('cong_ty_id', $congTy->id)
@@ -190,7 +190,7 @@ class NhaTuyenDungShortlistController extends Controller
 
         $tin = TinTuyenDung::with([
                 'nganhNghes:id,ten_nganh',
-                'parsing:id,tin_tuyen_dung_id,parsed_skills_json,parsed_requirements_json,parse_status',
+                'parsing:id,tin_tuyen_dung_id,parsed_skills_json,parsed_requirements_json,parsed_salary_json,parsed_location_json,parse_status',
                 'kyNangYeuCaus.kyNang:id,ten_ky_nang',
             ])
             ->where('cong_ty_id', $congTy->id)
@@ -349,6 +349,11 @@ class NhaTuyenDungShortlistController extends Controller
         return [
             'title' => $tin->tieu_de,
             'description' => $tin->mo_ta_cong_viec,
+            'location' => $tin->dia_diem_lam_viec,
+            'work_mode' => $tin->hinh_thuc_lam_viec,
+            'salary_from' => $tin->muc_luong_tu,
+            'salary_to' => $tin->muc_luong_den,
+            'salary_unit' => $tin->don_vi_luong,
             'requirements' => $this->extractNames($tin->parsing?->parsed_requirements_json ?? []),
             'required_skills' => $this->uniqueValues([...$manualSkills, ...$parsedSkills]),
             'industries' => $industries,
@@ -817,6 +822,7 @@ class NhaTuyenDungShortlistController extends Controller
             'nguon_ho_so' => $profile['nguon_ho_so'] ?? null,
             'matched_skills' => $item['matched_skills'] ?? [],
             'missing_skills' => $item['missing_skills'] ?? [],
+            'parsed_skills' => $item['matched_skills'] ?? [],
             'score_breakdown' => $item['score_breakdown'] ?? [],
             'ky_nang_json' => $profile['ky_nang_json'] ?? [],
             'kinh_nghiem_json' => $profile['kinh_nghiem_json'] ?? [],
@@ -1088,6 +1094,13 @@ class NhaTuyenDungShortlistController extends Controller
             'mo_ta_cong_viec' => $tin->mo_ta_cong_viec,
             'kinh_nghiem_yeu_cau' => $tin->kinh_nghiem_yeu_cau,
             'trinh_do_yeu_cau' => $tin->trinh_do_yeu_cau,
+            'dia_diem_lam_viec' => $tin->dia_diem_lam_viec,
+            'hinh_thuc_lam_viec' => $tin->hinh_thuc_lam_viec,
+            'muc_luong_tu' => $tin->muc_luong_tu,
+            'muc_luong_den' => $tin->muc_luong_den,
+            'don_vi_luong' => $tin->don_vi_luong,
+            'parsed_salary_json' => $tin->parsing?->parsed_salary_json ?? [],
+            'parsed_location_json' => $tin->parsing?->parsed_location_json ?? [],
             'required_skills' => $jobProfile['required_skills'],
             'requirements' => $jobProfile['requirements'],
             'industries' => $jobProfile['industries'],

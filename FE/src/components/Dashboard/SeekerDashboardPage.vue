@@ -43,11 +43,11 @@ const stats = computed(() => [
     helper: savedCount.value > 0 ? 'Để dành cho các vị trí tiềm năng' : 'Chưa có tin nào được lưu',
   },
   {
-    label: 'Cong ty da follow',
+    label: 'Công ty đã theo dõi',
     value: followedCompanyCount.value,
     icon: 'apartment',
     tone: 'bg-sky-100 text-sky-600',
-    helper: followedCompanyCount.value > 0 ? 'Theo doi job moi tu doanh nghiep quan tam' : 'Chua follow cong ty nao',
+    helper: followedCompanyCount.value > 0 ? 'Theo dõi việc làm mới từ doanh nghiệp bạn quan tâm' : 'Chưa theo dõi công ty nào',
   },
   {
     label: 'Số lần ứng tuyển',

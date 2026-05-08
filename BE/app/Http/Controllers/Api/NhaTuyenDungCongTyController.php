@@ -8,7 +8,6 @@ use App\Http\Requests\CongTy\TaoCongTyRequest;
 use App\Http\Requests\CongTy\CapNhatCongTyRequest;
 use App\Models\AuditLog;
 use App\Models\CongTy;
-use App\Models\CongTyVaiTroNoiBo;
 use App\Models\NguoiDung;
 use App\Models\PermissionDefinition;
 use App\Services\HrAuditLogService;
@@ -44,7 +43,6 @@ class NhaTuyenDungCongTyController extends Controller
         $congTy->loadMissing([
             'nganhNghe:id,ten_nganh',
             'thanhViens:id,ho_ten,email,so_dien_thoai,anh_dai_dien,trang_thai',
-            'vaiTroNoiBos:id,cong_ty_id,ma_vai_tro,ten_vai_tro,mo_ta,vai_tro_goc,created_at,updated_at',
         ]);
         $congTy->loadCount('nguoiDungTheoDois');
 
@@ -61,16 +59,16 @@ class NhaTuyenDungCongTyController extends Controller
 
         if ($this->canManageMembers($user, $congTy)) {
             $data['catalog_quyen_noi_bo'] = CongTy::hrPermissionCatalog();
-            $data['vai_tro_noi_bo_options'] = $this->roleOptions($congTy);
-            $data['vai_tro_noi_bo_custom'] = $this->mapInternalRoles($congTy);
+            $data['vai_tro_noi_bo_options'] = $this->roleOptions();
+            $data['vai_tro_noi_bo_custom'] = [];
             $data['thanh_viens'] = $congTy->thanhViens->map(function (NguoiDung $member) use ($congTy) {
                 $payload = $member->toArray();
-                $payload['vai_tro_noi_bo'] = $member->pivot?->vai_tro_noi_bo;
-                $payload['ten_vai_tro_noi_bo'] = CongTy::nhanVaiTroNoiBo($member->pivot?->vai_tro_noi_bo, $congTy);
+                $payload['vai_tro_noi_bo'] = CongTy::normalizeVaiTroNoiBo($member->pivot?->vai_tro_noi_bo);
+                $payload['ten_vai_tro_noi_bo'] = CongTy::nhanVaiTroNoiBo($payload['vai_tro_noi_bo'], $congTy);
                 $payload['quyen_noi_bo'] = $member->layQuyenNoiBoCongTy($congTy);
                 $payload['so_quyen_noi_bo'] = count(array_filter($payload['quyen_noi_bo']));
                 $payload['tong_quyen_noi_bo'] = count(CongTy::hrPermissionKeys());
-                $payload['la_chu_so_huu'] = $member->pivot?->vai_tro_noi_bo === CongTy::VAI_TRO_NOI_BO_OWNER;
+                $payload['la_chu_so_huu'] = $payload['vai_tro_noi_bo'] === CongTy::VAI_TRO_NOI_BO_OWNER;
                 $payload['avatar_url'] = $member->anh_dai_dien
                     ? url('/api/v1/anh-dai-dien?path=' . urlencode($member->anh_dai_dien))
                     : null;
@@ -87,37 +85,19 @@ class NhaTuyenDungCongTyController extends Controller
         return $data;
     }
 
-    private function roleOptions(CongTy $congTy): array
+    private function roleOptions(): array
     {
-        return [
-            ...CongTy::VAI_TRO_NOI_BO_LABELS,
-            ...$congTy->vaiTroNoiBos->pluck('ten_vai_tro', 'ma_vai_tro')->all(),
-        ];
+        return CongTy::VAI_TRO_NOI_BO_LABELS;
     }
 
     private function mapInternalRoles(CongTy $congTy): array
     {
-        return $congTy->vaiTroNoiBos
-            ->map(fn (CongTyVaiTroNoiBo $role) => [
-                'id' => $role->id,
-                'ma_vai_tro' => $role->ma_vai_tro,
-                'ten_vai_tro' => $role->ten_vai_tro,
-                'mo_ta' => $role->mo_ta,
-                'vai_tro_goc' => $role->vai_tro_goc,
-                'ten_vai_tro_goc' => CongTy::nhanVaiTroNoiBo($role->vai_tro_goc),
-                'created_at' => optional($role->created_at)?->toISOString(),
-                'updated_at' => optional($role->updated_at)?->toISOString(),
-            ])
-            ->values()
-            ->all();
+        return [];
     }
 
     private function validAssignableRoles(CongTy $congTy): array
     {
-        return array_values(array_filter(
-            CongTy::danhSachVaiTroNoiBo($congTy),
-            fn (string $role) => $role !== CongTy::VAI_TRO_NOI_BO_OWNER,
-        ));
+        return [CongTy::VAI_TRO_NOI_BO_MEMBER];
     }
 
     private function canManageMembers(NguoiDung $user, CongTy $congTy): bool
@@ -302,8 +282,8 @@ class NhaTuyenDungCongTyController extends Controller
             'data' => [
                 'cong_ty_id' => $congTy->id,
                 'la_chu_so_huu' => $this->isCompanyOwner($this->getAuthenticatedEmployer(), $congTy),
-                'vai_tro_noi_bo_options' => $this->roleOptions($congTy->loadMissing('vaiTroNoiBos')),
-                'vai_tro_noi_bo_custom' => $this->mapInternalRoles($congTy),
+                'vai_tro_noi_bo_options' => $this->roleOptions(),
+                'vai_tro_noi_bo_custom' => [],
                 'thanh_viens' => $this->mapCompanyData($congTy)['thanh_viens'],
             ],
         ]);
@@ -333,7 +313,7 @@ class NhaTuyenDungCongTyController extends Controller
             'email' => ['required', 'email', 'max:150'],
             'mat_khau' => ['required', 'string', 'min:6'],
             'so_dien_thoai' => ['nullable', 'string', 'max:20'],
-            'vai_tro_noi_bo' => ['nullable', 'string', Rule::in($this->validAssignableRoles($congTy))],
+            'vai_tro_noi_bo' => ['nullable', 'string', 'max:50'],
         ], [
             'mat_khau.required' => 'Vui lòng nhập mật khẩu cho tài khoản HR mới.',
             'mat_khau.min' => 'Mật khẩu phải có ít nhất 6 ký tự.',
@@ -349,8 +329,10 @@ class NhaTuyenDungCongTyController extends Controller
             ], 422);
         }
 
-        $assignedRole = $data['vai_tro_noi_bo'] ?? CongTy::VAI_TRO_NOI_BO_VIEWER;
-        $assignedPermissions = CongTy::normalizeHrPermissions(null);
+        $assignedRole = CongTy::VAI_TRO_NOI_BO_MEMBER;
+        $assignedPermissions = CongTy::normalizeHrPermissions(
+            CongTy::defaultHrPermissionsForRole($assignedRole, $congTy)
+        );
         $member = NguoiDung::create([
             'ho_ten' => trim((string) $data['ho_ten']),
             'email' => $email,
@@ -445,7 +427,9 @@ class NhaTuyenDungCongTyController extends Controller
             'member_role_updated',
             "Cập nhật vai trò nội bộ của {$member->email} thành " . CongTy::nhanVaiTroNoiBo($data['vai_tro_noi_bo'], $congTy) . '.',
             $member,
-            ['vai_tro_noi_bo' => $data['vai_tro_noi_bo']],
+            [
+                'vai_tro_noi_bo' => $data['vai_tro_noi_bo'],
+            ],
         );
 
         return response()->json([
@@ -864,8 +848,8 @@ class NhaTuyenDungCongTyController extends Controller
             'success' => true,
             'data' => [
                 'vai_tro_he_thong' => CongTy::VAI_TRO_NOI_BO_LABELS,
-                'vai_tro_tuy_chinh' => $this->mapInternalRoles($congTy),
-                'vai_tro_noi_bo_options' => $this->roleOptions($congTy),
+                'vai_tro_tuy_chinh' => [],
+                'vai_tro_noi_bo_options' => $this->roleOptions(),
             ],
         ]);
     }
@@ -889,60 +873,10 @@ class NhaTuyenDungCongTyController extends Controller
             ], 403);
         }
 
-        $data = $request->validate([
-            'ten_vai_tro' => ['required', 'string', 'max:120'],
-            'mo_ta' => ['nullable', 'string', 'max:1000'],
-            'vai_tro_goc' => [
-                'required',
-                'string',
-                Rule::in(array_values(array_filter(
-                    CongTy::danhSachVaiTroNoiBo(),
-                    fn (string $role) => $role !== CongTy::VAI_TRO_NOI_BO_OWNER,
-                ))),
-            ],
-        ], [
-            'ten_vai_tro.required' => 'Vui lòng nhập tên vai trò nội bộ.',
-            'vai_tro_goc.required' => 'Vui lòng chọn quyền kế thừa.',
-            'vai_tro_goc.in' => 'Quyền kế thừa không hợp lệ.',
-        ]);
-
-        $baseCode = 'custom_' . Str::slug($data['ten_vai_tro'], '_');
-        $baseCode = $baseCode === 'custom_' ? 'custom_role' : Str::limit($baseCode, 70, '');
-        $code = $baseCode;
-        $index = 2;
-
-        while ($congTy->vaiTroNoiBos()->where('ma_vai_tro', $code)->exists() || isset(CongTy::VAI_TRO_NOI_BO_LABELS[$code])) {
-            $code = Str::limit($baseCode, 64, '') . '_' . $index;
-            $index++;
-        }
-
-        $role = $congTy->vaiTroNoiBos()->create([
-            'ma_vai_tro' => $code,
-            'ten_vai_tro' => trim((string) $data['ten_vai_tro']),
-            'mo_ta' => $data['mo_ta'] ?? null,
-            'vai_tro_goc' => $data['vai_tro_goc'],
-            'duoc_tao_boi' => $user->id,
-        ]);
-
-        $this->hrAuditLogService->log(
-            $congTy,
-            $user,
-            'internal_role_created',
-            "Tạo vai trò nội bộ {$role->ten_vai_tro}, kế thừa quyền " . CongTy::nhanVaiTroNoiBo($role->vai_tro_goc) . '.',
-            null,
-            ['ma_vai_tro' => $role->ma_vai_tro, 'vai_tro_goc' => $role->vai_tro_goc],
-        );
-
-        $freshCompany = $congTy->fresh('vaiTroNoiBos');
-
         return response()->json([
-            'success' => true,
-            'message' => 'Đã tạo vai trò nội bộ.',
-            'data' => [
-                'vai_tro' => collect($this->mapInternalRoles($freshCompany))->firstWhere('id', $role->id),
-                'cong_ty' => $this->mapCompanyData($freshCompany),
-            ],
-        ], 201);
+            'success' => false,
+            'message' => 'Hệ thống hiện chỉ giữ 2 vai trò nội bộ: Owner và HR thường.',
+        ], 422);
     }
 
     public function updateInternalRole(Request $request, int $roleId): JsonResponse
@@ -964,53 +898,10 @@ class NhaTuyenDungCongTyController extends Controller
             ], 403);
         }
 
-        $role = $congTy->vaiTroNoiBos()->whereKey($roleId)->first();
-
-        if (!$role) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Không tìm thấy vai trò nội bộ.',
-            ], 404);
-        }
-
-        $data = $request->validate([
-            'ten_vai_tro' => ['required', 'string', 'max:120'],
-            'mo_ta' => ['nullable', 'string', 'max:1000'],
-            'vai_tro_goc' => [
-                'required',
-                'string',
-                Rule::in(array_values(array_filter(
-                    CongTy::danhSachVaiTroNoiBo(),
-                    fn (string $baseRole) => $baseRole !== CongTy::VAI_TRO_NOI_BO_OWNER,
-                ))),
-            ],
-        ]);
-
-        $role->update([
-            'ten_vai_tro' => trim((string) $data['ten_vai_tro']),
-            'mo_ta' => $data['mo_ta'] ?? null,
-            'vai_tro_goc' => $data['vai_tro_goc'],
-        ]);
-
-        $this->hrAuditLogService->log(
-            $congTy,
-            $user,
-            'internal_role_updated',
-            "Cập nhật vai trò nội bộ {$role->ten_vai_tro}.",
-            null,
-            ['ma_vai_tro' => $role->ma_vai_tro, 'vai_tro_goc' => $role->vai_tro_goc],
-        );
-
-        $freshCompany = $congTy->fresh('vaiTroNoiBos');
-
         return response()->json([
-            'success' => true,
-            'message' => 'Đã cập nhật vai trò nội bộ.',
-            'data' => [
-                'vai_tro' => collect($this->mapInternalRoles($freshCompany))->firstWhere('id', $role->id),
-                'cong_ty' => $this->mapCompanyData($freshCompany),
-            ],
-        ]);
+            'success' => false,
+            'message' => 'Hệ thống hiện chỉ giữ 2 vai trò nội bộ: Owner và HR thường.',
+        ], 422);
     }
 
     public function deleteInternalRole(int $roleId): JsonResponse
@@ -1032,46 +923,10 @@ class NhaTuyenDungCongTyController extends Controller
             ], 403);
         }
 
-        $role = $congTy->vaiTroNoiBos()->whereKey($roleId)->first();
-
-        if (!$role) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Không tìm thấy vai trò nội bộ.',
-            ], 404);
-        }
-
-        $isInUse = $congTy->thanhViens()
-            ->wherePivot('vai_tro_noi_bo', $role->ma_vai_tro)
-            ->exists();
-
-        if ($isInUse) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Vai trò này đang được gán cho HR. Hãy đổi vai trò của các HR đó trước khi xóa.',
-            ], 422);
-        }
-
-        $roleName = $role->ten_vai_tro;
-        $roleCode = $role->ma_vai_tro;
-        $role->delete();
-
-        $this->hrAuditLogService->log(
-            $congTy,
-            $user,
-            'internal_role_deleted',
-            "Xóa vai trò nội bộ {$roleName}.",
-            null,
-            ['ma_vai_tro' => $roleCode],
-        );
-
         return response()->json([
-            'success' => true,
-            'message' => 'Đã xóa vai trò nội bộ.',
-            'data' => [
-                'cong_ty' => $this->mapCompanyData($congTy->fresh()),
-            ],
-        ]);
+            'success' => false,
+            'message' => 'Hệ thống hiện chỉ giữ 2 vai trò nội bộ: Owner và HR thường.',
+        ], 422);
     }
 
     public function hrAuditLogs(Request $request): JsonResponse

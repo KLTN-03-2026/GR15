@@ -10,19 +10,15 @@ const notify = useNotify()
 const loading = ref(false)
 const error = ref(null)
 const memberSubmitting = ref(false)
-const roleSubmitting = ref(false)
 const roleUpdatingIds = ref([])
 const removingMemberIds = ref([])
-const deletingRoleIds = ref([])
 const company = ref(null)
 const activeTab = ref('members')
 const showCreateModal = ref(false)
 const showEditMemberModal = ref(false)
-const showRoleModal = ref(false)
 const showRemoveModal = ref(false)
 const removingMember = ref(null)
 const editingMember = ref(null)
-const editingRole = ref(null)
 const permissionCatalog = ref([])
 const permissionForm = ref({})
 const permissionSnapshot = ref('{}')
@@ -49,7 +45,7 @@ const memberForm = reactive({
   email: '',
   mat_khau: '',
   so_dien_thoai: '',
-  vai_tro_noi_bo: 'viewer',
+  vai_tro_noi_bo: 'member',
 })
 
 const memberEditForm = reactive({
@@ -60,41 +56,18 @@ const memberEditForm = reactive({
   trang_thai: 1,
 })
 
-const roleForm = reactive({
-  ten_vai_tro: '',
-  mo_ta: '',
-  vai_tro_goc: 'viewer',
-})
-
 const roleColors = {
   owner: 'border border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-300',
-  admin_hr: 'border border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-900/50 dark:bg-violet-900/20 dark:text-violet-300',
-  recruiter: 'border border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/50 dark:bg-blue-900/20 dark:text-blue-300',
-  interviewer: 'border border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-900/20 dark:text-emerald-300',
-  viewer: 'border border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300',
+  member: 'border border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/50 dark:bg-blue-900/20 dark:text-blue-300',
 }
 
 const hasCompany = computed(() => Boolean(company.value?.id))
 const companyMembers = computed(() => Array.isArray(company.value?.thanh_viens) ? company.value.thanh_viens : [])
-const customInternalRoles = computed(() => Array.isArray(company.value?.vai_tro_noi_bo_custom) ? company.value.vai_tro_noi_bo_custom : [])
 const canManageMembers = computed(() => Boolean(company.value?.quyen_noi_bo?.members))
-const currentInternalRoleLabel = computed(() => company.value?.ten_vai_tro_noi_bo_hien_tai || 'HR Member')
-const baseRoleOptions = computed(() => {
-  const defaultOptions = {
-    recruiter: 'Tuyển dụng',
-    interviewer: 'Phỏng vấn',
-    viewer: 'Chỉ xem',
-    admin_hr: 'Quản trị HR',
-  }
-
-  return Object.entries(defaultOptions)
-})
+const currentInternalRoleLabel = computed(() => company.value?.ten_vai_tro_noi_bo_hien_tai || 'HR thường')
 const internalRoleOptions = computed(() => {
   const defaultOptions = {
-    recruiter: 'Tuyển dụng',
-    interviewer: 'Phỏng vấn',
-    viewer: 'Chỉ xem',
-    admin_hr: 'Quản trị HR',
+    member: 'HR thường',
   }
 
   return Object.entries(company.value?.vai_tro_noi_bo_options || defaultOptions)
@@ -121,7 +94,6 @@ const hrStats = computed(() => {
     assignableHr: members.filter((member) => !member.la_chu_so_huu).length,
     lockedHr: members.filter((member) => !member.la_chu_so_huu && Number(member.trang_thai) !== 1).length,
     grantedPermissions: members.reduce((total, member) => total + Number(member.so_quyen_noi_bo || 0), 0),
-    customRoles: customInternalRoles.value.length,
     auditLogs: Number(hrAuditPagination.value?.total || hrAuditLogs.value.length || 0),
   }
 })
@@ -152,7 +124,6 @@ const paginatedMembers = computed(() => {
 
 const auditCurrentPage = computed(() => Number(hrAuditPagination.value?.current_page || 1))
 const auditTotalPages = computed(() => Number(hrAuditPagination.value?.last_page || 1))
-const isEditingRole = computed(() => Boolean(editingRole.value?.id))
 const assignablePermissionMembers = computed(() => companyMembers.value.filter((member) => !member.la_chu_so_huu))
 const selectedPermissionMember = computed(() =>
   assignablePermissionMembers.value.find((member) => Number(member.id) === Number(selectedPermissionMemberId.value)) || null,
@@ -166,8 +137,8 @@ const systemPermissionOptions = computed(() =>
 
 const baseRoleFor = (role) => {
   if (!role) return null
-  if (['owner', 'admin_hr', 'recruiter', 'interviewer', 'viewer'].includes(role)) return role
-  return customInternalRoles.value.find((item) => item.ma_vai_tro === role)?.vai_tro_goc || 'viewer'
+  if (['owner', 'member'].includes(role)) return role
+  return 'member'
 }
 
 const roleLabel = (memberOrRole) => {
@@ -177,22 +148,19 @@ const roleLabel = (memberOrRole) => {
 
   if (role === 'owner') return 'Owner'
 
-  return internalRoleOptions.value.find(([value]) => value === role)?.[1] || 'HR Member'
+  return internalRoleOptions.value.find(([value]) => value === role)?.[1] || 'HR thường'
 }
 
 const roleClass = (member) => {
-  const role = member?.la_chu_so_huu ? 'owner' : baseRoleFor(member?.vai_tro_noi_bo || 'viewer')
-  return roleColors[role] || roleColors.viewer
+  const role = member?.la_chu_so_huu ? 'owner' : baseRoleFor(member?.vai_tro_noi_bo || 'member')
+  return roleColors[role] || roleColors.member
 }
 
 const roleIcon = (member) => {
   if (member?.la_chu_so_huu) return 'workspace_premium'
 
   return {
-    admin_hr: 'admin_panel_settings',
-    recruiter: 'person_search',
-    interviewer: 'record_voice_over',
-    viewer: 'visibility',
+    member: 'badge',
   }[baseRoleFor(member?.vai_tro_noi_bo)] || 'badge'
 }
 
@@ -203,7 +171,7 @@ const resetMemberForm = () => {
   memberForm.email = ''
   memberForm.mat_khau = ''
   memberForm.so_dien_thoai = ''
-  memberForm.vai_tro_noi_bo = 'viewer'
+  memberForm.vai_tro_noi_bo = 'member'
 }
 
 const resetMemberEditForm = () => {
@@ -212,12 +180,6 @@ const resetMemberEditForm = () => {
   memberEditForm.mat_khau = ''
   memberEditForm.so_dien_thoai = ''
   memberEditForm.trang_thai = 1
-}
-
-const resetRoleForm = () => {
-  roleForm.ten_vai_tro = ''
-  roleForm.mo_ta = ''
-  roleForm.vai_tro_goc = 'viewer'
 }
 
 const normalizeHrPermissions = (permissions = {}) => {
@@ -472,105 +434,6 @@ const toggleHrMemberStatus = async (member) => {
     notify.apiError(err, 'Không thể cập nhật trạng thái HR.')
   } finally {
     roleUpdatingIds.value = roleUpdatingIds.value.filter((id) => id !== memberId)
-  }
-}
-
-const openCreateRoleModal = () => {
-  if (!hasCompany.value) {
-    notify.warning('Hãy tạo công ty trước khi thêm vai trò nội bộ.')
-    return
-  }
-
-  if (!canManageMembers.value) {
-    notify.warning('Chỉ owner mới có thể tạo vai trò nội bộ.')
-    return
-  }
-
-  editingRole.value = null
-  resetRoleForm()
-  showRoleModal.value = true
-}
-
-const openEditRoleModal = (role) => {
-  if (!canManageMembers.value || !role?.id) return
-
-  editingRole.value = role
-  roleForm.ten_vai_tro = role.ten_vai_tro || ''
-  roleForm.mo_ta = role.mo_ta || ''
-  roleForm.vai_tro_goc = role.vai_tro_goc || 'viewer'
-  showRoleModal.value = true
-}
-
-const closeRoleModal = () => {
-  if (roleSubmitting.value) return
-  showRoleModal.value = false
-  editingRole.value = null
-}
-
-const saveInternalRole = async () => {
-  const payload = {
-    ten_vai_tro: String(roleForm.ten_vai_tro || '').trim(),
-    mo_ta: String(roleForm.mo_ta || '').trim(),
-    vai_tro_goc: roleForm.vai_tro_goc || 'viewer',
-  }
-
-  if (!payload.ten_vai_tro) {
-    notify.warning('Vui lòng nhập tên vai trò nội bộ.')
-    return
-  }
-
-  roleSubmitting.value = true
-  error.value = null
-
-  try {
-    const wasEditing = isEditingRole.value
-    const response = wasEditing
-      ? await employerCompanyService.updateInternalRole(editingRole.value.id, payload)
-      : await employerCompanyService.createInternalRole(payload)
-
-    company.value = response?.data?.cong_ty || response?.data?.data?.cong_ty || company.value
-
-    if (!company.value) {
-      await fetchCompany()
-    }
-
-    await fetchHrAuditLogs(hrAuditPagination.value?.current_page || 1)
-    showRoleModal.value = false
-    editingRole.value = null
-    resetRoleForm()
-    notify.success(wasEditing ? 'Đã cập nhật vai trò nội bộ.' : 'Đã tạo vai trò nội bộ.')
-  } catch (err) {
-    error.value = messageFromError(err, isEditingRole.value ? 'Không thể cập nhật vai trò nội bộ.' : 'Không thể tạo vai trò nội bộ.')
-    notify.apiError(err, isEditingRole.value ? 'Không thể cập nhật vai trò nội bộ.' : 'Không thể tạo vai trò nội bộ.')
-  } finally {
-    roleSubmitting.value = false
-  }
-}
-
-const deleteInternalRole = async (role) => {
-  if (!role?.id || !canManageMembers.value) return
-
-  const confirmed = window.confirm(`Xóa vai trò "${role.ten_vai_tro}"? Vai trò đang được gán cho HR sẽ không thể xóa.`)
-  if (!confirmed) return
-
-  deletingRoleIds.value = [...deletingRoleIds.value, role.id]
-  error.value = null
-
-  try {
-    const response = await employerCompanyService.deleteInternalRole(role.id)
-    company.value = response?.data?.cong_ty || response?.data?.data?.cong_ty || company.value
-
-    if (!company.value) {
-      await fetchCompany()
-    }
-
-    await fetchHrAuditLogs(hrAuditPagination.value?.current_page || 1)
-    notify.success('Đã xóa vai trò nội bộ.')
-  } catch (err) {
-    error.value = messageFromError(err, 'Không thể xóa vai trò nội bộ.')
-    notify.apiError(err, 'Không thể xóa vai trò nội bộ.')
-  } finally {
-    deletingRoleIds.value = deletingRoleIds.value.filter((id) => id !== role.id)
   }
 }
 
@@ -1401,57 +1264,6 @@ onMounted(async () => {
       <div class="space-y-2">
         <label class="block text-sm font-semibold text-slate-700">Mô tả</label>
         <textarea v-model="permissionDefinitionForm.description" rows="4" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20" placeholder="Mô tả phạm vi thao tác của chức năng này." />
-      </div>
-    </div>
-  </FormModalShell>
-
-  <FormModalShell
-    v-if="showRoleModal"
-    eyebrow="Vai trò nội bộ"
-    :title="isEditingRole ? 'Cập nhật vai trò nội bộ' : 'Tạo vai trò nội bộ mới'"
-    description="Vai trò tùy chỉnh sẽ kế thừa quyền thao tác từ một vai trò hệ thống để các route hiện tại vẫn kiểm soát quyền nhất quán."
-    max-width-class="max-w-3xl"
-    :submit-label="isEditingRole ? 'Cập nhật vai trò' : 'Tạo vai trò'"
-    :submit-loading-label="isEditingRole ? 'Đang cập nhật...' : 'Đang tạo...'"
-    :saving="roleSubmitting"
-    @close="closeRoleModal"
-    @submit="saveInternalRole"
-  >
-    <template #summary>
-      <div class="rounded-2xl border border-slate-200 bg-white p-4">
-        <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Loại vai trò</p>
-        <p class="mt-2 text-sm font-semibold text-slate-900">Vai trò tùy chỉnh</p>
-      </div>
-      <div class="rounded-2xl border border-slate-200 bg-white p-4">
-        <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Kế thừa quyền</p>
-        <div class="mt-3">
-          <span :class="['inline-flex rounded-full px-3 py-1 text-sm font-semibold', roleColors[roleForm.vai_tro_goc] || roleColors.viewer]">
-            {{ roleLabel(roleForm.vai_tro_goc) }}
-          </span>
-        </div>
-      </div>
-      <div class="rounded-2xl border border-slate-200 bg-white p-4">
-        <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Ghi chú</p>
-        <p class="mt-2 text-sm text-slate-500">Mã vai trò được hệ thống tạo tự động và giữ ổn định sau khi tạo.</p>
-      </div>
-    </template>
-
-    <div class="grid gap-5">
-      <div class="space-y-2">
-        <label class="block text-sm font-semibold text-slate-700">Tên vai trò</label>
-        <input v-model="roleForm.ten_vai_tro" type="text" required class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20" placeholder="Ví dụ: Talent Acquisition Lead">
-      </div>
-      <div class="space-y-2">
-        <label class="block text-sm font-semibold text-slate-700">Kế thừa quyền từ</label>
-        <select v-model="roleForm.vai_tro_goc" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20">
-          <option v-for="[role, label] in baseRoleOptions" :key="role" :value="role">
-            {{ label }}
-          </option>
-        </select>
-      </div>
-      <div class="space-y-2">
-        <label class="block text-sm font-semibold text-slate-700">Mô tả</label>
-        <textarea v-model="roleForm.mo_ta" rows="4" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20" placeholder="Mô tả phạm vi công việc hoặc trách nhiệm của vai trò này." />
       </div>
     </div>
   </FormModalShell>

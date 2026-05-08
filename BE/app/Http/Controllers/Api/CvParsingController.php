@@ -73,7 +73,13 @@ class CvParsingController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Phân tích CV thành công và đã tự động đồng bộ dữ liệu.',
-            'data' => $parsing,
+            'data' => [
+                ...$parsing->toArray(),
+                'layout_analysis_json' => $data['layout_analysis_json'] ?? null,
+                'quality_warnings_json' => $data['quality_warnings_json'] ?? [],
+                'review_required' => (bool) ($data['review_required'] ?? false),
+                'suggested_actions' => $data['suggested_actions'] ?? [],
+            ],
             'sync_summary' => $syncSummary ?? null,
         ]);
     }

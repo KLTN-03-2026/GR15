@@ -10,12 +10,14 @@ use App\Http\Requests\NguoiDung\DatLaiMatKhauRequest;
 use App\Http\Requests\NguoiDung\DoiMatKhauRequest;
 use App\Http\Requests\NguoiDung\CapNhatHoSoRequest;
 use App\Http\Requests\NguoiDung\QuenMatKhauRequest;
+use App\Models\CongTy;
 use App\Models\NguoiDung;
 use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\Storage;
@@ -136,8 +138,9 @@ class AuthController extends Controller
     {
         $data = $request->validated();
         $data['vai_tro'] = $data['vai_tro'] ?? NguoiDung::VAI_TRO_UNG_VIEN;
+        $laNhaTuyenDung = (int) $data['vai_tro'] === NguoiDung::VAI_TRO_NHA_TUYEN_DUNG;
 
-        if ((int) $data['vai_tro'] === NguoiDung::VAI_TRO_NHA_TUYEN_DUNG) {
+        if ($laNhaTuyenDung) {
             Validator::make(
                 [
                     'ten_cong_ty' => $data['ten_cong_ty'] ?? null,
@@ -149,7 +152,31 @@ class AuthController extends Controller
             )->validate();
         }
 
-        $nguoiDung = NguoiDung::create($data);
+        $nguoiDung = DB::transaction(function () use ($data, $laNhaTuyenDung): NguoiDung {
+            $nguoiDung = NguoiDung::create($data);
+
+            if ($laNhaTuyenDung) {
+                $congTy = CongTy::create([
+                    'nguoi_dung_id' => $nguoiDung->id,
+                    'ten_cong_ty' => $data['ten_cong_ty'],
+                    'ma_so_thue' => 'DKNTD' . $nguoiDung->id,
+                    'dien_thoai' => $data['so_dien_thoai'] ?? null,
+                    'email' => $data['email'],
+                    'trang_thai' => CongTy::TRANG_THAI_HOAT_DONG,
+                ]);
+
+                $congTy->thanhViens()->attach($nguoiDung->id, [
+                    'vai_tro_noi_bo' => CongTy::VAI_TRO_NOI_BO_OWNER,
+                    'quyen_noi_bo' => json_encode(CongTy::defaultHrPermissions()),
+                    'duoc_tao_boi' => $nguoiDung->id,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
+
+            return $nguoiDung;
+        });
+
         dispatch(function () use ($nguoiDung): void {
             $nguoiDung->fresh()?->sendEmailVerificationNotification();
         })->afterResponse();

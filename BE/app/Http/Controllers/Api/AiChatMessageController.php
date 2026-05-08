@@ -8,11 +8,14 @@ use App\Models\AiChatMessage;
 use App\Models\AiChatSession;
 use App\Models\HoSo;
 use App\Models\KetQuaMatching;
+use App\Models\KyNang;
+use App\Models\NganhNghe;
 use App\Models\SuDungTinhNangAi;
 use App\Models\TinTuyenDung;
 use App\Models\TuVanNgheNghiep;
 use App\Services\Ai\AiClientService;
 use App\Services\Billing\FeatureAccessService;
+use App\Support\ApiErrorMessage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -290,7 +293,7 @@ class AiChatMessageController extends Controller
                 $this->safeFailUsage($featureAccessService, $billingUsage, $exception->getMessage());
 
                 echo $this->sseEvent('error', [
-                    'message' => $exception->getMessage(),
+                    'message' => ApiErrorMessage::fromThrowable($exception),
                 ]);
                 @ob_flush();
                 @flush();
@@ -313,6 +316,7 @@ class AiChatMessageController extends Controller
                 $careerReport = null;
                 $topMatches = [];
                 $relatedJob = null;
+                $ragContext = [];
 
                 if ($session->related_ho_so_id) {
                     $hoSo = HoSo::query()
@@ -382,6 +386,11 @@ class AiChatMessageController extends Controller
                             'title' => $job->tieu_de,
                             'location' => $job->dia_diem_lam_viec,
                             'level' => $job->cap_bac,
+                            'salary_from' => $job->muc_luong_tu,
+                            'salary_to' => $job->muc_luong_den,
+                            'salary_unit' => $job->don_vi_luong,
+                            'work_mode' => $job->hinh_thuc_lam_viec,
+                            'description_excerpt' => $this->shortenText((string) $job->mo_ta_cong_viec, 500),
                             'skills' => $job->kyNangYeuCaus
                                 ->pluck('kyNang.ten_ky_nang')
                                 ->filter()
@@ -390,6 +399,8 @@ class AiChatMessageController extends Controller
                         ];
                     }
                 }
+
+                $ragContext = $this->buildLightRagContext($candidateProfile, $relatedJob, $topMatches);
 
                 return [
                     'candidate_profile' => $candidateProfile,
@@ -401,6 +412,7 @@ class AiChatMessageController extends Controller
                     ] : null,
                     'top_matching_jobs' => $topMatches,
                     'related_job' => $relatedJob,
+                    'rag_context' => $ragContext,
                 ];
             }
         );
@@ -409,13 +421,95 @@ class AiChatMessageController extends Controller
         $careerReport = $baseContext['career_report'] ?? null;
         $topMatches = $baseContext['top_matching_jobs'] ?? [];
         $relatedJob = $baseContext['related_job'] ?? null;
+        $ragContext = $baseContext['rag_context'] ?? [];
 
         return [
             'candidate_profile' => $candidateProfile,
             'career_report' => $careerReport,
             'top_matching_jobs' => $topMatches,
             'related_job' => $relatedJob,
+            'rag_context' => $ragContext,
             'conversation_summary' => $session->summary,
+        ];
+    }
+
+    private function buildLightRagContext(array $candidateProfile, ?array $relatedJob, array $topMatches): array
+    {
+        $skillHints = collect([
+                ...($candidateProfile['parsed_skills'] ?? []),
+                ...($candidateProfile['builder_skills'] ?? []),
+                ...collect($topMatches)->flatMap(fn ($item) => [
+                    ...($item['matched_skills'] ?? []),
+                    ...($item['missing_skills'] ?? []),
+                ])->all(),
+                ...($relatedJob['skills'] ?? []),
+            ])
+            ->filter()
+            ->unique(fn ($value) => Str::lower((string) $value))
+            ->take(10)
+            ->values()
+            ->all();
+
+        $jobQuery = TinTuyenDung::query()
+            ->with(['congTy:id,ten_cong_ty', 'kyNangYeuCaus.kyNang:id,ten_ky_nang'])
+            ->where('trang_thai', TinTuyenDung::TRANG_THAI_HOAT_DONG)
+            ->latest('updated_at')
+            ->limit(8);
+
+        if ($skillHints !== []) {
+            $jobQuery->where(function ($query) use ($skillHints) {
+                foreach (array_slice($skillHints, 0, 5) as $skill) {
+                    $query->orWhere('mo_ta_cong_viec', 'like', '%' . $skill . '%')
+                        ->orWhere('tieu_de', 'like', '%' . $skill . '%');
+                }
+            });
+        }
+
+        $jobs = $jobQuery->get()
+            ->map(fn (TinTuyenDung $job) => [
+                'id' => $job->id,
+                'title' => $job->tieu_de,
+                'company' => $job->congTy?->ten_cong_ty,
+                'location' => $job->dia_diem_lam_viec,
+                'work_mode' => $job->hinh_thuc_lam_viec,
+                'salary_range' => array_values(array_filter([$job->muc_luong_tu, $job->muc_luong_den])),
+                'skills' => $job->kyNangYeuCaus
+                    ->pluck('kyNang.ten_ky_nang')
+                    ->filter()
+                    ->take(6)
+                    ->values()
+                    ->all(),
+            ])
+            ->values()
+            ->all();
+
+        return [
+            'source' => 'database_light_context',
+            'candidate_skill_hints' => $skillHints,
+            'job_snippets' => $jobs,
+            'industry_hints' => NganhNghe::query()
+                ->select('id', 'ten_nganh')
+                ->orderBy('ten_nganh')
+                ->limit(12)
+                ->get()
+                ->map(fn (NganhNghe $item) => ['id' => $item->id, 'name' => $item->ten_nganh])
+                ->values()
+                ->all(),
+            'skill_catalog_hints' => KyNang::query()
+                ->select('id', 'ten_ky_nang')
+                ->when($skillHints !== [], function ($query) use ($skillHints) {
+                    $query->where(function ($inner) use ($skillHints) {
+                        foreach (array_slice($skillHints, 0, 6) as $skill) {
+                            $inner->orWhere('ten_ky_nang', 'like', '%' . $skill . '%');
+                        }
+                    });
+                })
+                ->orderBy('ten_ky_nang')
+                ->limit(20)
+                ->get()
+                ->map(fn (KyNang $item) => ['id' => $item->id, 'name' => $item->ten_ky_nang])
+                ->values()
+                ->all(),
         ];
     }
 

@@ -11,7 +11,7 @@ from app.core.config import settings
 class OllamaMockInterviewProvider:
     def refine_question(self, question_payload: dict, interview_context: dict, transcript: list[dict]) -> str:
         prompt = _build_question_prompt(question_payload, interview_context, transcript)
-        return _call_ollama(prompt, min(settings.mock_interview_max_tokens, 96))
+        return _call_ollama(prompt, min(settings.mock_interview_max_tokens, 160))
 
     def refine_report(self, report_payload: dict, interview_context: dict) -> str:
         prompt = _build_report_prompt(report_payload, interview_context)
@@ -63,9 +63,14 @@ def _call_ollama(prompt: str, max_tokens: int) -> str:
 def _build_question_prompt(question_payload: dict, interview_context: dict, transcript: list[dict]) -> str:
     related_job = interview_context.get("related_job") or {}
     allowed_skills = [skill for skill in ((question_payload.get("focus_skills") or []) + (related_job.get("skills") or [])) if skill]
+    asked_questions = [
+        item.get("content", "")
+        for item in transcript
+        if (item.get("metadata") or {}).get("type") == "interview_question" and item.get("content")
+    ][-6:]
     recent_history = [
         item.get("content", "")
-        for item in transcript[-3:]
+        for item in transcript[-4:]
         if item.get("content")
     ]
     return f"""
@@ -76,6 +81,8 @@ Nhiệm vụ:
 - Không dùng markdown, không dùng ký tự **, #, `.
 - Chỉ trả về đúng một câu hỏi hoàn chỉnh, không thêm bất kỳ nội dung nào khác.
 - Nếu là câu follow-up, phải bám sát câu trả lời trước đó và đào sâu hơn.
+- Không được lặp lại hoặc diễn đạt lại gần giống bất kỳ câu hỏi đã hỏi nào.
+- Nếu câu hỏi gốc là câu kỹ thuật/tình huống/khoảng trống kỹ năng, bắt buộc giữ đúng loại câu hỏi đó; không chuyển về câu mở đầu như "chia sẻ về bản thân".
 - Tuyệt đối không đưa ra gợi ý trả lời, ví dụ trả lời, đáp án mẫu, bullet giải thích, tiêu chí chấm điểm hoặc phần mở đầu như "Câu hỏi:", "Gợi ý:", "Trả lời:".
 - Không tự chèn thêm công nghệ hoặc kỹ năng mới ngoài danh sách được phép nếu chúng không có trong câu hỏi gốc.
 
@@ -86,6 +93,7 @@ Thông tin ngữ cảnh:
 - Kỹ năng trọng tâm: {", ".join(question_payload.get('focus_skills') or []) or 'không có'}
 - Kỹ năng được phép nhắc tới: {", ".join(allowed_skills) or 'không có'}
 - Câu hỏi gốc: {question_payload.get('question_text') or ''}
+- Các câu hỏi đã hỏi, tuyệt đối tránh lặp lại: {" | ".join(asked_questions) if asked_questions else "chưa có"}
 - Transcript gần nhất: {" | ".join(recent_history) if recent_history else "chưa có"}
 """.strip()
 

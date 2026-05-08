@@ -127,13 +127,9 @@ class MomoTopUpController extends Controller
                 $targetUrl .= '?' . http_build_query($subscriptionQuery);
             }
         } elseif ($payment?->nguoiDung?->isNhaTuyenDung() && $payment?->loai_giao_dich === GiaoDichThanhToan::LOAI_NAP_VI) {
-            $targetUrl = $frontendBaseUrl . '/employer/billing';
+            $targetUrl = $frontendBaseUrl . '/employer/billing/payment-result/' . rawurlencode($paymentCode !== '' ? $paymentCode : 'unknown');
             if ($query !== []) {
-                $topupQuery = [
-                    'topup' => ((int) ($payload['resultCode'] ?? -1) === 0) ? 'pending' : 'failed',
-                    ...$query,
-                ];
-                $targetUrl .= '?' . http_build_query($topupQuery);
+                $targetUrl .= '?' . http_build_query($query);
             }
         } else {
             $targetUrl = $frontendBaseUrl . '/wallet/payment-result/' . rawurlencode($paymentCode !== '' ? $paymentCode : 'unknown');

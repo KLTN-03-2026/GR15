@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.core.config import settings
+from app.services.vietnamese_text import normalize_vietnamese_text_list
 
 
 MODEL_VERSION = f"cv_builder_writing_v1.0::rule_based::{settings.local_llm_model}"
@@ -26,7 +27,7 @@ def generate_cv_builder_writing(
     else:
         data = {
             "section": section,
-            "suggestions": _suggestions(profile, section, item, tone),
+            "suggestions": normalize_vietnamese_text_list(_suggestions(profile, section, item, tone)),
             "skill_suggestions": [],
             "model_version": MODEL_VERSION,
         }

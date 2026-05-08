@@ -40,10 +40,8 @@ trait ResolvesEmployerCompany
             return false;
         }
 
-        return $user->coVaiTroNoiBoCongTy([
-            CongTy::VAI_TRO_NOI_BO_OWNER,
-            CongTy::VAI_TRO_NOI_BO_ADMIN_HR,
-        ], $congTy) || $user->coQuyenNoiBoCongTy(['members', 'jobs', 'applications'], $congTy);
+        return $user->coVaiTroNoiBoCongTy(CongTy::VAI_TRO_NOI_BO_OWNER, $congTy)
+            || $user->coQuyenNoiBoCongTy(['members', 'jobs', 'applications'], $congTy);
     }
 
     protected function coTheQuanLyTinTheoOwnership(?NguoiDung $user, ?CongTy $congTy, ?TinTuyenDung $tin): bool

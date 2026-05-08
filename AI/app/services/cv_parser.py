@@ -13,7 +13,7 @@ from app.services.skill_catalog import extract_skills_from_text, normalize_searc
 
 logger = get_logger(__name__)
 
-PARSER_VERSION = "cv_parser_v1"
+PARSER_VERSION = "cv_parser_v2_layout_guarded"
 SECTION_SCAN_LIMIT = 24
 
 NAME_BLOCKLIST = {
@@ -76,6 +76,12 @@ def parse_cv(ho_so_id: int, file_path: str | None = None, raw_text: str | None =
 
     try:
         source_text = raw_text
+        extraction_meta: dict = {
+            "source": "raw_text" if raw_text else "file",
+            "layout": "plain_text",
+            "warnings": [],
+            "page_count": None,
+        }
 
         if source_text:
             normalized_text = _normalize_text(source_text)
@@ -83,7 +89,7 @@ def parse_cv(ho_so_id: int, file_path: str | None = None, raw_text: str | None =
             if not file_path:
                 raise ValueError("Thiếu dữ liệu CV để phân tích.")
             resolved_path = _resolve_cv_path(file_path)
-            source_text = _extract_text(resolved_path)
+            source_text, extraction_meta = _extract_text_with_metadata(resolved_path)
             normalized_text = _normalize_text(source_text)
 
         if not normalized_text:
@@ -96,6 +102,17 @@ def parse_cv(ho_so_id: int, file_path: str | None = None, raw_text: str | None =
         parsed_skills = _extract_skills(normalized_text, skill_contexts)
         parsed_experience = _extract_section_blocks(normalized_text, EXPERIENCE_SECTION_PATTERNS)
         parsed_education = _extract_section_blocks(normalized_text, EDUCATION_SECTION_PATTERNS)
+        layout_analysis = _analyze_layout(normalized_text, extraction_meta)
+        quality_warnings = _build_quality_warnings(
+            normalized_text=normalized_text,
+            parsed_email=parsed_email,
+            parsed_phone=parsed_phone,
+            parsed_name=parsed_name,
+            parsed_skills=parsed_skills,
+            parsed_experience=parsed_experience,
+            parsed_education=parsed_education,
+            layout_analysis=layout_analysis,
+        )
         confidence_score = _estimate_confidence(
             normalized_text=normalized_text,
             parsed_email=parsed_email,
@@ -118,6 +135,10 @@ def parse_cv(ho_so_id: int, file_path: str | None = None, raw_text: str | None =
                 "parsed_skills_json": parsed_skills,
                 "parsed_experience_json": parsed_experience,
                 "parsed_education_json": parsed_education,
+                "layout_analysis_json": layout_analysis,
+                "quality_warnings_json": quality_warnings,
+                "review_required": bool(quality_warnings) or confidence_score < 0.78,
+                "suggested_actions": _suggest_review_actions(quality_warnings, layout_analysis),
             },
             "error": None,
         }
@@ -135,6 +156,16 @@ def parse_cv(ho_so_id: int, file_path: str | None = None, raw_text: str | None =
                 "parsed_skills_json": [],
                 "parsed_experience_json": [],
                 "parsed_education_json": [],
+                "layout_analysis_json": {},
+                "quality_warnings_json": [
+                    {
+                        "severity": "error",
+                        "code": "cv_parse_failed",
+                        "message": str(exc),
+                    }
+                ],
+                "review_required": True,
+                "suggested_actions": ["Tải lại CV dạng PDF/DOCX có text hoặc nhập hồ sơ bằng CV Builder."],
             },
             "error": str(exc),
         }
@@ -166,28 +197,86 @@ def _resolve_cv_path(file_path: str) -> Path:
     raise FileNotFoundError(f"Không tìm thấy file CV: {file_path}")
 
 
-def _extract_text(path: Path) -> str:
+def _extract_text_with_metadata(path: Path) -> tuple[str, dict]:
     suffix = path.suffix.lower()
+    metadata = {
+        "source": "file",
+        "file_type": suffix.lstrip("."),
+        "layout": "plain_text",
+        "warnings": [],
+        "page_count": None,
+        "two_column_pages": [],
+    }
 
     if suffix == ".pdf":
         pages: list[str] = []
         with pdfplumber.open(path) as pdf:
-            for page in pdf.pages:
-                page_text = page.extract_text() or ""
+            metadata["page_count"] = len(pdf.pages)
+            for page_index, page in enumerate(pdf.pages, start=1):
+                page_text, page_meta = _extract_pdf_page_text(page)
+                if page_meta.get("two_column"):
+                    metadata["layout"] = "two_column_or_complex"
+                    metadata["two_column_pages"].append(page_index)
                 if page_text.strip():
                     pages.append(page_text)
-        return "\n".join(pages)
+        if not pages:
+            metadata["warnings"].append("Không trích xuất được text từ PDF; CV có thể là file scan/ảnh và cần OCR.")
+        return "\n".join(pages), metadata
 
     if suffix == ".docx":
-        return _extract_docx_text(path)
+        return _extract_docx_text(path), metadata
 
     if suffix == ".doc":
-        return _extract_legacy_doc_text(path)
+        metadata["warnings"].append("File DOC cũ có thể làm mất định dạng bảng/cột; nên kiểm tra lại kết quả parse.")
+        return _extract_legacy_doc_text(path), metadata
 
     if suffix in {".txt", ".md"}:
-        return path.read_text(encoding="utf-8", errors="ignore")
+        return path.read_text(encoding="utf-8", errors="ignore"), metadata
 
     raise ValueError(f"Định dạng file chưa được hỗ trợ: {suffix}")
+
+
+def _extract_pdf_page_text(page) -> tuple[str, dict]:
+    page_text = page.extract_text() or ""
+    meta = {"two_column": False}
+
+    try:
+        words = page.extract_words(x_tolerance=2, y_tolerance=3, keep_blank_chars=False)
+    except Exception:
+        return page_text, meta
+
+    if not words:
+        return page_text, meta
+
+    width = float(getattr(page, "width", 0) or 0)
+    if width <= 0:
+        return page_text, meta
+
+    left_words = [word for word in words if float(word.get("x0", 0)) < width * 0.47]
+    right_words = [word for word in words if float(word.get("x0", 0)) > width * 0.53]
+    has_two_columns = len(left_words) >= 12 and len(right_words) >= 12 and min(len(left_words), len(right_words)) / max(len(words), 1) >= 0.22
+
+    if not has_two_columns:
+        return page_text, meta
+
+    meta["two_column"] = True
+
+    def materialize(column_words: list[dict]) -> str:
+        rows: list[list[dict]] = []
+        for word in sorted(column_words, key=lambda item: (round(float(item.get("top", 0)) / 4), float(item.get("x0", 0)))):
+            top = float(word.get("top", 0))
+            if not rows or abs(float(rows[-1][0].get("top", 0)) - top) > 5:
+                rows.append([word])
+            else:
+                rows[-1].append(word)
+
+        lines = []
+        for row in rows:
+            lines.append(" ".join(str(item.get("text", "")).strip() for item in sorted(row, key=lambda item: float(item.get("x0", 0))) if str(item.get("text", "")).strip()))
+        return "\n".join(line for line in lines if line.strip())
+
+    column_text = "\n".join(part for part in [materialize(left_words), materialize(right_words)] if part.strip())
+    return column_text or page_text, meta
 
 
 def _extract_docx_text(path: Path) -> str:
@@ -390,3 +479,102 @@ def _estimate_confidence(
 
 def _join_section_contents(blocks: list[dict]) -> str:
     return "\n".join(block.get("content", "") for block in blocks if block.get("content"))
+
+
+def _analyze_layout(text: str, extraction_meta: dict) -> dict:
+    lines = text.splitlines()
+    line_lengths = [len(line) for line in lines if line.strip()]
+    short_line_ratio = (
+        len([length for length in line_lengths if length <= 24]) / len(line_lengths)
+        if line_lengths
+        else 0
+    )
+    section_hits = sum(
+        1
+        for line in lines
+        if _looks_like_new_section(normalize_search_text(line))
+    )
+    two_column_pages = extraction_meta.get("two_column_pages") or []
+    complexity_score = 0
+
+    if two_column_pages:
+        complexity_score += 45
+    if short_line_ratio >= 0.5 and len(lines) >= 20:
+        complexity_score += 25
+    if section_hits >= 7:
+        complexity_score += 15
+    if extraction_meta.get("warnings"):
+        complexity_score += 15
+
+    complexity_score = min(100, complexity_score)
+
+    return {
+        "layout": extraction_meta.get("layout") or "plain_text",
+        "is_complex_layout": complexity_score >= 45,
+        "complexity_score": complexity_score,
+        "two_column_pages": two_column_pages,
+        "page_count": extraction_meta.get("page_count"),
+        "short_line_ratio": round(short_line_ratio, 2),
+        "section_signal_count": section_hits,
+        "extraction_warnings": extraction_meta.get("warnings") or [],
+    }
+
+
+def _build_quality_warnings(
+    *,
+    normalized_text: str,
+    parsed_email: str | None,
+    parsed_phone: str | None,
+    parsed_name: str | None,
+    parsed_skills: list[dict],
+    parsed_experience: list[dict],
+    parsed_education: list[dict],
+    layout_analysis: dict,
+) -> list[dict]:
+    warnings: list[dict] = []
+
+    if len(normalized_text) < 220:
+        warnings.append({
+            "severity": "warning",
+            "code": "cv_text_too_short",
+            "message": "Nội dung trích xuất từ CV còn ngắn; nếu đây là CV scan/ảnh, nên dùng file có text hoặc OCR.",
+        })
+    if layout_analysis.get("is_complex_layout"):
+        warnings.append({
+            "severity": "info",
+            "code": "cv_complex_layout_detected",
+            "message": "CV có dấu hiệu layout nhiều cột hoặc thiết kế phức tạp; hãy kiểm tra lại thứ tự kinh nghiệm, học vấn và kỹ năng.",
+        })
+    if not parsed_name:
+        warnings.append({"severity": "warning", "code": "missing_name", "message": "Chưa nhận diện chắc chắn họ tên ứng viên."})
+    if not parsed_email:
+        warnings.append({"severity": "warning", "code": "missing_email", "message": "Chưa nhận diện được email trong CV."})
+    if not parsed_phone:
+        warnings.append({"severity": "info", "code": "missing_phone", "message": "Chưa nhận diện được số điện thoại hợp lệ."})
+    if len(parsed_skills) < 3:
+        warnings.append({"severity": "warning", "code": "few_skills", "message": "Số kỹ năng nhận diện còn ít; nên rà soát và bổ sung kỹ năng thủ công nếu cần."})
+    if not parsed_experience:
+        warnings.append({"severity": "info", "code": "missing_experience", "message": "Chưa tách được khối kinh nghiệm làm việc rõ ràng."})
+    if not parsed_education:
+        warnings.append({"severity": "info", "code": "missing_education", "message": "Chưa tách được khối học vấn rõ ràng."})
+
+    return warnings
+
+
+def _suggest_review_actions(warnings: list[dict], layout_analysis: dict) -> list[str]:
+    actions = []
+    codes = {item.get("code") for item in warnings}
+
+    if "cv_complex_layout_detected" in codes:
+        actions.append("Kiểm tra lại thứ tự nội dung vì CV có thể là layout 2 cột hoặc thiết kế phức tạp.")
+    if {"missing_name", "missing_email", "missing_phone"} & codes:
+        actions.append("Xác nhận lại thông tin cá nhân trước khi áp dụng vào tài khoản.")
+    if "few_skills" in codes:
+        actions.append("Mở mục Kỹ năng của tôi để bổ sung kỹ năng quan trọng chưa được AI nhận diện.")
+    if "cv_text_too_short" in codes:
+        actions.append("Nếu CV là ảnh/scan, hãy dùng bản PDF/DOCX có thể copy text để parse chính xác hơn.")
+
+    if not actions:
+        actions.append("Kết quả parse đủ tốt; chỉ cần rà soát nhanh trước khi dùng cho matching.")
+
+    return actions[:4]
