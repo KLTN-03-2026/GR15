@@ -194,6 +194,8 @@ const parsedBenefits = computed(() =>
     })
     .filter(Boolean)
 )
+const jdQualityWarnings = computed(() => Array.isArray(job.value?.parsing?.quality_warnings_json) ? job.value.parsing.quality_warnings_json : [])
+const jdSuggestedSkills = computed(() => Array.isArray(job.value?.parsing?.suggested_skills_json) ? job.value.parsing.suggested_skills_json : [])
 
 const upcomingApplications = computed(() => applications.value.slice(0, 6))
 const topShortlistItems = computed(() => shortlistItems.value.slice(0, 5))
@@ -449,9 +451,16 @@ const parseJob = async () => {
 
   parsingLoading.value = true
   try {
-    await employerJobService.parseJob(job.value.id)
+    const response = await employerJobService.parseJob(job.value.id)
+    const parseData = response?.data || null
     notify.success('Đã gửi yêu cầu parse JD cho tin tuyển dụng.')
     await fetchJobDetail()
+    if (parseData && job.value) {
+      job.value.parsing = {
+        ...(job.value.parsing || {}),
+        ...parseData,
+      }
+    }
   } catch (error) {
     notify.apiError(error, 'Không thể parse JD cho tin tuyển dụng.')
   } finally {
@@ -1055,6 +1064,32 @@ onMounted(async () => {
                   {{ skill }}
                 </span>
                 <span v-if="!requiredSkills.length" class="text-sm text-slate-500 dark:text-slate-400">Chưa có kỹ năng parse được cho JD này.</span>
+              </div>
+            </div>
+
+            <div v-if="jdQualityWarnings.length || jdSuggestedSkills.length" class="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-5 dark:border-amber-500/30 dark:bg-amber-500/10">
+              <div class="flex flex-col gap-4">
+                <div>
+                  <p class="text-xs font-bold uppercase tracking-[0.22em] text-amber-600 dark:text-amber-300">Kiểm tra chất lượng JD</p>
+                  <ul v-if="jdQualityWarnings.length" class="mt-3 space-y-2 text-sm leading-6 text-amber-900 dark:text-amber-100">
+                    <li v-for="warning in jdQualityWarnings" :key="warning.code || warning.message" class="flex gap-2">
+                      <span class="material-symbols-outlined mt-0.5 text-[16px]">rule</span>
+                      <span>{{ warning.message || warning }}</span>
+                    </li>
+                  </ul>
+                </div>
+                <div v-if="jdSuggestedSkills.length">
+                  <p class="text-xs font-bold uppercase tracking-[0.22em] text-amber-600 dark:text-amber-300">Kỹ năng AI gợi ý để HR xác nhận</p>
+                  <div class="mt-3 flex flex-wrap gap-2">
+                    <span
+                      v-for="skill in jdSuggestedSkills.slice(0, 12)"
+                      :key="skill.skill_name"
+                      class="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 dark:bg-slate-900 dark:text-amber-200"
+                    >
+                      {{ skill.skill_name }}{{ skill.bat_buoc ? ' · bắt buộc' : '' }}
+                    </span>
+                  </div>
+                </div>
               </div>
             </div>
 

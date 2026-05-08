@@ -63,14 +63,22 @@ class AppNotificationService
 
     public function recruitmentRecipients(CongTy $company, ?int $preferredHrId = null): Collection
     {
-        $roleRecipients = $company->thanhViens()
+        $activeMembers = $company->thanhViens()
             ->where('nguoi_dungs.trang_thai', 1)
-            ->wherePivotIn('vai_tro_noi_bo', [
-                CongTy::VAI_TRO_NOI_BO_OWNER,
-                CongTy::VAI_TRO_NOI_BO_ADMIN_HR,
-                CongTy::VAI_TRO_NOI_BO_RECRUITER,
-            ])
-            ->pluck('nguoi_dungs.id');
+            ->get(['nguoi_dungs.id']);
+
+        $roleRecipients = $activeMembers
+            ->filter(function (NguoiDung $member) use ($company): bool {
+                if (CongTy::normalizeVaiTroNoiBo($member->pivot?->vai_tro_noi_bo) === CongTy::VAI_TRO_NOI_BO_OWNER) {
+                    return true;
+                }
+
+                $permissions = $member->layQuyenNoiBoCongTy($company);
+
+                return collect(['jobs', 'applications', 'interviews', 'offers', 'onboarding'])
+                    ->contains(fn (string $permission) => ($permissions[$permission] ?? false) === true);
+            })
+            ->pluck('id');
 
         return collect([
             $company->nguoi_dung_id,

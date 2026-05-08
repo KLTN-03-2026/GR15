@@ -14,6 +14,7 @@ use App\Models\TinTuyenDung;
 use App\Models\TuVanNgheNghiep;
 use App\Services\Ai\AiClientService;
 use App\Services\Billing\FeatureAccessService;
+use App\Support\ApiErrorMessage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -107,10 +108,13 @@ class MockInterviewController extends Controller
 
         $validated = $request->validate([
             'related_ho_so_id' => ['required', 'integer'],
-            'related_tin_tuyen_dung_id' => ['nullable', 'integer'],
+            'related_tin_tuyen_dung_id' => ['required', 'integer'],
             'title' => ['nullable', 'string', 'max:255'],
             'auto_generate_first_question' => ['nullable', 'boolean'],
-            'question_count' => ['nullable', 'integer', 'min:1'],
+            'question_count' => ['nullable', 'integer', 'min:2'],
+        ], [
+            'related_tin_tuyen_dung_id.required' => 'Vui lòng chọn tin tuyển dụng mục tiêu trước khi tạo phiên phỏng vấn.',
+            'question_count.min' => 'Số câu hỏi phỏng vấn tối thiểu là 2 câu.',
         ]);
 
         $hoSo = HoSo::query()
@@ -118,10 +122,8 @@ class MockInterviewController extends Controller
             ->where('nguoi_dung_id', $request->user()->id)
             ->firstOrFail();
 
-        $jobId = $validated['related_tin_tuyen_dung_id'] ?? null;
-        if ($jobId) {
-            TinTuyenDung::findOrFail($jobId);
-        }
+        $jobId = (int) $validated['related_tin_tuyen_dung_id'];
+        TinTuyenDung::findOrFail($jobId);
 
         try {
             $billingUsage = $featureAccessService->beginUsage(
@@ -298,7 +300,7 @@ class MockInterviewController extends Controller
                 @ob_flush();
                 @flush();
             } catch (\Throwable $e) {
-                echo $this->sseEvent('error', ['message' => $e->getMessage()]);
+                echo $this->sseEvent('error', ['message' => ApiErrorMessage::fromThrowable($e)]);
                 @ob_flush();
                 @flush();
             }
@@ -356,7 +358,7 @@ class MockInterviewController extends Controller
                 @ob_flush();
                 @flush();
             } catch (\Throwable $e) {
-                echo $this->sseEvent('error', ['message' => $e->getMessage()]);
+                echo $this->sseEvent('error', ['message' => ApiErrorMessage::fromThrowable($e)]);
                 @ob_flush();
                 @flush();
             }
@@ -585,7 +587,7 @@ class MockInterviewController extends Controller
     {
         $questionCount = (int) (($session->metadata['question_count'] ?? null) ?: 5);
 
-        return max(1, $questionCount);
+        return max(2, $questionCount);
     }
 
     private function processAnswer(int $userId, array $validated, AiClientService $aiClient): array

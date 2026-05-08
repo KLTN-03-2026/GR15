@@ -41,10 +41,7 @@ class CongTy extends Model
     const TRANG_THAI_TAM_NGUNG = 0;
 
     const VAI_TRO_NOI_BO_OWNER = 'owner';
-    const VAI_TRO_NOI_BO_ADMIN_HR = 'admin_hr';
-    const VAI_TRO_NOI_BO_RECRUITER = 'recruiter';
-    const VAI_TRO_NOI_BO_INTERVIEWER = 'interviewer';
-    const VAI_TRO_NOI_BO_VIEWER = 'viewer';
+    const VAI_TRO_NOI_BO_MEMBER = 'member';
 
     const QUY_MO_LIST = [
         '1-10',
@@ -56,28 +53,21 @@ class CongTy extends Model
 
     const VAI_TRO_NOI_BO_LABELS = [
         self::VAI_TRO_NOI_BO_OWNER => 'Owner',
-        self::VAI_TRO_NOI_BO_ADMIN_HR => 'Admin HR',
-        self::VAI_TRO_NOI_BO_RECRUITER => 'Recruiter',
-        self::VAI_TRO_NOI_BO_INTERVIEWER => 'Interviewer',
-        self::VAI_TRO_NOI_BO_VIEWER => 'Viewer',
+        self::VAI_TRO_NOI_BO_MEMBER => 'HR thường',
     ];
 
     const VAI_TRO_NOI_BO_CO_THE_QUAN_LY_CONG_TY = [
         self::VAI_TRO_NOI_BO_OWNER,
-        self::VAI_TRO_NOI_BO_ADMIN_HR,
     ];
 
     const VAI_TRO_NOI_BO_CO_THE_QUAN_LY_TIN_TUYEN_DUNG = [
         self::VAI_TRO_NOI_BO_OWNER,
-        self::VAI_TRO_NOI_BO_ADMIN_HR,
-        self::VAI_TRO_NOI_BO_RECRUITER,
+        self::VAI_TRO_NOI_BO_MEMBER,
     ];
 
     const VAI_TRO_NOI_BO_CO_THE_XU_LY_UNG_TUYEN = [
         self::VAI_TRO_NOI_BO_OWNER,
-        self::VAI_TRO_NOI_BO_ADMIN_HR,
-        self::VAI_TRO_NOI_BO_RECRUITER,
-        self::VAI_TRO_NOI_BO_INTERVIEWER,
+        self::VAI_TRO_NOI_BO_MEMBER,
     ];
 
     const HR_PERMISSION_CATALOG = [
@@ -196,69 +186,46 @@ class CongTy extends Model
 
     public static function danhSachVaiTroNoiBo(?self $congTy = null): array
     {
-        $roles = array_keys(self::VAI_TRO_NOI_BO_LABELS);
-
-        if ($congTy) {
-            $customRoles = $congTy->relationLoaded('vaiTroNoiBos')
-                ? $congTy->vaiTroNoiBos
-                : $congTy->vaiTroNoiBos()->get(['ma_vai_tro']);
-
-            $roles = array_merge($roles, $customRoles->pluck('ma_vai_tro')->all());
-        }
-
-        return array_values(array_unique($roles));
+        return array_keys(self::VAI_TRO_NOI_BO_LABELS);
     }
 
-    public static function nhanVaiTroNoiBo(?string $role, ?self $congTy = null): string
-    {
-        if (isset(self::VAI_TRO_NOI_BO_LABELS[$role ?? ''])) {
-            return self::VAI_TRO_NOI_BO_LABELS[$role];
-        }
-
-        if ($role && $congTy) {
-            $customRole = $congTy->relationLoaded('vaiTroNoiBos')
-                ? $congTy->vaiTroNoiBos->firstWhere('ma_vai_tro', $role)
-                : $congTy->vaiTroNoiBos()->where('ma_vai_tro', $role)->first();
-
-            if ($customRole) {
-                return $customRole->ten_vai_tro;
-            }
-        }
-
-        return 'HR Member';
-    }
-
-    public static function vaiTroGocNoiBo(?string $role, ?self $congTy = null): ?string
+    public static function normalizeVaiTroNoiBo(?string $role): ?string
     {
         if (!$role) {
             return null;
         }
 
-        if (isset(self::VAI_TRO_NOI_BO_LABELS[$role])) {
-            return $role;
+        return $role === self::VAI_TRO_NOI_BO_OWNER
+            ? self::VAI_TRO_NOI_BO_OWNER
+            : self::VAI_TRO_NOI_BO_MEMBER;
+    }
+
+    public static function nhanVaiTroNoiBo(?string $role, ?self $congTy = null): string
+    {
+        $normalizedRole = self::normalizeVaiTroNoiBo($role);
+
+        if (!$normalizedRole) {
+            return 'Không xác định';
         }
 
-        if ($congTy) {
-            $customRole = $congTy->relationLoaded('vaiTroNoiBos')
-                ? $congTy->vaiTroNoiBos->firstWhere('ma_vai_tro', $role)
-                : $congTy->vaiTroNoiBos()->where('ma_vai_tro', $role)->first();
+        return self::VAI_TRO_NOI_BO_LABELS[$normalizedRole] ?? 'HR thường';
+    }
 
-            return $customRole?->vai_tro_goc;
-        }
-
-        return null;
+    public static function vaiTroGocNoiBo(?string $role, ?self $congTy = null): ?string
+    {
+        return self::normalizeVaiTroNoiBo($role);
     }
 
     public static function quyenTheoVaiTroNoiBo(?string $role, ?self $congTy = null): array
     {
-        $normalizedRole = self::vaiTroGocNoiBo($role, $congTy) ?? '';
+        $normalizedRole = self::normalizeVaiTroNoiBo(self::vaiTroGocNoiBo($role, $congTy) ?? $role) ?? '';
 
         return [
-            'co_the_xem' => $role !== null && in_array($role, self::danhSachVaiTroNoiBo($congTy), true),
+            'co_the_xem' => $normalizedRole !== '',
             'co_the_quan_ly_cong_ty' => in_array($normalizedRole, self::VAI_TRO_NOI_BO_CO_THE_QUAN_LY_CONG_TY, true),
             'co_the_quan_ly_tin_tuyen_dung' => in_array($normalizedRole, self::VAI_TRO_NOI_BO_CO_THE_QUAN_LY_TIN_TUYEN_DUNG, true),
             'co_the_xu_ly_ung_tuyen' => in_array($normalizedRole, self::VAI_TRO_NOI_BO_CO_THE_XU_LY_UNG_TUYEN, true),
-            'co_the_quan_ly_thanh_vien' => $role === self::VAI_TRO_NOI_BO_OWNER,
+            'co_the_quan_ly_thanh_vien' => $normalizedRole === self::VAI_TRO_NOI_BO_OWNER,
         ];
     }
 
@@ -322,54 +289,16 @@ class CongTy extends Model
         return array_fill_keys(self::hrPermissionKeys(), true);
     }
 
-    public static function defaultHrPermissionsForRole(?string $role): array
+    public static function defaultHrPermissionsForRole(?string $role, ?self $congTy = null): array
     {
         $permissions = array_fill_keys(self::hrPermissionKeys(), false);
-        $baseRole = self::vaiTroGocNoiBo($role) ?? $role;
+        $baseRole = self::normalizeVaiTroNoiBo(self::vaiTroGocNoiBo($role, $congTy) ?? $role);
 
         if ($baseRole === self::VAI_TRO_NOI_BO_OWNER) {
             return self::defaultHrPermissions();
         }
 
-        if ($baseRole === self::VAI_TRO_NOI_BO_ADMIN_HR) {
-            return [
-                ...$permissions,
-                'company_profile' => true,
-                'jobs' => true,
-                'applications' => true,
-                'interviews' => true,
-                'offers' => true,
-                'onboarding' => true,
-                'exports' => true,
-                'audit_logs' => true,
-            ];
-        }
-
-        if ($baseRole === self::VAI_TRO_NOI_BO_RECRUITER) {
-            return [
-                ...$permissions,
-                'jobs' => true,
-                'applications' => true,
-                'interviews' => true,
-                'offers' => true,
-                'onboarding' => true,
-                'exports' => true,
-            ];
-        }
-
-        if ($baseRole === self::VAI_TRO_NOI_BO_INTERVIEWER) {
-            return [
-                ...$permissions,
-                'applications' => true,
-                'interviews' => true,
-                'exports' => true,
-            ];
-        }
-
-        return [
-            ...$permissions,
-            'applications' => true,
-        ];
+        return $permissions;
     }
 
     public static function normalizeHrPermissions(?array $permissions): array

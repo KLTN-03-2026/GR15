@@ -37,7 +37,7 @@ export const useAuth = () => {
       const response = await authService.changePassword(oldPassword, newPassword, confirmPassword)
       return response
     } catch (err) {
-      error.value = err.message || 'Password change failed'
+      error.value = err.message || 'Đổi mật khẩu thất bại.'
       throw err
     } finally {
       isLoading.value = false

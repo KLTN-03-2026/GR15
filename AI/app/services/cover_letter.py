@@ -8,6 +8,8 @@ from app.providers import (
     OpenAICoverLetterProvider,
     TemplateCoverLetterProvider,
 )
+from app.services.vietnamese_text import normalize_vietnamese_ai_text
+from app.services.skill_catalog import extract_skills_from_text, normalize_search_text
 
 
 logger = get_logger(__name__)
@@ -42,11 +44,20 @@ def generate_cover_letter(
         if not content:
             raise RuntimeError("Provider không trả về nội dung thư xin việc.")
 
+        skill_audit = _audit_cover_letter_skills(
+            content=content,
+            cv_profile=cv_profile or {},
+            jd_profile=jd_profile or {},
+            matching_profile=matching_profile or {},
+        )
+
         return {
             "success": True,
             "model_version": MODEL_VERSION,
             "data": {
                 "thu_xin_viec_ai": content,
+                "skill_audit": skill_audit,
+                "quality_warnings": skill_audit["warnings"],
                 "model_version": MODEL_VERSION,
                 "meta": {
                     "candidate_name": context.candidate_name,
@@ -56,6 +67,7 @@ def generate_cover_letter(
                     "missing_skills": context.missing_skills[:4],
                     "diem_phu_hop": context.matching_score,
                     "provider": _resolve_provider_name(),
+                    "skill_audit_passed": skill_audit["passed"],
                 },
             },
             "error": None,
@@ -244,43 +256,94 @@ def _determine_tone(diem_phu_hop: float | None) -> str:
 
 
 def _finalize_cover_letter(text: str) -> str:
-    cleaned = (
-        str(text or "")
-        .replace("**", "")
-        .replace("__", "")
-        .replace("`", "")
-        .replace("#", "")
-        .strip()
-    )
+    return normalize_vietnamese_ai_text(text, ensure_punctuation=False)
 
-    replacements = {
-        "cover letter": "thư xin việc",
-        "Cover letter": "Thư xin việc",
-        "matching": "đối sánh",
-        "Matching": "Đối sánh",
-        "job ": "vị trí ",
-        "Job ": "Vị trí ",
-        "apply": "ứng tuyển",
-        "Apply": "Ứng tuyển",
-        "portfolio": "hồ sơ dự án",
-        "Portfolio": "Hồ sơ dự án",
-        "case study": "bài phân tích tình huống",
-        "Case study": "Bài phân tích tình huống",
-    }
-    for source, target in replacements.items():
-        cleaned = cleaned.replace(source, target)
 
-    normalized_lines: list[str] = []
-    previous_blank = False
-    for raw_line in cleaned.splitlines():
-        line = " ".join(raw_line.split())
-        if not line:
-            if normalized_lines and not previous_blank:
-                normalized_lines.append("")
-            previous_blank = True
+def _audit_cover_letter_skills(
+    *,
+    content: str,
+    cv_profile: dict,
+    jd_profile: dict,
+    matching_profile: dict,
+) -> dict:
+    mentioned = _extract_skill_names(extract_skills_from_text(content))
+    cv_skills = _extract_skill_names(cv_profile.get("parsed_skills"))
+    matched_skills = _extract_skill_names(matching_profile.get("matched_skills_json"))
+    jd_skills = _extract_skill_names(jd_profile.get("required_skills") or jd_profile.get("parsed_skills"))
+    missing_skills = _extract_skill_names(matching_profile.get("missing_skills_json"))
+
+    supported_pool = _normalized_set([*cv_skills, *matched_skills])
+    jd_pool = _normalized_set(jd_skills)
+    missing_pool = _normalized_set(missing_skills)
+    questionable = []
+    aspirational = []
+
+    for skill in mentioned:
+        normalized = normalize_search_text(skill)
+        if normalized in supported_pool:
             continue
+        if normalized in missing_pool:
+            aspirational.append(skill)
+            continue
+        if normalized in jd_pool and normalized not in supported_pool:
+            questionable.append(skill)
 
-        normalized_lines.append(line)
-        previous_blank = False
+    warnings = []
+    if questionable:
+        warnings.append({
+            "severity": "warning",
+            "code": "unsupported_skill_claim",
+            "message": "Thư có nhắc kỹ năng thuộc JD nhưng chưa thấy trong CV/matching; ứng viên nên kiểm tra để tránh bịa năng lực.",
+            "skills": questionable[:6],
+        })
+    if aspirational:
+        warnings.append({
+            "severity": "info",
+            "code": "missing_skill_mentioned",
+            "message": "Thư có nhắc kỹ năng còn thiếu; nên diễn đạt là đang học/bổ sung thay vì khẳng định đã thành thạo.",
+            "skills": aspirational[:6],
+        })
 
-    return "\n".join(normalized_lines).strip()
+    generic_score = _genericness_score(content)
+    if generic_score >= 65:
+        warnings.append({
+            "severity": "info",
+            "code": "generic_cover_letter",
+            "message": "Thư còn hơi chung chung; nên thêm dự án, số liệu hoặc minh chứng cụ thể từ CV.",
+            "score": generic_score,
+        })
+
+    return {
+        "passed": not any(item.get("severity") == "warning" for item in warnings),
+        "mentioned_skills": mentioned,
+        "unsupported_skills": questionable,
+        "aspirational_skills": aspirational,
+        "genericness_score": generic_score,
+        "warnings": warnings,
+    }
+
+
+def _normalized_set(values: list[str]) -> set[str]:
+    return {normalize_search_text(value) for value in values if normalize_search_text(value)}
+
+
+def _genericness_score(content: str) -> int:
+    normalized = normalize_search_text(content)
+    score = 0
+    generic_markers = [
+        "toi tin rang",
+        "mong muon duoc lam viec",
+        "quy cong ty",
+        "co hoi phat trien",
+        "hoc hoi",
+        "dong gop",
+        "phu hop voi vi tri",
+    ]
+    score += sum(10 for marker in generic_markers if marker in normalized)
+    if not any(char.isdigit() for char in content):
+        score += 15
+    if "du an" not in normalized and "project" not in normalized:
+        score += 15
+    if len(content.split()) < 140:
+        score += 10
+    return min(100, score)

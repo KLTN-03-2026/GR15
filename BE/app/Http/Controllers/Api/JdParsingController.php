@@ -111,7 +111,14 @@ class JdParsingController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Phân tích JD thành công.',
-            'data' => $parsing,
+            'data' => [
+                ...$parsing->toArray(),
+                'parsed_work_mode' => $data['parsed_work_mode'] ?? null,
+                'suggested_skills_json' => $data['suggested_skills_json'] ?? [],
+                'quality_warnings_json' => $data['quality_warnings_json'] ?? [],
+                'missing_fields_json' => $data['missing_fields_json'] ?? [],
+                'review_required' => (bool) ($data['review_required'] ?? false),
+            ],
         ]);
     }
 }

@@ -9,6 +9,10 @@ from urllib.request import Request, urlopen
 from app.core.config import settings
 from app.core.logger import get_logger
 from app.services.skill_catalog import SKILL_CATALOG, normalize_search_text
+from app.services.vietnamese_text import (
+    normalize_vietnamese_ai_text,
+    normalize_vietnamese_voice,
+)
 
 
 logger = get_logger(__name__)
@@ -239,15 +243,18 @@ def generate_career_report(
             goi_y_ky_nang_bo_sung=goi_y_ky_nang_bo_sung,
         )
         report_outline = _build_report_outline(reasoning_context)
-        template_report = _build_report_text(
-            reasoning_context=reasoning_context,
-            report_outline=report_outline,
+        template_report = normalize_vietnamese_ai_text(
+            _build_report_text(
+                reasoning_context=reasoning_context,
+                report_outline=report_outline,
+            ),
+            ensure_punctuation=False,
         )
 
         try:
             llm_report = _generate_llm_report_text(reasoning_context, report_outline)
             if llm_report:
-                bao_cao_chi_tiet = llm_report
+                bao_cao_chi_tiet = normalize_vietnamese_ai_text(llm_report, ensure_punctuation=False)
             else:
                 bao_cao_chi_tiet = template_report
         except Exception as exc:
@@ -661,7 +668,7 @@ Lý do đề xuất
 Lộ trình 30/60/90 ngày
 Chiến lược cập nhật CV và ứng tuyển
 - Không dùng markdown đậm/nghiêng, không dùng ký tự # hoặc code block.
-- Không dùng cụm tiếng Anh phổ thông trong nội dung tư vấn. Bắt buộc Việt hóa: "Next 30 days" thành "30 ngày đầu", "Next 60 days" thành "60 ngày", "Next 90 days" thành "90 ngày", "mini project" thành "dự án nhỏ", "case study" thành "bài phân tích tình huống", "portfolio" thành "hồ sơ dự án", "matching" thành "đối sánh", "job" thành "công việc/vị trí", "apply" thành "ứng tuyển".
+- Không dùng cụm tiếng Anh phổ thông trong nội dung tư vấn. Bắt buộc Việt hóa: "Next 30 days" thành "30 ngày", "Next 60 days" thành "60 ngày", "Next 90 days" thành "90 ngày", "mini project" thành "dự án nhỏ", "case study" thành "bài phân tích tình huống", "portfolio" thành "hồ sơ dự án", "matching" thành "đối sánh", "job" thành "công việc/vị trí", "apply" thành "ứng tuyển".
 - Chỉ giữ tiếng Anh khi đó là tên riêng công nghệ, tên vị trí gốc, viết tắt kỹ thuật hoặc tên framework như iOS, Swift, SwiftUI, Firebase, REST API, Docker.
 - Không xưng "tôi", "mình" như thể AI là ứng viên. Khi nói về hồ sơ, dùng "ứng viên", "hồ sơ" hoặc "bạn".
 - Không viết các câu như "Tôi đã phân tích", "Tôi xác định", "Tôi khuyến nghị".
@@ -877,46 +884,11 @@ def _finalize_llm_report_text(text: str) -> str:
 
 
 def _normalize_report_voice(text: str) -> str:
-    replacements = {
-        "Tôi đã phân tích": "Hệ thống đã phân tích",
-        "Tôi xác định": "Hệ thống xác định",
-        "Tôi khuyến nghị": "Khuyến nghị",
-        "tôi đã phân tích": "hệ thống đã phân tích",
-        "tôi xác định": "hệ thống xác định",
-        "tôi khuyến nghị": "khuyến nghị",
-        "của mình": "của ứng viên",
-        "của tôi": "của ứng viên",
-        "tôi có": "ứng viên có",
-        "tôi sẽ": "ứng viên nên",
-        "Tôi có": "Ứng viên có",
-        "Tôi sẽ": "Ứng viên nên",
-        "Next 30 days": "30 ngày đầu",
-        "Next 60 days": "60 ngày",
-        "Next 90 days": "90 ngày",
-        "next 30 days": "30 ngày đầu",
-        "next 60 days": "60 ngày",
-        "next 90 days": "90 ngày",
-        "mini project": "dự án nhỏ",
-        "Mini project": "Dự án nhỏ",
-        "case study": "bài phân tích tình huống",
-        "Case study": "Bài phân tích tình huống",
-        "portfolio": "hồ sơ dự án",
-        "Portfolio": "Hồ sơ dự án",
-        "matching": "đối sánh",
-        "Matching": "Đối sánh",
-        "apply": "ứng tuyển",
-        "Apply": "Ứng tuyển",
-        "job mục tiêu": "vị trí mục tiêu",
-        "job phù hợp": "vị trí phù hợp",
-        "job ": "công việc ",
-        "Job ": "Công việc ",
-        "skill gap": "khoảng cách kỹ năng",
-        "Skill gap": "Khoảng cách kỹ năng",
-    }
-    output = text
-    for source, target in replacements.items():
-        output = output.replace(source, target)
-    return output
+    return normalize_vietnamese_ai_text(
+        normalize_vietnamese_voice(text),
+        ensure_punctuation=False,
+        trim_tail=False,
+    )
 
 
 def _resolve_candidate_level(cv_profile: dict) -> str:

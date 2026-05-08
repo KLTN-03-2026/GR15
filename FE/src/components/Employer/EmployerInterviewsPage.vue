@@ -1346,10 +1346,10 @@ watch(() => form.hr_phu_trach_id, (value) => {
             class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-950/5 dark:border-slate-800 dark:bg-slate-900"
           >
             <div class="flex flex-col gap-4">
-              <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+              <div class="flex flex-col gap-4 2xl:flex-row 2xl:items-start 2xl:justify-between">
                 <div class="min-w-0 flex-1">
-                  <div class="flex flex-wrap items-center gap-3">
-                    <h3 class="text-xl font-bold text-slate-900 dark:text-white">
+                  <div class="flex flex-wrap items-start gap-3">
+                    <h3 class="min-w-0 break-words text-xl font-bold text-slate-900 dark:text-white">
                       {{ application.tin_tuyen_dung?.tieu_de || 'Tin tuyển dụng' }}
                     </h3>
                     <span class="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-bold" :class="statusMeta(application.trang_thai).classes">
@@ -1379,12 +1379,12 @@ watch(() => form.hr_phu_trach_id, (value) => {
                     </span>
                   </div>
 
-                  <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">
+                  <p class="mt-2 break-words text-sm text-slate-500 dark:text-slate-400">
                     {{ candidateName(application) }}
                   </p>
                 </div>
 
-                <div class="flex items-center gap-3 xl:justify-end">
+                <div class="flex w-full flex-wrap items-center gap-3 2xl:w-auto 2xl:justify-end">
                   <button
                     v-if="canResendInterviewEmail(application)"
                     class="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 text-sm font-bold text-emerald-700 transition hover:bg-emerald-100 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300 dark:hover:bg-emerald-500/15"

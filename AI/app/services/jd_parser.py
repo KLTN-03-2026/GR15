@@ -8,7 +8,7 @@ from app.services.skill_catalog import extract_skills_from_text, normalize_searc
 
 logger = get_logger(__name__)
 
-PARSER_VERSION = "jd_parser_v1"
+PARSER_VERSION = "jd_parser_v2_quality_skills"
 SECTION_SCAN_LIMIT = 28
 
 REQUIREMENT_MARKERS = (
@@ -61,6 +61,15 @@ def parse_jd(tin_tuyen_dung_id: int, job_text: str) -> dict:
         parsed_benefits = _extract_section_blocks(normalized_text, BENEFIT_MARKERS)
         parsed_salary = _extract_salary(normalized_text)
         parsed_location = _extract_location(normalized_text)
+        quality_warnings = _build_quality_warnings(
+            normalized_text=normalized_text,
+            parsed_skills=parsed_skills,
+            parsed_requirements=parsed_requirements,
+            parsed_benefits=parsed_benefits,
+            parsed_salary=parsed_salary,
+            parsed_location=parsed_location,
+        )
+        suggested_skills = _build_suggested_skills(parsed_skills)
         confidence_score = _estimate_confidence(
             normalized_text=normalized_text,
             parsed_skills=parsed_skills,
@@ -81,6 +90,11 @@ def parse_jd(tin_tuyen_dung_id: int, job_text: str) -> dict:
                 "parsed_benefits_json": parsed_benefits,
                 "parsed_salary_json": parsed_salary,
                 "parsed_location_json": parsed_location,
+                "parsed_work_mode": parsed_location.get("work_mode"),
+                "suggested_skills_json": suggested_skills,
+                "quality_warnings_json": quality_warnings,
+                "missing_fields_json": _extract_missing_fields(quality_warnings),
+                "review_required": any(item.get("severity") in {"warning", "error"} for item in quality_warnings),
             },
             "error": None,
         }
@@ -97,6 +111,18 @@ def parse_jd(tin_tuyen_dung_id: int, job_text: str) -> dict:
                 "parsed_benefits_json": [],
                 "parsed_salary_json": {},
                 "parsed_location_json": {},
+                "parsed_work_mode": None,
+                "suggested_skills_json": [],
+                "quality_warnings_json": [
+                    {
+                        "severity": "error",
+                        "field": "job_text",
+                        "code": "jd_parse_failed",
+                        "message": str(exc),
+                    }
+                ],
+                "missing_fields_json": ["job_text"],
+                "review_required": True,
             },
             "error": str(exc),
         }
@@ -220,7 +246,7 @@ def _detect_work_mode(normalized_text: str) -> str | None:
         return "remote"
     if "hybrid" in normalized_text:
         return "hybrid"
-    if "onsite" in normalized_text:
+    if "onsite" in normalized_text or "tai van phong" in normalized_text or "tại văn phòng" in normalized_text:
         return "onsite"
     return None
 
@@ -253,3 +279,121 @@ def _estimate_confidence(
 
 def _join_section_contents(blocks: list[dict]) -> str:
     return "\n".join(block.get("content", "") for block in blocks if block.get("content"))
+
+
+def _build_suggested_skills(parsed_skills: list[dict]) -> list[dict]:
+    suggestions = []
+    for item in parsed_skills:
+        skill_name = item.get("skill_name")
+        if not skill_name:
+            continue
+
+        required = bool(item.get("bat_buoc"))
+        confidence = float(item.get("do_tin_cay") or item.get("confidence") or 0)
+        suggestions.append({
+            "skill_name": skill_name,
+            "bat_buoc": required,
+            "muc_do_yeu_cau": item.get("muc_do_yeu_cau") or (3 if required else 2),
+            "trong_so": item.get("trong_so") or (1.5 if required else 1.0),
+            "do_tin_cay": round(confidence, 2),
+            "reason": "Xuất hiện trong phần yêu cầu bắt buộc" if required else "Xuất hiện trong JD và nên cho HR xác nhận",
+        })
+
+    return sorted(
+        suggestions,
+        key=lambda item: (not item["bat_buoc"], -float(item["do_tin_cay"] or 0), item["skill_name"]),
+    )
+
+
+def _build_quality_warnings(
+    *,
+    normalized_text: str,
+    parsed_skills: list[dict],
+    parsed_requirements: list[dict],
+    parsed_benefits: list[dict],
+    parsed_salary: dict,
+    parsed_location: dict,
+) -> list[dict]:
+    warnings: list[dict] = []
+    words = normalized_text.split()
+
+    if len(words) < 70:
+        warnings.append({
+            "severity": "warning",
+            "field": "mo_ta_cong_viec",
+            "code": "jd_too_short",
+            "message": "JD còn ngắn; nên bổ sung mô tả công việc, yêu cầu và quyền lợi để AI matching chính xác hơn.",
+        })
+    if len(parsed_skills) < 3:
+        warnings.append({
+            "severity": "warning",
+            "field": "skills",
+            "code": "few_skills",
+            "message": "JD có ít kỹ năng được nhận diện; HR nên xác nhận hoặc thêm kỹ năng yêu cầu.",
+        })
+    if not any(item.get("bat_buoc") for item in parsed_skills):
+        warnings.append({
+            "severity": "info",
+            "field": "skills",
+            "code": "missing_required_skill_marker",
+            "message": "Chưa thấy kỹ năng nào được đánh dấu bắt buộc rõ ràng trong JD.",
+        })
+    if not parsed_requirements:
+        warnings.append({
+            "severity": "warning",
+            "field": "requirements",
+            "code": "missing_requirements",
+            "message": "Chưa tách được phần yêu cầu ứng viên rõ ràng.",
+        })
+    if not parsed_benefits:
+        warnings.append({
+            "severity": "info",
+            "field": "benefits",
+            "code": "missing_benefits",
+            "message": "Chưa thấy phần quyền lợi/phúc lợi; tin tuyển dụng có thể kém hấp dẫn khi demo.",
+        })
+    if not parsed_salary:
+        warnings.append({
+            "severity": "info",
+            "field": "salary",
+            "code": "missing_salary",
+            "message": "Chưa nhận diện được mức lương; điểm matching lương sẽ dùng mức trung lập.",
+        })
+    if not parsed_location.get("locations"):
+        warnings.append({
+            "severity": "info",
+            "field": "location",
+            "code": "missing_location",
+            "message": "Chưa nhận diện được địa điểm làm việc.",
+        })
+    if not parsed_location.get("work_mode"):
+        warnings.append({
+            "severity": "info",
+            "field": "work_mode",
+            "code": "missing_work_mode",
+            "message": "Chưa nhận diện được hình thức làm việc remote/hybrid/onsite.",
+        })
+    if not _has_experience_signal(normalized_text):
+        warnings.append({
+            "severity": "info",
+            "field": "experience",
+            "code": "missing_experience",
+            "message": "Chưa thấy yêu cầu kinh nghiệm rõ ràng.",
+        })
+
+    return warnings
+
+
+def _extract_missing_fields(warnings: list[dict]) -> list[str]:
+    return sorted({
+        str(item.get("field"))
+        for item in warnings
+        if item.get("field") and item.get("code", "").startswith("missing_")
+    })
+
+
+def _has_experience_signal(normalized_text: str) -> bool:
+    return bool(re.search(r"(\d+(?:[.,]\d+)?)\s*(nam|year)", normalized_text)) or any(
+        marker in normalized_text
+        for marker in ["fresher", "junior", "senior", "intern", "thuc tap", "thực tập", "kinh nghiem", "kinh nghiệm"]
+    )

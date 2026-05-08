@@ -10,7 +10,7 @@ from app.services.skill_catalog import SKILL_CATALOG, normalize_search_text
 
 logger = get_logger(__name__)
 
-MODEL_VERSION = "matching_v3_dynamic_weights"
+MODEL_VERSION = "matching_v4_salary_location_workmode"
 
 EXACT_SKILL_COMPONENT_WEIGHT = 0.75
 SEMANTIC_SKILL_COMPONENT_WEIGHT = 0.25
@@ -104,46 +104,67 @@ EDUCATION_LEVELS = {
 
 LEVEL_WEIGHT_PROFILES = {
     "intern": {
-        "skill": 0.4,
-        "experience": 0.1,
-        "education": 0.2,
-        "text_similarity": 0.3,
+        "skill": 0.36,
+        "experience": 0.09,
+        "education": 0.17,
+        "text_similarity": 0.22,
+        "salary": 0.05,
+        "location": 0.06,
+        "work_mode": 0.05,
     },
     "fresher": {
-        "skill": 0.42,
-        "experience": 0.13,
-        "education": 0.15,
-        "text_similarity": 0.3,
+        "skill": 0.38,
+        "experience": 0.11,
+        "education": 0.13,
+        "text_similarity": 0.22,
+        "salary": 0.05,
+        "location": 0.06,
+        "work_mode": 0.05,
     },
     "junior": {
-        "skill": 0.43,
-        "experience": 0.2,
-        "education": 0.1,
-        "text_similarity": 0.27,
+        "skill": 0.39,
+        "experience": 0.18,
+        "education": 0.08,
+        "text_similarity": 0.2,
+        "salary": 0.05,
+        "location": 0.06,
+        "work_mode": 0.04,
     },
     "mid": {
-        "skill": 0.38,
-        "experience": 0.32,
-        "education": 0.08,
-        "text_similarity": 0.22,
+        "skill": 0.34,
+        "experience": 0.29,
+        "education": 0.07,
+        "text_similarity": 0.17,
+        "salary": 0.05,
+        "location": 0.05,
+        "work_mode": 0.03,
     },
     "senior": {
-        "skill": 0.3,
-        "experience": 0.42,
-        "education": 0.06,
-        "text_similarity": 0.22,
+        "skill": 0.28,
+        "experience": 0.38,
+        "education": 0.05,
+        "text_similarity": 0.16,
+        "salary": 0.06,
+        "location": 0.04,
+        "work_mode": 0.03,
     },
     "lead_manager": {
-        "skill": 0.25,
-        "experience": 0.48,
-        "education": 0.07,
-        "text_similarity": 0.2,
+        "skill": 0.23,
+        "experience": 0.43,
+        "education": 0.06,
+        "text_similarity": 0.15,
+        "salary": 0.06,
+        "location": 0.04,
+        "work_mode": 0.03,
     },
     "default": {
-        "skill": 0.4,
-        "experience": 0.3,
-        "education": 0.1,
-        "text_similarity": 0.2,
+        "skill": 0.36,
+        "experience": 0.27,
+        "education": 0.08,
+        "text_similarity": 0.17,
+        "salary": 0.05,
+        "location": 0.04,
+        "work_mode": 0.03,
     },
 }
 
@@ -186,6 +207,9 @@ def match_cv_jd(
         experience_score = _calculate_experience_score(cv_profile, jd_profile)
         education_score = _calculate_education_score(cv_profile, jd_profile)
         text_similarity_score = _calculate_text_similarity_score(cv_profile, jd_profile)
+        salary_score, salary_fit_detail = _calculate_salary_score(cv_profile, jd_profile)
+        location_score, location_fit_detail = _calculate_location_score(cv_profile, jd_profile)
+        work_mode_score, work_mode_fit_detail = _calculate_work_mode_score(cv_profile, jd_profile)
         cv_years = _extract_cv_years(cv_profile)
         jd_years = _extract_jd_years(jd_profile)
         cv_education_level = _extract_education_level(
@@ -202,7 +226,10 @@ def match_cv_jd(
             (skill_score * weights["skill"]) +
             (experience_score * weights["experience"]) +
             (education_score * weights["education"]) +
-            (text_similarity_score * weights["text_similarity"]),
+            (text_similarity_score * weights["text_similarity"]) +
+            (salary_score * weights["salary"]) +
+            (location_score * weights["location"]) +
+            (work_mode_score * weights["work_mode"]),
             2,
         )
 
@@ -213,6 +240,9 @@ def match_cv_jd(
             "experience_score": round(experience_score, 2),
             "education_score": round(education_score, 2),
             "text_similarity_score": round(text_similarity_score, 2),
+            "salary_score": round(salary_score, 2),
+            "location_score": round(location_score, 2),
+            "work_mode_score": round(work_mode_score, 2),
             "weights": weights,
             "job_level": level_info["level"],
             "job_level_source": level_info["source"],
@@ -232,6 +262,9 @@ def match_cv_jd(
             "missing_count": len(missing_skills),
             "near_match_count": len(near_matched_skills),
             "near_matched_skills": near_matched_skills,
+            "salary_fit_detail": salary_fit_detail,
+            "location_fit_detail": location_fit_detail,
+            "work_mode_fit_detail": work_mode_fit_detail,
         }
 
         return {
@@ -242,6 +275,9 @@ def match_cv_jd(
                 "diem_ky_nang": round(skill_score, 2),
                 "diem_kinh_nghiem": round(experience_score, 2),
                 "diem_hoc_van": round(education_score, 2),
+                "diem_luong": round(salary_score, 2),
+                "diem_dia_diem": round(location_score, 2),
+                "diem_hinh_thuc_lam_viec": round(work_mode_score, 2),
                 "chi_tiet_diem": chi_tiet_diem,
                 "matched_skills_json": matched_skills,
                 "missing_skills_json": missing_skills,
@@ -254,7 +290,25 @@ def match_cv_jd(
                     experience_score=experience_score,
                     education_score=education_score,
                     text_similarity_score=text_similarity_score,
+                    salary_score=salary_score,
+                    location_score=location_score,
+                    work_mode_score=work_mode_score,
                     level_info=level_info,
+                ),
+                "score_explanation_items": _build_score_explanation_items(
+                    skill_score=skill_score,
+                    experience_score=experience_score,
+                    education_score=education_score,
+                    text_similarity_score=text_similarity_score,
+                    salary_score=salary_score,
+                    location_score=location_score,
+                    work_mode_score=work_mode_score,
+                    weights=weights,
+                    matched_skills=matched_skills,
+                    missing_skills=missing_skills,
+                    salary_fit_detail=salary_fit_detail,
+                    location_fit_detail=location_fit_detail,
+                    work_mode_fit_detail=work_mode_fit_detail,
                 ),
                 "model_version": MODEL_VERSION,
             },
@@ -270,11 +324,15 @@ def match_cv_jd(
                 "diem_ky_nang": 0,
                 "diem_kinh_nghiem": 0,
                 "diem_hoc_van": 0,
+                "diem_luong": 0,
+                "diem_dia_diem": 0,
+                "diem_hinh_thuc_lam_viec": 0,
                 "chi_tiet_diem": {},
                 "matched_skills_json": [],
                 "missing_skills_json": [],
                 "danh_sach_ky_nang_thieu": None,
                 "explanation": None,
+                "score_explanation_items": [],
                 "model_version": MODEL_VERSION,
             },
             "error": str(exc),
@@ -607,6 +665,103 @@ def _calculate_text_similarity_score(cv_profile: dict, jd_profile: dict) -> floa
     return round(score, 2)
 
 
+def _calculate_salary_score(cv_profile: dict, jd_profile: dict) -> tuple[float, dict]:
+    cv_range = _extract_salary_range(cv_profile, prefix="cv")
+    jd_range = _extract_salary_range(jd_profile, prefix="jd")
+
+    detail = {
+        "cv_salary_range": cv_range,
+        "jd_salary_range": jd_range,
+        "signal": "neutral",
+        "message": "Chưa đủ dữ liệu lương hai phía; dùng điểm trung lập để tránh phạt sai.",
+    }
+
+    if not cv_range or not jd_range:
+        return 70.0, detail
+
+    cv_min, cv_max = cv_range
+    jd_min, jd_max = jd_range
+    overlap = max(0, min(cv_max, jd_max) - max(cv_min, jd_min))
+    cv_width = max(cv_max - cv_min, 1)
+    jd_width = max(jd_max - jd_min, 1)
+
+    if overlap > 0:
+        ratio = overlap / max(min(cv_width, jd_width), 1)
+        score = min(100.0, 78.0 + ratio * 22.0)
+        detail.update({"signal": "overlap", "message": "Khoảng lương kỳ vọng và khoảng lương JD có giao nhau."})
+        return round(score, 2), detail
+
+    if cv_min > jd_max:
+        gap_ratio = (cv_min - jd_max) / max(jd_max, 1)
+        score = max(30.0, 72.0 - gap_ratio * 120.0)
+        detail.update({"signal": "candidate_expectation_above_job", "message": "Kỳ vọng lương của ứng viên cao hơn khung lương JD."})
+        return round(score, 2), detail
+
+    gap_ratio = (jd_min - cv_max) / max(jd_min, 1)
+    score = max(65.0, 88.0 - gap_ratio * 60.0)
+    detail.update({"signal": "candidate_expectation_below_job", "message": "Kỳ vọng lương của ứng viên thấp hơn hoặc dưới khung JD."})
+    return round(score, 2), detail
+
+
+def _calculate_location_score(cv_profile: dict, jd_profile: dict) -> tuple[float, dict]:
+    cv_locations = _extract_locations(cv_profile, ["dia_diem_mong_muon", "dia_chi", "location", "preferred_locations"])
+    jd_locations = _extract_locations(jd_profile, ["dia_diem_lam_viec", "location", "locations", "parsed_location_json"])
+
+    detail = {
+        "cv_locations": cv_locations,
+        "jd_locations": jd_locations,
+        "signal": "neutral",
+        "message": "Chưa đủ dữ liệu địa điểm hai phía; dùng điểm trung lập.",
+    }
+
+    if not cv_locations or not jd_locations:
+        return 72.0, detail
+
+    if "remote" in jd_locations or "remote" in cv_locations:
+        detail.update({"signal": "remote_flexible", "message": "Có tín hiệu remote nên địa điểm ít ràng buộc hơn."})
+        return 92.0, detail
+
+    if set(cv_locations) & set(jd_locations):
+        detail.update({"signal": "matched_location", "message": "Địa điểm ứng viên và JD trùng khớp."})
+        return 100.0, detail
+
+    if any(_locations_are_close(left, right) for left in cv_locations for right in jd_locations):
+        detail.update({"signal": "near_location", "message": "Địa điểm gần hoặc cùng khu vực lớn."})
+        return 82.0, detail
+
+    detail.update({"signal": "location_mismatch", "message": "Địa điểm mong muốn và địa điểm JD chưa khớp rõ."})
+    return 48.0, detail
+
+
+def _calculate_work_mode_score(cv_profile: dict, jd_profile: dict) -> tuple[float, dict]:
+    cv_modes = _extract_work_modes(cv_profile)
+    jd_modes = _extract_work_modes(jd_profile)
+
+    detail = {
+        "cv_work_modes": cv_modes,
+        "jd_work_modes": jd_modes,
+        "signal": "neutral",
+        "message": "Chưa đủ dữ liệu hình thức làm việc hai phía; dùng điểm trung lập.",
+    }
+
+    if not cv_modes or not jd_modes:
+        return 75.0, detail
+
+    if set(cv_modes) & set(jd_modes):
+        detail.update({"signal": "matched_work_mode", "message": "Hình thức làm việc mong muốn khớp với JD."})
+        return 100.0, detail
+
+    if "hybrid" in cv_modes and ("remote" in jd_modes or "onsite" in jd_modes):
+        detail.update({"signal": "partially_flexible", "message": "Ứng viên hybrid có thể phù hợp một phần với remote/onsite."})
+        return 78.0, detail
+    if "hybrid" in jd_modes and ("remote" in cv_modes or "onsite" in cv_modes):
+        detail.update({"signal": "job_partially_flexible", "message": "JD hybrid có thể phù hợp một phần với mong muốn remote/onsite."})
+        return 78.0, detail
+
+    detail.update({"signal": "work_mode_mismatch", "message": "Hình thức làm việc chưa khớp rõ."})
+    return 52.0, detail
+
+
 def _build_explanation(
     *,
     diem_phu_hop: float,
@@ -616,6 +771,9 @@ def _build_explanation(
     experience_score: float,
     education_score: float,
     text_similarity_score: float,
+    salary_score: float,
+    location_score: float,
+    work_mode_score: float,
     level_info: dict,
 ) -> str:
     if diem_phu_hop >= 80:
@@ -636,7 +794,9 @@ def _build_explanation(
         f"{level}. Hồ sơ đang khớp tốt với các kỹ năng: {matched_names}. "
         f"Kỹ năng còn thiếu hoặc cần bổ sung: {missing_names}. "
         f"Điểm kinh nghiệm đạt {round(experience_score, 2)}/100, điểm học vấn đạt {round(education_score, 2)}/100 "
-        f"và điểm tương đồng nội dung CV-JD đạt {round(text_similarity_score, 2)}/100. "
+        f"điểm tương đồng nội dung CV-JD đạt {round(text_similarity_score, 2)}/100, "
+        f"điểm lương {round(salary_score, 2)}/100, điểm địa điểm {round(location_score, 2)}/100 "
+        f"và điểm hình thức làm việc {round(work_mode_score, 2)}/100. "
         f"Bộ trọng số được áp dụng theo nhóm cấp bậc {level_info['level']}."
     )
 
@@ -644,6 +804,75 @@ def _build_explanation(
         explanation += f" Hệ thống cũng nhận diện các kỹ năng gần nghĩa/gần vai trò: {near_names}."
 
     return explanation
+
+
+def _build_score_explanation_items(
+    *,
+    skill_score: float,
+    experience_score: float,
+    education_score: float,
+    text_similarity_score: float,
+    salary_score: float,
+    location_score: float,
+    work_mode_score: float,
+    weights: dict,
+    matched_skills: list[dict],
+    missing_skills: list[dict],
+    salary_fit_detail: dict,
+    location_fit_detail: dict,
+    work_mode_fit_detail: dict,
+) -> list[dict]:
+    return [
+        {
+            "key": "skills",
+            "label": "Kỹ năng",
+            "score": round(skill_score, 2),
+            "weight": weights.get("skill", 0),
+            "message": f"Khớp {len(matched_skills)} kỹ năng, thiếu {len(missing_skills)} kỹ năng so với JD.",
+        },
+        {
+            "key": "experience",
+            "label": "Kinh nghiệm",
+            "score": round(experience_score, 2),
+            "weight": weights.get("experience", 0),
+            "message": "So sánh số năm kinh nghiệm ứng viên với yêu cầu trong JD.",
+        },
+        {
+            "key": "education",
+            "label": "Học vấn",
+            "score": round(education_score, 2),
+            "weight": weights.get("education", 0),
+            "message": "So sánh trình độ học vấn với yêu cầu tối thiểu.",
+        },
+        {
+            "key": "text_similarity",
+            "label": "Ngữ cảnh CV-JD",
+            "score": round(text_similarity_score, 2),
+            "weight": weights.get("text_similarity", 0),
+            "message": "Đo mức độ trùng ngữ cảnh giữa CV và JD sau chuẩn hóa từ khóa.",
+        },
+        {
+            "key": "salary",
+            "label": "Lương",
+            "score": round(salary_score, 2),
+            "weight": weights.get("salary", 0),
+            "message": salary_fit_detail.get("message"),
+        },
+        {
+            "key": "location",
+            "label": "Địa điểm",
+            "score": round(location_score, 2),
+            "weight": weights.get("location", 0),
+            "message": location_fit_detail.get("message"),
+        },
+        {
+            "key": "work_mode",
+            "label": "Hình thức làm việc",
+            "score": round(work_mode_score, 2),
+            "weight": weights.get("work_mode", 0),
+            "message": work_mode_fit_detail.get("message"),
+        },
+    ]
 
 
 def _normalize_skill_name(value: str) -> str:
@@ -773,3 +1002,133 @@ def _shared_domain_similarity(left: str, right: str) -> float:
         return 0.0
 
     return min(0.55 + 0.08 * len(shared), 0.72)
+
+
+def _extract_salary_range(profile: dict, *, prefix: str) -> tuple[int, int] | None:
+    direct_min_keys = {
+        "cv": ["muc_luong_mong_muon_tu", "expected_salary_from", "salary_min"],
+        "jd": ["muc_luong_tu", "salary_from", "salary_min"],
+    }[prefix]
+    direct_max_keys = {
+        "cv": ["muc_luong_mong_muon_den", "expected_salary_to", "salary_max"],
+        "jd": ["muc_luong_den", "salary_to", "salary_max"],
+    }[prefix]
+
+    values = []
+    for key in direct_min_keys + direct_max_keys:
+        number = _coerce_salary_number(profile.get(key))
+        if number:
+            values.append(number)
+
+    parsed_salary = profile.get("parsed_salary_json") or profile.get("parsed_salary") or {}
+    if isinstance(parsed_salary, dict):
+        for key in ["muc_luong_tu", "muc_luong_den", "salary_from", "salary_to"]:
+            number = _coerce_salary_number(parsed_salary.get(key))
+            if number:
+                values.append(number)
+
+    for key in ["raw_text", "mo_ta_cong_viec", "salary_expectation", "muc_luong_mong_muon"]:
+        text_values = _extract_salary_numbers_from_text(str(profile.get(key) or ""))
+        values.extend(text_values)
+
+    values = [value for value in values if value > 0]
+    if not values:
+        return None
+
+    return min(values), max(values)
+
+
+def _coerce_salary_number(value) -> int | None:
+    if isinstance(value, (int, float)) and value > 0:
+        number = int(value)
+        return number * 1_000_000 if number < 1000 else number
+    if isinstance(value, str) and value.strip():
+        numbers = _extract_salary_numbers_from_text(value)
+        if numbers:
+            return numbers[0]
+    return None
+
+
+def _extract_salary_numbers_from_text(text: str) -> list[int]:
+    if not text:
+        return []
+
+    results = []
+    normalized = normalize_search_text(text)
+    for number, unit in re.findall(r"(\d+(?:[.,]\d+)?)\s*(trieu|triệu|million|m|vnd|dong|đồng)?", normalized):
+        numeric = float(number.replace(",", "."))
+        if unit in {"trieu", "triệu", "million", "m"} or numeric < 1000:
+            results.append(int(numeric * 1_000_000))
+        elif unit in {"vnd", "dong", "đồng"} or numeric >= 1000:
+            results.append(int(numeric))
+    return results[:4]
+
+
+def _extract_locations(profile: dict, keys: list[str]) -> list[str]:
+    values: list[str] = []
+    for key in keys:
+        raw = profile.get(key)
+        if isinstance(raw, dict):
+            raw = raw.get("locations") or raw.get("location") or raw.get("dia_diem")
+        if isinstance(raw, list):
+            values.extend(str(item) for item in raw)
+        elif raw:
+            values.extend(re.split(r"[,;/|]+", str(raw)))
+
+    text_blob = " ".join(str(profile.get(key) or "") for key in ["raw_text", "mo_ta_cong_viec", "muc_tieu_nghe_nghiep"])
+    values.extend(_detect_known_locations(text_blob))
+
+    normalized_values = []
+    for value in values:
+        normalized = normalize_search_text(value)
+        normalized = normalized.replace("tp hcm", "ho chi minh").replace("hcm", "ho chi minh").replace("hanoi", "ha noi")
+        if normalized and normalized not in normalized_values:
+            normalized_values.append(normalized)
+
+    return normalized_values[:6]
+
+
+def _detect_known_locations(text: str) -> list[str]:
+    normalized = normalize_search_text(text)
+    known = ["ha noi", "hanoi", "ho chi minh", "tp hcm", "hcm", "da nang", "can tho", "hai phong", "remote"]
+    return [item for item in known if normalize_search_text(item) in normalized]
+
+
+def _locations_are_close(left: str, right: str) -> bool:
+    if left == right:
+        return True
+    hcm_aliases = {"ho chi minh", "tp hcm", "hcm", "sai gon"}
+    hanoi_aliases = {"ha noi", "hanoi"}
+    danang_aliases = {"da nang", "danang"}
+    return (
+        left in hcm_aliases and right in hcm_aliases
+        or left in hanoi_aliases and right in hanoi_aliases
+        or left in danang_aliases and right in danang_aliases
+    )
+
+
+def _extract_work_modes(profile: dict) -> list[str]:
+    values = []
+    for key in ["hinh_thuc_lam_viec", "work_mode", "preferred_work_mode", "parsed_work_mode"]:
+        raw = profile.get(key)
+        if isinstance(raw, list):
+            values.extend(str(item) for item in raw)
+        elif raw:
+            values.append(str(raw))
+
+    parsed_location = profile.get("parsed_location_json") or profile.get("parsed_location") or {}
+    if isinstance(parsed_location, dict) and parsed_location.get("work_mode"):
+        values.append(str(parsed_location["work_mode"]))
+
+    values.extend([str(profile.get("raw_text") or ""), str(profile.get("mo_ta_cong_viec") or "")])
+
+    modes = []
+    normalized = normalize_search_text(" ".join(values))
+    if "remote" in normalized or "tu xa" in normalized or "từ xa" in normalized:
+        modes.append("remote")
+    if "hybrid" in normalized or "linh hoat" in normalized or "linh hoạt" in normalized:
+        modes.append("hybrid")
+    if "onsite" in normalized or "tai van phong" in normalized or "tại văn phòng" in normalized or "toan thoi gian" in normalized:
+        modes.append("onsite")
+
+    return list(dict.fromkeys(modes))

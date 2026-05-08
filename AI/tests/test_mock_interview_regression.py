@@ -73,10 +73,24 @@ def mobile_context() -> dict:
     }
 
 
+def context_without_job_or_career_report() -> dict:
+    return {
+        "candidate_profile": {
+            "ho_ten": "Le Van C",
+            "tieu_de_ho_so": "CV Fresher Backend",
+            "parsed_skills": ["PHP", "Git"],
+        },
+        "career_report": None,
+        "top_matching_jobs": [],
+        "related_job": None,
+    }
+
+
 class MockInterviewRegressionTests(unittest.TestCase):
     def setUp(self) -> None:
         self.backend = backend_context()
         self.mobile = mobile_context()
+        self.minimal = context_without_job_or_career_report()
 
     def test_role_family_backend_detects_correctly(self) -> None:
         self.assertEqual(_resolve_role_family(self.backend), "backend")
@@ -88,6 +102,11 @@ class MockInterviewRegressionTests(unittest.TestCase):
         result = generate_mock_interview_question(1, interview_context=self.backend, transcript=[])
         self.assertTrue(result["success"])
         self.assertEqual(result["data"]["role_family"], "backend")
+
+    def test_generate_question_handles_missing_job_and_career_report(self) -> None:
+        result = generate_mock_interview_question(1, interview_context=self.minimal, transcript=[])
+        self.assertTrue(result["success"])
+        self.assertTrue(result["data"]["question_text"])
 
     def test_first_question_does_not_include_answer_outline(self) -> None:
         result = generate_mock_interview_question(1, interview_context=self.backend, transcript=[])
@@ -143,6 +162,30 @@ class MockInterviewRegressionTests(unittest.TestCase):
         result = generate_mock_interview_report(1, interview_context=self.mobile, transcript=transcript)
         self.assertTrue(result["success"])
         self.assertEqual(result["data"]["metadata"]["role_family"], "mobile")
+
+    def test_report_handles_missing_job_and_career_report(self) -> None:
+        transcript = [
+            {
+                "role": "assistant",
+                "content": "Câu hỏi",
+                "metadata": {
+                    "type": "interview_feedback",
+                    "question_index": 1,
+                    "technical_score": 55,
+                    "communication_score": 58,
+                    "jd_fit_score": 50,
+                    "clarity_score": 57,
+                    "specificity_score": 48,
+                    "structure_score": 52,
+                    "total_score": 54,
+                    "strengths": ["Có tinh thần học hỏi"],
+                    "weaknesses": ["Thiếu ví dụ cụ thể"],
+                },
+            },
+        ]
+        result = generate_mock_interview_report(1, interview_context=self.minimal, transcript=transcript)
+        self.assertTrue(result["success"])
+        self.assertTrue(result["data"]["de_xuat_cai_thien"])
 
 
 if __name__ == "__main__":

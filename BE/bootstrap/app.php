@@ -1,5 +1,6 @@
 <?php
 
+use App\Support\ApiErrorMessage;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -97,5 +98,39 @@ return Application::configure(basePath: dirname(__DIR__))
                     'errors' => $e->errors(),
                 ], 422);
             }
+        });
+
+        $exceptions->render(function (\Illuminate\Auth\Access\AuthorizationException $e, Request $request) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json([
+                    'success' => false,
+                    'code' => 'FORBIDDEN',
+                    'message' => $e->getMessage() ?: 'Bạn không có quyền thực hiện thao tác này.',
+                ], 403);
+            }
+        });
+
+        $exceptions->render(function (\Throwable $e, Request $request) {
+            if (!($request->expectsJson() || $request->is('api/*'))) {
+                return null;
+            }
+
+            $status = method_exists($e, 'getStatusCode')
+                ? (int) $e->getStatusCode()
+                : 500;
+
+            if ($status < 400 || $status > 599) {
+                $status = 500;
+            }
+
+            $isServerError = $status >= 500;
+            $message = ApiErrorMessage::fromThrowable($e, $status);
+
+            return response()->json([
+                'success' => false,
+                'code' => $isServerError ? 'SERVER_ERROR' : 'REQUEST_ERROR',
+                'message' => $message,
+                'details' => null,
+            ], $status);
         });
     })->create();

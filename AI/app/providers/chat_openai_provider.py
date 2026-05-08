@@ -6,7 +6,13 @@ from urllib.error import URLError
 from urllib.request import Request, urlopen
 
 from app.core.config import settings
-from app.services.chatbot_intent_engine import OUT_OF_SCOPE_MESSAGE
+from app.services.chatbot_intent_engine import (
+    OUT_OF_SCOPE_MESSAGE,
+    ensure_chat_list,
+    ensure_chat_mapping,
+    extract_report_skill_hints,
+    normalize_match_entries,
+)
 
 
 class OpenAIChatProvider:
@@ -30,7 +36,7 @@ class OpenAIChatProvider:
                                 "Không dùng markdown đậm/nghiêng. "
                                 "Không tự xưng 'tôi'; khi cần gọi vai trò, dùng 'hệ thống' hoặc 'trợ lý này'. "
                                 "Không dùng cụm tiếng Anh phổ thông trong nội dung tư vấn; chỉ giữ tên riêng công nghệ, tên vị trí gốc, viết tắt kỹ thuật hoặc framework. "
-                                "Việt hóa các cụm như Next 30 days, mini project, case study, portfolio, matching, job, apply, cover letter. "
+                                "Việt hóa các cụm như Next 30 days thành 30 ngày, mini project, case study, portfolio, matching, job, apply, cover letter. "
                                 "Ưu tiên câu ngắn, đúng trọng tâm, không lan man. "
                                 "Nếu thiếu dữ liệu, hãy nói rõ là chưa đủ dữ liệu. "
                                 f"Nếu câu hỏi ngoài phạm vi, trả đúng câu sau: {OUT_OF_SCOPE_MESSAGE}"
@@ -93,7 +99,7 @@ class OpenAIChatProvider:
                                 "Không dùng markdown đậm/nghiêng. "
                                 "Không tự xưng 'tôi'; khi cần gọi vai trò, dùng 'hệ thống' hoặc 'trợ lý này'. "
                                 "Không dùng cụm tiếng Anh phổ thông trong nội dung tư vấn; chỉ giữ tên riêng công nghệ, tên vị trí gốc, viết tắt kỹ thuật hoặc framework. "
-                                "Việt hóa các cụm như Next 30 days, mini project, case study, portfolio, matching, job, apply, cover letter. "
+                                "Việt hóa các cụm như Next 30 days thành 30 ngày, mini project, case study, portfolio, matching, job, apply, cover letter. "
                                 "Ưu tiên câu ngắn, đúng trọng tâm, không lan man. "
                                 "Nếu thiếu dữ liệu, hãy nói rõ là chưa đủ dữ liệu. "
                                 f"Nếu câu hỏi ngoài phạm vi, trả đúng câu sau: {OUT_OF_SCOPE_MESSAGE}"
@@ -150,6 +156,7 @@ class OpenAIChatProvider:
 
 
 def _build_user_prompt(question: str, context: dict, history: list[dict]) -> str:
+    context = ensure_chat_mapping(context)
     compact_context = _compact_context(context)
     resolved_intent = context.get("_chat_intent") or "general_career"
     return (
@@ -197,11 +204,13 @@ def _extract_stream_chunk(payload: dict) -> str:
 
 
 def _compact_context(context: dict) -> dict:
-    candidate = context.get("candidate_profile") or {}
-    report = context.get("career_report") or {}
-    matches = context.get("top_matching_jobs") or []
-    related_job = context.get("related_job") or {}
+    context = ensure_chat_mapping(context)
+    candidate = ensure_chat_mapping(context.get("candidate_profile"))
+    report = ensure_chat_mapping(context.get("career_report"))
+    matches = normalize_match_entries(context.get("top_matching_jobs"))
+    related_job = ensure_chat_mapping(context.get("related_job"))
     conversation_summary = context.get("conversation_summary")
+    report_hints = extract_report_skill_hints(report)
 
     return {
         "conversation_summary": conversation_summary,
@@ -212,24 +221,24 @@ def _compact_context(context: dict) -> dict:
             "ten_nganh_nghe_muc_tieu": candidate.get("ten_nganh_nghe_muc_tieu"),
             "kinh_nghiem_nam": candidate.get("kinh_nghiem_nam"),
             "trinh_do": candidate.get("trinh_do"),
-            "parsed_skills": (candidate.get("parsed_skills") or [])[:8],
-            "builder_skills": (candidate.get("builder_skills") or [])[:8],
+            "parsed_skills": ensure_chat_list(candidate.get("parsed_skills"))[:8],
+            "builder_skills": ensure_chat_list(candidate.get("builder_skills"))[:8],
         },
         "career_report": {
             "nghe_de_xuat": report.get("nghe_de_xuat"),
             "muc_do_phu_hop": report.get("muc_do_phu_hop"),
             "goi_y_ky_nang_bo_sung": {
-                "skills": ((report.get("goi_y_ky_nang_bo_sung") or {}).get("skills") or [])[:6],
-                "strength_categories": ((report.get("goi_y_ky_nang_bo_sung") or {}).get("strength_categories") or [])[:4],
-                "recommended_roles": ((report.get("goi_y_ky_nang_bo_sung") or {}).get("recommended_roles") or [])[:3],
+                "skills": report_hints.get("skills", [])[:6],
+                "strength_categories": report_hints.get("strength_categories", [])[:4],
+                "recommended_roles": report_hints.get("recommended_roles", [])[:3],
             },
         } if report else None,
         "top_matching_jobs": [
             {
                 "job_title": item.get("job_title"),
                 "score": item.get("score"),
-                "matched_skills": (item.get("matched_skills") or [])[:5],
-                "missing_skills": (item.get("missing_skills") or [])[:5],
+                "matched_skills": ensure_chat_list(item.get("matched_skills"))[:5],
+                "missing_skills": ensure_chat_list(item.get("missing_skills"))[:5],
                 "explanation": item.get("explanation"),
             }
             for item in matches[:2]
@@ -237,6 +246,6 @@ def _compact_context(context: dict) -> dict:
         "related_job": {
             "title": related_job.get("title"),
             "level": related_job.get("level"),
-            "skills": (related_job.get("skills") or [])[:5],
+            "skills": ensure_chat_list(related_job.get("skills"))[:5],
         } if related_job else None,
     }

@@ -104,12 +104,12 @@ export const useEmployerCompanyPermissions = () => {
   const assignableMembers = computed(() =>
     companyMembers.value.map((member) => ({
       id: member.id,
-      label: `${member.ho_ten} (${member.ten_vai_tro_noi_bo || 'HR Member'})`,
+      label: `${member.ho_ten} (${member.ten_vai_tro_noi_bo || 'HR thường'})`,
       role: member.vai_tro_noi_bo || null,
     })),
   )
   const currentInternalRole = computed(() => company.value?.vai_tro_noi_bo_hien_tai || null)
-  const currentInternalRoleLabel = computed(() => company.value?.ten_vai_tro_noi_bo_hien_tai || 'HR Member')
+  const currentInternalRoleLabel = computed(() => company.value?.ten_vai_tro_noi_bo_hien_tai || 'HR thường')
   const currentEmployerId = computed(() => Number(currentEmployer.value?.id || 0) || null)
   const hasCompany = computed(() => Boolean(company.value?.id))
   const canViewEmployerData = computed(() => Boolean(

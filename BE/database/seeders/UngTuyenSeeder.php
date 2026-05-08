@@ -3,6 +3,9 @@
 namespace Database\Seeders;
 
 use App\Models\HoSo;
+use App\Models\InterviewRound;
+use App\Models\OnboardingPlan;
+use App\Models\OnboardingTask;
 use App\Models\TinTuyenDung;
 use App\Models\UngTuyen;
 use Carbon\Carbon;
@@ -17,209 +20,312 @@ class UngTuyenSeeder extends Seeder
 
     public function run(): void
     {
-        $hoSos = HoSo::with('nguoiDung')->get();
-        $tins = TinTuyenDung::with('congTy')->get()->keyBy('tieu_de');
+        $profiles = HoSo::with('nguoiDung')->get();
+        $jobs = TinTuyenDung::with('congTy')->get()->keyBy('tieu_de');
+        $now = $this->nowUtc();
 
-        if ($tins->isEmpty() || $hoSos->isEmpty()) {
-            return;
-        }
-
-        $nowUtc = $this->nowUtc();
-
-        $ungTuyenCoDinh = [
+        $applications = [
             [
-                'email' => 'ung.vien1@kltn.com',
-                'ho_so' => 'Backend Developer Laravel/PHP',
-                'tin' => 'Backend Developer Laravel',
-                'trang_thai' => UngTuyen::TRANG_THAI_DA_XEM,
-                'thu_xin_viec' => 'Tôi có 3 năm kinh nghiệm phát triển backend với PHP/Laravel, từng làm các hệ thống CRM và quản trị nội bộ. Tôi tin nền tảng về API, MySQL và tối ưu truy vấn sẽ phù hợp với nhu cầu tuyển dụng của công ty.',
-                'thoi_gian_ung_tuyen' => $nowUtc->copy()->subDays(6)->setHour(2)->setMinute(15),
+                'email' => 'ungvien.backend@demo.vn',
+                'job' => 'Backend Developer Laravel',
+                'status' => UngTuyen::TRANG_THAI_DA_XEM,
+                'applied_at' => $now->copy()->subDays(3)->setTime(3, 20),
+                'letter' => 'Tôi có 3 năm kinh nghiệm Laravel, REST API, MySQL và Redis. Tôi quan tâm TechViet vì sản phẩm SaaS có nhiều bài toán tối ưu hiệu năng và tích hợp API doanh nghiệp.',
+                'note' => 'Hồ sơ backend tốt, chờ HR lên lịch phỏng vấn kỹ thuật.',
             ],
             [
-                'email' => 'ung.vien5@kltn.com',
-                'ho_so' => 'QA Engineer Manual/Automation',
-                'tin' => 'QA Engineer (Manual/API)',
-                'trang_thai' => UngTuyen::TRANG_THAI_DA_HEN_PHONG_VAN,
-                'thu_xin_viec' => 'Tôi từng kiểm thử web admin, mobile web và API cho các dự án SaaS, có kinh nghiệm viết test case và phối hợp xác nhận lỗi với đội phát triển. Mong muốn được trao đổi thêm về quy trình QA hiện tại của công ty.',
-                'thoi_gian_ung_tuyen' => $nowUtc->copy()->subDays(4)->setHour(7)->setMinute(5),
-                'ngay_hen_phong_van' => $nowUtc->copy()->addDays(3)->setHour(2)->setMinute(0),
-                'trang_thai_tham_gia_phong_van' => UngTuyen::PHONG_VAN_DA_XAC_NHAN,
-                'thoi_gian_phan_hoi_phong_van' => $nowUtc->copy()->subDay()->setHour(3)->setMinute(30),
-                'hinh_thuc_phong_van' => 'Online',
-                'nguoi_phong_van' => 'Trần Gia Huy',
-                'link_phong_van' => 'https://meet.google.com/qa-techviet-round1',
-                'ket_qua_phong_van' => 'Ứng viên phù hợp với vai trò QA dự án web admin, giao tiếp rõ ràng và nắm tốt quy trình kiểm thử.',
-                'ghi_chu' => 'Phỏng vấn vòng 1 với QA Lead và PM.',
+                'email' => 'ungvien.qa@demo.vn',
+                'job' => 'QA Engineer Manual/API',
+                'status' => UngTuyen::TRANG_THAI_DA_HEN_PHONG_VAN,
+                'applied_at' => $now->copy()->subDays(5)->setTime(2, 10),
+                'letter' => 'Tôi từng kiểm thử web admin và API cho hệ thống POS, có kinh nghiệm viết test case, regression checklist và phối hợp xác nhận lỗi với developer.',
+                'interview_at' => $now->copy()->addDays(2)->setTime(2, 0),
+                'interview_status' => UngTuyen::PHONG_VAN_DA_XAC_NHAN,
+                'interview_response_at' => $now->copy()->subDay()->setTime(4, 45),
+                'interview_type' => 'Online',
+                'interviewer' => 'Trần Gia Huy',
+                'interview_link' => 'https://meet.google.com/demo-techviet-qa-round1',
+                'note' => 'Ứng viên đã xác nhận tham gia vòng QA Lead.',
+                'rounds' => [
+                    ['name' => 'Vòng 1 - QA Lead', 'type' => 'technical', 'status' => InterviewRound::TRANG_THAI_DA_LEN_LICH, 'days' => 2, 'score' => null, 'note' => 'Tập trung test case, API testing và tình huống release.'],
+                ],
             ],
             [
-                'email' => 'ung.vien4@kltn.com',
-                'ho_so' => 'Digital Marketing Executive',
-                'tin' => 'Digital Marketing Executive',
-                'trang_thai' => UngTuyen::TRANG_THAI_DA_XEM,
-                'thu_xin_viec' => 'Tôi đã trực tiếp triển khai và tối ưu các chiến dịch Meta Ads, Google Ads cho ngành làm đẹp và giáo dục, có thói quen theo dõi số liệu hằng ngày và cải thiện nội dung theo hiệu quả chuyển đổi.',
-                'thoi_gian_ung_tuyen' => $nowUtc->copy()->subDays(5)->setHour(1)->setMinute(40),
+                'email' => 'ungvien.frontend@demo.vn',
+                'job' => 'Frontend Developer Vue.js',
+                'status' => UngTuyen::TRANG_THAI_QUA_PHONG_VAN,
+                'applied_at' => $now->copy()->subDays(10)->setTime(7, 15),
+                'letter' => 'Tôi có kinh nghiệm Vue.js, TypeScript, Tailwind CSS và Figma handoff, phù hợp với dashboard quản trị và hệ thống SaaS của TechViet.',
+                'interview_at' => $now->copy()->subDays(2)->setTime(3, 0),
+                'interview_status' => UngTuyen::PHONG_VAN_DA_XAC_NHAN,
+                'interview_response_at' => $now->copy()->subDays(5)->setTime(8, 30),
+                'interview_type' => 'Online',
+                'interviewer' => 'Nguyễn Thu Hà',
+                'interview_link' => 'https://meet.google.com/demo-techviet-fe-round2',
+                'result' => 'Ứng viên trả lời tốt phần component design, state management và phối hợp backend.',
+                'note' => 'Đang chờ duyệt offer nội bộ.',
+                'rounds' => [
+                    ['name' => 'Vòng 1 - HR Screening', 'type' => 'hr', 'status' => InterviewRound::TRANG_THAI_HOAN_THANH, 'days' => -7, 'score' => 8.0, 'note' => 'Giao tiếp tốt, mục tiêu nghề nghiệp rõ.'],
+                    ['name' => 'Vòng 2 - Frontend Technical', 'type' => 'technical', 'status' => InterviewRound::TRANG_THAI_HOAN_THANH, 'days' => -2, 'score' => 8.3, 'note' => 'Nắm tốt Vue.js, cần bổ sung thêm unit test.'],
+                ],
             ],
             [
-                'email' => 'ung.vien2@kltn.com',
-                'ho_so' => 'Frontend Developer Vue/React',
-                'tin' => 'Content Marketing Intern',
-                'trang_thai' => UngTuyen::TRANG_THAI_TU_CHOI,
-                'thu_xin_viec' => 'Tôi muốn tìm môi trường có thể học thêm về nội dung số và phối hợp đa phòng ban. Dù nền tảng chính là frontend và thiết kế, tôi có khả năng viết nội dung cho landing page và social media.',
-                'thoi_gian_ung_tuyen' => $nowUtc->copy()->subDays(7)->setHour(12)->setMinute(10),
-                'ket_qua_phong_van' => 'Hồ sơ có nền tảng tốt nhưng chưa phù hợp định hướng vị trí content internship toàn thời gian.',
-                'ghi_chu' => 'Khuyến khích ứng viên theo dõi vị trí thiết kế hoặc frontend khi công ty mở lại.',
+                'email' => 'ungvien.data@demo.vn',
+                'job' => 'Data Analyst',
+                'status' => UngTuyen::TRANG_THAI_TRUNG_TUYEN,
+                'applied_at' => $now->copy()->subDays(14)->setTime(1, 50),
+                'letter' => 'Tôi có hơn 4 năm kinh nghiệm SQL, Power BI và phân tích dữ liệu bán lẻ. Tôi mong muốn tham gia các dự án BI có dữ liệu thực tế và tác động rõ tới vận hành.',
+                'interview_at' => $now->copy()->subDays(6)->setTime(7, 30),
+                'interview_status' => UngTuyen::PHONG_VAN_DA_XAC_NHAN,
+                'interview_response_at' => $now->copy()->subDays(8)->setTime(2, 20),
+                'interview_type' => 'Offline',
+                'interviewer' => 'Phan Quốc Thịnh',
+                'result' => 'Ứng viên đạt yêu cầu về SQL, dashboard BI và khả năng trình bày insight.',
+                'offer_status' => UngTuyen::OFFER_DA_CHAP_NHAN,
+                'offer_sent_at' => $now->copy()->subDays(4)->setTime(4, 0),
+                'offer_responded_at' => $now->copy()->subDays(3)->setTime(6, 10),
+                'offer_deadline' => $now->copy()->addDays(4)->setTime(16, 59),
+                'offer_note' => 'Offer vị trí Data Analyst, lương 28.000.000 VND/tháng, thử việc 2 tháng, ngày bắt đầu dự kiến sau 2 tuần.',
+                'offer_response_note' => 'Ứng viên đã xác nhận nhận việc và đồng ý ngày bắt đầu dự kiến.',
+                'note' => 'Đã chuyển sang onboarding.',
+                'rounds' => [
+                    ['name' => 'Vòng 1 - HR Screening', 'type' => 'hr', 'status' => InterviewRound::TRANG_THAI_HOAN_THANH, 'days' => -10, 'score' => 8.2, 'note' => 'Kinh nghiệm phù hợp, giao tiếp tốt.'],
+                    ['name' => 'Vòng 2 - Case Study BI', 'type' => 'technical', 'status' => InterviewRound::TRANG_THAI_HOAN_THANH, 'days' => -6, 'score' => 8.7, 'note' => 'Case SQL/Power BI tốt, giải thích insight rõ.'],
+                ],
+                'onboarding' => true,
             ],
             [
-                'email' => 'ung.vien3@kltn.com',
-                'ho_so' => 'Data Analyst BI',
-                'tin' => 'Data Analyst',
-                'trang_thai' => UngTuyen::TRANG_THAI_DA_HEN_PHONG_VAN,
-                'thu_xin_viec' => 'Tôi có hơn 4 năm làm báo cáo vận hành và phân tích dữ liệu kinh doanh bằng SQL, Power BI và Python. Tôi đặc biệt hứng thú với các bài toán chuẩn hóa dữ liệu và xây dashboard phục vụ ra quyết định.',
-                'thoi_gian_ung_tuyen' => $nowUtc->copy()->subDays(3)->setHour(3)->setMinute(20),
-                'ngay_hen_phong_van' => $nowUtc->copy()->addDays(2)->setHour(7)->setMinute(0),
-                'trang_thai_tham_gia_phong_van' => UngTuyen::PHONG_VAN_CHO_XAC_NHAN,
-                'hinh_thuc_phong_van' => 'Offline',
-                'nguoi_phong_van' => 'Phan Quốc Thịnh',
-                'ket_qua_phong_van' => 'Hồ sơ nổi bật ở mảng BI và SQL, cần trao đổi sâu hơn về kinh nghiệm xử lý dữ liệu lớn.',
-                'ghi_chu' => 'Mời ứng viên làm case study ngắn trong buổi phỏng vấn.',
+                'email' => 'ungvien.marketing@demo.vn',
+                'job' => 'Digital Marketing Executive',
+                'status' => UngTuyen::TRANG_THAI_DA_XEM,
+                'applied_at' => $now->copy()->subDays(4)->setTime(8, 25),
+                'letter' => 'Tôi từng triển khai Meta Ads và Google Ads cho ngành làm đẹp/giáo dục, có kinh nghiệm theo dõi ROAS và phối hợp creative để tối ưu chuyển đổi.',
+                'note' => 'Performance Lead đánh giá hồ sơ tốt, chờ shortlist.',
             ],
             [
-                'email' => 'ung.vien1@kltn.com',
-                'ho_so' => 'Full-stack Developer cho doanh nghiệp SME',
-                'tin' => 'Frontend Developer Vue.js',
-                'trang_thai' => UngTuyen::TRANG_THAI_QUA_PHONG_VAN,
-                'thu_xin_viec' => 'Tôi có thể đảm nhiệm cả phần frontend Vue.js lẫn backend API trong môi trường team nhỏ. Kinh nghiệm phối hợp nhiều vai trò giúp tôi thích nghi nhanh với các dự án SME cần người làm xuyên stack.',
-                'thoi_gian_ung_tuyen' => $nowUtc->copy()->subDays(8)->setHour(6)->setMinute(25),
-                'ngay_hen_phong_van' => $nowUtc->copy()->subDays(1)->setHour(2)->setMinute(30),
-                'trang_thai_tham_gia_phong_van' => UngTuyen::PHONG_VAN_DA_XAC_NHAN,
-                'thoi_gian_phan_hoi_phong_van' => $nowUtc->copy()->subDays(3)->setHour(9)->setMinute(10),
-                'hinh_thuc_phong_van' => 'Online',
-                'nguoi_phong_van' => 'Nguyễn Thu Hà',
-                'link_phong_van' => 'https://meet.google.com/frontend-techviet-round2',
-                'ket_qua_phong_van' => 'Ứng viên có tư duy sản phẩm tốt, trả lời ổn phần Vue.js và phối hợp liên phòng ban.',
-                'ghi_chu' => 'Đang chờ quản lý phê duyệt offer nội bộ.',
+                'email' => 'ungvien.sales@demo.vn',
+                'job' => 'Sales Supervisor FMCG',
+                'status' => UngTuyen::TRANG_THAI_TU_CHOI,
+                'applied_at' => $now->copy()->subDays(9)->setTime(5, 30),
+                'letter' => 'Tôi có kinh nghiệm sales B2C, CRM và chăm sóc đại lý nhỏ. Tôi muốn thử sức ở vai trò giám sát bán hàng trong chuỗi bán lẻ.',
+                'result' => 'Ứng viên có kinh nghiệm sales tốt nhưng chưa đủ kinh nghiệm quản lý đội nhóm quy mô khu vực.',
+                'note' => 'Gợi ý ứng viên ứng tuyển vị trí Sales Executive khi mở đợt sau.',
             ],
             [
-                'email' => 'ung.vien3@kltn.com',
-                'ho_so' => 'Data Analyst BI',
-                'tin' => 'BI Developer',
-                'trang_thai' => UngTuyen::TRANG_THAI_TRUNG_TUYEN,
-                'thu_xin_viec' => 'Tôi muốn tham gia vị trí BI Developer vì có kinh nghiệm xây dashboard quản trị và làm việc với stakeholder để chuẩn hóa chỉ số dữ liệu. Tôi tin có thể đóng góp nhanh cho các dự án BI đang triển khai.',
-                'thoi_gian_ung_tuyen' => $nowUtc->copy()->subDays(12)->setHour(1)->setMinute(50),
-                'ngay_hen_phong_van' => $nowUtc->copy()->subDays(6)->setHour(7)->setMinute(30),
-                'trang_thai_tham_gia_phong_van' => UngTuyen::PHONG_VAN_DA_XAC_NHAN,
-                'thoi_gian_phan_hoi_phong_van' => $nowUtc->copy()->subDays(7)->setHour(8)->setMinute(0),
-                'hinh_thuc_phong_van' => 'Offline',
-                'nguoi_phong_van' => 'Phan Quốc Thịnh',
-                'ket_qua_phong_van' => 'Ứng viên đạt yêu cầu về SQL, Power BI và khả năng làm việc với dữ liệu kinh doanh thực tế.',
-                'ghi_chu' => 'Đã thống nhất mức lương và ngày nhận việc dự kiến.',
+                'email' => 'ungvien.accounting@demo.vn',
+                'job' => 'Kế toán tổng hợp',
+                'status' => UngTuyen::TRANG_THAI_DA_HEN_PHONG_VAN,
+                'applied_at' => $now->copy()->subDays(6)->setTime(2, 45),
+                'letter' => 'Tôi có 4 năm kinh nghiệm kế toán tổng hợp, báo cáo thuế, MISA và Excel nâng cao, phù hợp với mô hình dịch vụ kế toán nhiều khách hàng.',
+                'interview_at' => $now->copy()->addDays(1)->setTime(8, 0),
+                'interview_status' => UngTuyen::PHONG_VAN_CHO_XAC_NHAN,
+                'interview_type' => 'Offline',
+                'interviewer' => 'Đặng Khánh Linh',
+                'note' => 'Chờ ứng viên xác nhận lịch phỏng vấn.',
+                'rounds' => [
+                    ['name' => 'Vòng 1 - Kế toán trưởng', 'type' => 'technical', 'status' => InterviewRound::TRANG_THAI_DA_LEN_LICH, 'days' => 1, 'score' => null, 'note' => 'Trao đổi nghiệp vụ thuế, MISA và đối soát công nợ.'],
+                ],
             ],
             [
-                'email' => 'ung.vien4@kltn.com',
-                'ho_so' => 'Digital Marketing Executive',
-                'tin' => 'Graphic Designer Marketing',
-                'trang_thai' => UngTuyen::TRANG_THAI_DA_XEM,
-                'da_rut_don' => true,
-                'thoi_gian_rut_don' => $nowUtc->copy()->subDays(2)->setHour(4)->setMinute(45),
-                'thu_xin_viec' => 'Tôi có thể phối hợp chặt với team content và ads để tối ưu creative theo từng chiến dịch. Sau khi cân nhắc định hướng cá nhân, tôi xin rút hồ sơ để tập trung vào vị trí performance phù hợp hơn.',
-                'thoi_gian_ung_tuyen' => $nowUtc->copy()->subDays(9)->setHour(2)->setMinute(40),
-                'ngay_hen_phong_van' => $nowUtc->copy()->addDay()->setHour(3)->setMinute(15),
-                'trang_thai_tham_gia_phong_van' => UngTuyen::PHONG_VAN_KHONG_THAM_GIA,
-                'thoi_gian_phan_hoi_phong_van' => $nowUtc->copy()->subDays(2)->setHour(4)->setMinute(45),
-                'hinh_thuc_phong_van' => 'Online',
-                'nguoi_phong_van' => 'Võ Ngọc Anh',
-                'link_phong_van' => 'https://meet.google.com/digigrowth-design-round1',
-                'ghi_chu' => 'Ứng viên chủ động rút đơn trước lịch phỏng vấn.',
+                'email' => 'ungvien.hr@demo.vn',
+                'job' => 'IT Recruiter',
+                'status' => UngTuyen::TRANG_THAI_DA_XEM,
+                'applied_at' => $now->copy()->subDays(2)->setTime(4, 5),
+                'letter' => 'Tôi có kinh nghiệm sourcing, screening và điều phối phỏng vấn các vị trí developer, QA, sales. Tôi mong muốn phát triển sâu ở thị trường nhân sự IT.',
+                'note' => 'Hồ sơ phù hợp, cần kiểm tra kinh nghiệm tuyển IT senior.',
+            ],
+            [
+                'email' => 'ungvien.teacher@demo.vn',
+                'job' => 'Giáo viên tiếng Anh online',
+                'status' => UngTuyen::TRANG_THAI_CHO_DUYET,
+                'applied_at' => $now->copy()->subDay()->setTime(9, 0),
+                'letter' => 'Tôi có kinh nghiệm dạy tiếng Anh online, xây lesson plan và theo dõi tiến độ học viên trên LMS. Tôi muốn tham gia lớp giao tiếp cho người đi làm.',
+                'note' => null,
+            ],
+            [
+                'email' => 'ungvien.nurse@demo.vn',
+                'job' => 'Điều dưỡng phòng khám',
+                'status' => UngTuyen::TRANG_THAI_DA_HEN_PHONG_VAN,
+                'applied_at' => $now->copy()->subDays(5)->setTime(10, 10),
+                'letter' => 'Tôi có kinh nghiệm chăm sóc bệnh nhân, hỗ trợ bác sĩ và cập nhật hồ sơ bệnh án điện tử tại phòng khám đa khoa.',
+                'interview_at' => $now->copy()->addDays(3)->setTime(3, 30),
+                'interview_status' => UngTuyen::PHONG_VAN_CHO_XAC_NHAN,
+                'interview_type' => 'Offline',
+                'interviewer' => 'Đinh Gia Phúc',
+                'note' => 'Mời phỏng vấn trực tiếp tại phòng khám trung tâm.',
+                'rounds' => [
+                    ['name' => 'Vòng 1 - Điều dưỡng trưởng', 'type' => 'technical', 'status' => InterviewRound::TRANG_THAI_DA_LEN_LICH, 'days' => 3, 'score' => null, 'note' => 'Trao đổi quy trình chăm sóc bệnh nhân và hồ sơ bệnh án.'],
+                ],
+            ],
+            [
+                'email' => 'ungvien.construction@demo.vn',
+                'job' => 'Kỹ sư thiết kế Revit/AutoCAD',
+                'status' => UngTuyen::TRANG_THAI_QUA_PHONG_VAN,
+                'applied_at' => $now->copy()->subDays(11)->setTime(6, 0),
+                'letter' => 'Tôi có 5 năm kinh nghiệm AutoCAD, Revit và triển khai hồ sơ kỹ thuật công trình dân dụng, có thể phối hợp tốt với công trường.',
+                'interview_at' => $now->copy()->subDays(3)->setTime(7, 0),
+                'interview_status' => UngTuyen::PHONG_VAN_DA_XAC_NHAN,
+                'interview_response_at' => $now->copy()->subDays(6)->setTime(2, 45),
+                'interview_type' => 'Offline',
+                'interviewer' => 'Nguyễn Việt Dũng',
+                'result' => 'Ứng viên phù hợp kỹ thuật, đang chờ kiểm tra portfolio công trình.',
+                'note' => 'Chờ trưởng phòng thiết kế duyệt offer.',
+                'rounds' => [
+                    ['name' => 'Vòng 1 - Portfolio Review', 'type' => 'technical', 'status' => InterviewRound::TRANG_THAI_HOAN_THANH, 'days' => -3, 'score' => 8.1, 'note' => 'Bản vẽ rõ, kinh nghiệm phối hợp công trường tốt.'],
+                ],
+            ],
+            [
+                'email' => 'ungvien.logistics@demo.vn',
+                'job' => 'Logistics Coordinator',
+                'status' => UngTuyen::TRANG_THAI_DA_XEM,
+                'applied_at' => $now->copy()->subDays(3)->setTime(11, 20),
+                'letter' => 'Tôi có kinh nghiệm điều phối kho vận, theo dõi SLA giao hàng, xử lý lệch tồn và phối hợp nhà vận chuyển cho đơn hàng thương mại điện tử.',
+                'note' => 'Operations Manager cần xem thêm kinh nghiệm WMS/TMS.',
             ],
         ];
 
-        $tong = 0;
+        $count = 0;
 
-        foreach ($ungTuyenCoDinh as $item) {
-            $hoSo = $hoSos->first(function ($record) use ($item) {
-                return $record->nguoiDung?->email === $item['email']
-                    && $record->tieu_de_ho_so === $item['ho_so'];
-            });
-            $tin = $tins->get($item['tin']);
+        foreach ($applications as $item) {
+            $profile = $this->findProfileByEmail($profiles, $item['email']);
+            $job = $jobs->get($item['job']);
 
-            if (!$hoSo || !$tin) {
+            if (!$profile || !$job) {
                 continue;
             }
 
-            UngTuyen::create([
-                'tin_tuyen_dung_id' => $tin->id,
-                'ho_so_id' => $hoSo->id,
-                'trang_thai' => $item['trang_thai'],
-                'da_rut_don' => $item['da_rut_don'] ?? false,
-                'thoi_gian_rut_don' => $item['thoi_gian_rut_don'] ?? null,
-                'thu_xin_viec' => $item['thu_xin_viec'],
-                'ngay_hen_phong_van' => $item['ngay_hen_phong_van'] ?? null,
-                'trang_thai_tham_gia_phong_van' => $item['trang_thai_tham_gia_phong_van'] ?? null,
-                'thoi_gian_phan_hoi_phong_van' => $item['thoi_gian_phan_hoi_phong_van'] ?? null,
-                'hinh_thuc_phong_van' => $item['hinh_thuc_phong_van'] ?? null,
-                'nguoi_phong_van' => $item['nguoi_phong_van'] ?? null,
-                'link_phong_van' => $item['link_phong_van'] ?? null,
-                'ket_qua_phong_van' => $item['ket_qua_phong_van'] ?? null,
-                'ghi_chu' => $item['ghi_chu'] ?? null,
-                'thoi_gian_ung_tuyen' => $item['thoi_gian_ung_tuyen'],
-            ]);
+            $application = UngTuyen::updateOrCreate(
+                [
+                    'tin_tuyen_dung_id' => $job->id,
+                    'ho_so_id' => $profile->id,
+                ],
+                [
+                    'hr_phu_trach_id' => $job->hr_phu_trach_id ?: $job->congTy?->nguoi_dung_id,
+                    'trang_thai' => $item['status'],
+                    'da_rut_don' => false,
+                    'thu_xin_viec' => $item['letter'],
+                    'thu_xin_viec_ai' => null,
+                    'ngay_hen_phong_van' => $item['interview_at'] ?? null,
+                    'vong_phong_van_hien_tai' => isset($item['rounds']) ? count($item['rounds']) : null,
+                    'trang_thai_tham_gia_phong_van' => $item['interview_status'] ?? null,
+                    'thoi_gian_phan_hoi_phong_van' => $item['interview_response_at'] ?? null,
+                    'hinh_thuc_phong_van' => $item['interview_type'] ?? null,
+                    'nguoi_phong_van' => $item['interviewer'] ?? null,
+                    'link_phong_van' => $item['interview_link'] ?? null,
+                    'ket_qua_phong_van' => $item['result'] ?? null,
+                    'thoi_gian_gui_offer' => $item['offer_sent_at'] ?? null,
+                    'trang_thai_offer' => $item['offer_status'] ?? UngTuyen::OFFER_CHUA_GUI,
+                    'thoi_gian_phan_hoi_offer' => $item['offer_responded_at'] ?? null,
+                    'han_phan_hoi_offer' => $item['offer_deadline'] ?? null,
+                    'ghi_chu_offer' => $item['offer_note'] ?? null,
+                    'ghi_chu_phan_hoi_offer' => $item['offer_response_note'] ?? null,
+                    'link_offer' => null,
+                    'ghi_chu' => $item['note'] ?? null,
+                    'thoi_gian_ung_tuyen' => $item['applied_at'],
+                ]
+            );
 
-            $tong++;
-        }
+            $this->seedInterviewRounds($application, $item['rounds'] ?? [], $job);
 
-        $hoSoCongKhai = $hoSos->where('trang_thai', HoSo::TRANG_THAI_CONG_KHAI)->values();
-        $tinHoatDong = $tins->filter(fn ($tin) => $tin->trang_thai === TinTuyenDung::TRANG_THAI_HOAT_DONG)->values();
-
-        foreach ($hoSoCongKhai as $hoSo) {
-            $ungVienId = $hoSo->nguoi_dung_id;
-            $daCoUngTuyen = UngTuyen::where('ho_so_id', $hoSo->id)->exists();
-
-            if ($daCoUngTuyen || !$ungVienId || $tinHoatDong->isEmpty()) {
-                continue;
+            if (($item['onboarding'] ?? false) === true) {
+                $this->seedOnboarding($application, $job);
             }
 
-            $tin = $tinHoatDong->random();
-            $trangThai = collect([
-                UngTuyen::TRANG_THAI_CHO_DUYET,
-                UngTuyen::TRANG_THAI_DA_XEM,
-                UngTuyen::TRANG_THAI_DA_XEM,
-                UngTuyen::TRANG_THAI_DA_HEN_PHONG_VAN,
-                UngTuyen::TRANG_THAI_TU_CHOI,
-            ])->random();
-
-            $duocHenPhongVan = $trangThai === UngTuyen::TRANG_THAI_DA_HEN_PHONG_VAN;
-            $biTuChoi = $trangThai === UngTuyen::TRANG_THAI_TU_CHOI;
-
-            UngTuyen::create([
-                'tin_tuyen_dung_id' => $tin->id,
-                'ho_so_id' => $hoSo->id,
-                'trang_thai' => $trangThai,
-                'da_rut_don' => false,
-                'thu_xin_viec' => 'Tôi quan tâm đến vị trí này vì nội dung công việc phù hợp với kinh nghiệm và định hướng phát triển hiện tại. Mong có cơ hội trao đổi thêm để hiểu rõ hơn về sản phẩm, phạm vi công việc và kỳ vọng của công ty.',
-                'ngay_hen_phong_van' => $duocHenPhongVan
-                    ? $nowUtc->copy()->addDays(rand(1, 6))->setHour(rand(1, 8))->setMinute([0, 15, 30, 45][array_rand([0, 15, 30, 45])])
-                    : null,
-                'trang_thai_tham_gia_phong_van' => $duocHenPhongVan ? [UngTuyen::PHONG_VAN_CHO_XAC_NHAN, UngTuyen::PHONG_VAN_DA_XAC_NHAN][array_rand([UngTuyen::PHONG_VAN_CHO_XAC_NHAN, UngTuyen::PHONG_VAN_DA_XAC_NHAN])] : null,
-                'thoi_gian_phan_hoi_phong_van' => $duocHenPhongVan && rand(0, 100) > 45
-                    ? $nowUtc->copy()->subHours(rand(4, 30))
-                    : null,
-                'hinh_thuc_phong_van' => $duocHenPhongVan ? (rand(0, 1) ? 'Online' : 'Offline') : null,
-                'nguoi_phong_van' => $duocHenPhongVan ? $tin->congTy?->ten_cong_ty . ' HR Team' : null,
-                'link_phong_van' => $duocHenPhongVan && rand(0, 1)
-                    ? 'https://meet.google.com/interview-' . strtolower(str_replace(' ', '-', (string) $tin->id . '-' . $hoSo->id))
-                    : null,
-                'ket_qua_phong_van' => $biTuChoi
-                    ? 'Hồ sơ phù hợp ở mức cơ bản nhưng công ty ưu tiên ứng viên có kinh nghiệm sát hơn với vị trí.'
-                    : null,
-                'ghi_chu' => $biTuChoi
-                    ? 'Lưu hồ sơ cho đợt tuyển dụng tiếp theo.'
-                    : ($duocHenPhongVan ? 'Đơn seed tự động ở trạng thái đã hẹn phỏng vấn.' : null),
-                'thoi_gian_ung_tuyen' => $nowUtc->copy()->subDays(rand(1, 9))->setHour(rand(1, 12))->setMinute(rand(0, 59)),
-            ]);
-
-            $tong++;
+            $count++;
         }
 
-        $this->command->info("✅ UngTuyenSeeder: Đã tạo {$tong} lượt ứng tuyển với dữ liệu phong phú và khớp flow mới.");
+        $this->command->info("✅ UngTuyenSeeder: Đã tạo {$count} đơn ứng tuyển demo theo nhiều trạng thái pipeline.");
+    }
+
+    private function findProfileByEmail($profiles, string $email): ?HoSo
+    {
+        return $profiles->first(fn (HoSo $profile) => $profile->nguoiDung?->email === $email);
+    }
+
+    private function seedInterviewRounds(UngTuyen $application, array $rounds, TinTuyenDung $job): void
+    {
+        foreach ($rounds as $index => $round) {
+            $scheduledAt = $this->nowUtc()->copy()->addDays($round['days'])->setTime($round['days'] >= 0 ? 2 + $index : 3 + $index, 0);
+
+            InterviewRound::updateOrCreate(
+                [
+                    'ung_tuyen_id' => $application->id,
+                    'thu_tu' => $index + 1,
+                ],
+                [
+                    'ten_vong' => $round['name'],
+                    'loai_vong' => $round['type'],
+                    'trang_thai' => $round['status'],
+                    'ngay_hen_phong_van' => $scheduledAt,
+                    'hinh_thuc_phong_van' => $application->hinh_thuc_phong_van ?: 'Online',
+                    'nguoi_phong_van' => $application->nguoi_phong_van ?: ($job->congTy?->ten_cong_ty . ' HR Team'),
+                    'interviewer_user_id' => $job->hr_phu_trach_id ?: $job->congTy?->nguoi_dung_id,
+                    'link_phong_van' => $application->link_phong_van,
+                    'trang_thai_tham_gia' => $application->trang_thai_tham_gia_phong_van,
+                    'thoi_gian_phan_hoi' => $application->thoi_gian_phan_hoi_phong_van,
+                    'ket_qua' => $round['status'] === InterviewRound::TRANG_THAI_HOAN_THANH ? ($application->ket_qua_phong_van ?: 'Hoàn thành vòng phỏng vấn.') : null,
+                    'diem_so' => $round['score'],
+                    'ghi_chu' => $round['note'],
+                    'rubric_danh_gia_json' => null,
+                    'created_by' => $job->hr_phu_trach_id ?: $job->congTy?->nguoi_dung_id,
+                    'updated_by' => $job->hr_phu_trach_id ?: $job->congTy?->nguoi_dung_id,
+                ]
+            );
+        }
+    }
+
+    private function seedOnboarding(UngTuyen $application, TinTuyenDung $job): void
+    {
+        $profile = $application->hoSo;
+        $candidate = $profile?->nguoiDung;
+        $hrId = $job->hr_phu_trach_id ?: $job->congTy?->nguoi_dung_id;
+
+        if (!$candidate || !$job->congTy) {
+            return;
+        }
+
+        $plan = OnboardingPlan::updateOrCreate(
+            ['ung_tuyen_id' => $application->id],
+            [
+                'cong_ty_id' => $job->congTy->id,
+                'nguoi_dung_id' => $candidate->id,
+                'hr_phu_trach_id' => $hrId,
+                'ngay_bat_dau' => now()->addDays(12)->toDateString(),
+                'dia_diem_lam_viec' => $job->dia_diem_lam_viec,
+                'trang_thai' => OnboardingPlan::TRANG_THAI_DANG_CHUAN_BI,
+                'loi_chao_mung' => 'Chào mừng bạn đến với ' . $job->congTy->ten_cong_ty . '. HR sẽ đồng hành cùng bạn trong tuần làm việc đầu tiên.',
+                'ghi_chu_noi_bo' => 'Chuẩn bị laptop, email công ty và lịch training sản phẩm trước ngày onboard.',
+                'ghi_chu_ung_vien' => 'Vui lòng hoàn tất giấy tờ cá nhân trước ngày nhận việc.',
+                'tai_lieu_can_chuan_bi_json' => ['CMND/CCCD', 'Bằng cấp/chứng chỉ', 'Thông tin tài khoản ngân hàng', 'Mã số thuế cá nhân nếu có'],
+                'created_by' => $hrId,
+                'updated_by' => $hrId,
+            ]
+        );
+
+        $tasks = [
+            ['Hoàn thiện hồ sơ cá nhân', 'Ứng viên bổ sung CCCD, bằng cấp và thông tin ngân hàng.', 1, OnboardingTask::NGUOI_PHU_TRACH_UNG_VIEN, OnboardingTask::TRANG_THAI_DANG_LAM],
+            ['Tạo email và tài khoản nội bộ', 'HR/IT tạo email công ty, tài khoản dashboard và quyền truy cập dự án.', 2, OnboardingTask::NGUOI_PHU_TRACH_HR, OnboardingTask::TRANG_THAI_CHO_LAM],
+            ['Chuẩn bị thiết bị làm việc', 'Chuẩn bị laptop, tài khoản VPN và hướng dẫn bảo mật.', 3, OnboardingTask::NGUOI_PHU_TRACH_HR, OnboardingTask::TRANG_THAI_CHO_LAM],
+            ['Lịch orientation tuần đầu', 'Gửi lịch giới thiệu công ty, sản phẩm, quy trình làm việc và người hướng dẫn.', 4, OnboardingTask::NGUOI_PHU_TRACH_HR, OnboardingTask::TRANG_THAI_CHO_LAM],
+        ];
+
+        foreach ($tasks as [$title, $description, $order, $owner, $status]) {
+            OnboardingTask::updateOrCreate(
+                [
+                    'onboarding_plan_id' => $plan->id,
+                    'thu_tu' => $order,
+                ],
+                [
+                    'tieu_de' => $title,
+                    'mo_ta' => $description,
+                    'han_hoan_tat' => now()->addDays($order + 2)->toDateString(),
+                    'nguoi_phu_trach' => $owner,
+                    'trang_thai' => $status,
+                    'hoan_tat_luc' => null,
+                    'completed_by' => null,
+                    'metadata_json' => [],
+                ]
+            );
+        }
     }
 }

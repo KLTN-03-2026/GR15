@@ -152,13 +152,12 @@ class VnpayController extends Controller
             }
         } elseif ($payment?->nguoiDung?->isNhaTuyenDung() && $payment?->loai_giao_dich === GiaoDichThanhToan::LOAI_NAP_VI) {
             $query = array_filter([
-                'topup' => $isPending || $isGatewaySuccess ? 'pending' : 'failed',
                 'resultCode' => isset($payload['vnp_ResponseCode']) ? (string) $payload['vnp_ResponseCode'] : null,
                 'transactionStatus' => isset($payload['vnp_TransactionStatus']) ? (string) $payload['vnp_TransactionStatus'] : null,
                 'orderId' => $paymentCode !== '' ? $paymentCode : null,
             ], static fn ($value) => $value !== null && $value !== '');
 
-            $targetUrl = $frontendBaseUrl . '/employer/billing';
+            $targetUrl = $frontendBaseUrl . '/employer/billing/payment-result/' . rawurlencode($paymentCode !== '' ? $paymentCode : 'unknown');
             if ($query !== []) {
                 $targetUrl .= '?' . http_build_query($query);
             }

@@ -1,10 +1,8 @@
 <?php
 
 use App\Models\CongTy;
-use App\Models\CongTyVaiTroNoiBo;
 use App\Models\NguoiDung;
 use App\Models\PermissionDefinition;
-use App\Notifications\ResetPasswordLinkNotification;
 use Illuminate\Support\Facades\Notification;
 
 it('lets company owner create a new hr account directly', function () {
@@ -29,7 +27,7 @@ it('lets company owner create a new hr account directly', function () {
             'email' => 'hr.created@example.com',
             'mat_khau' => 'Password123!',
             'so_dien_thoai' => '0900000001',
-            'vai_tro_noi_bo' => CongTy::VAI_TRO_NOI_BO_RECRUITER,
+            'vai_tro_noi_bo' => 'recruiter',
         ]);
 
     $response
@@ -42,7 +40,7 @@ it('lets company owner create a new hr account directly', function () {
 
     expect($hr->isNhaTuyenDung())->toBeTrue();
     expect($hr->email_verified_at)->not->toBeNull();
-    expect($hr->layVaiTroNoiBoCongTy($company))->toBe(CongTy::VAI_TRO_NOI_BO_RECRUITER);
+    expect($hr->layVaiTroNoiBoCongTy($company))->toBe(CongTy::VAI_TRO_NOI_BO_MEMBER);
 
     Notification::assertNothingSent();
 });
@@ -71,7 +69,8 @@ it('does not create an hr account with an existing email', function () {
         ->postJson('/api/v1/nha-tuyen-dung/cong-ty/thanh-viens', [
             'ho_ten' => 'Existing HR',
             'email' => 'existing.hr@example.com',
-            'vai_tro_noi_bo' => CongTy::VAI_TRO_NOI_BO_RECRUITER,
+            'mat_khau' => 'Password123!',
+            'vai_tro_noi_bo' => 'recruiter',
         ])
         ->assertUnprocessable()
         ->assertJsonPath('success', false);
@@ -79,7 +78,7 @@ it('does not create an hr account with an existing email', function () {
     Notification::assertNothingSent();
 });
 
-it('lets company owner manage custom internal roles and assign them to hr accounts', function () {
+it('rejects custom internal role management because only owner and hr member remain', function () {
     Notification::fake();
 
     $owner = NguoiDung::factory()->nhaTuyenDung()->create([
@@ -99,45 +98,22 @@ it('lets company owner manage custom internal roles and assign them to hr accoun
         ->postJson('/api/v1/nha-tuyen-dung/cong-ty/vai-tro-noi-bo', [
             'ten_vai_tro' => 'Talent Acquisition Lead',
             'mo_ta' => 'Lead tuyển dụng nội bộ',
-            'vai_tro_goc' => CongTy::VAI_TRO_NOI_BO_RECRUITER,
+            'vai_tro_goc' => 'recruiter',
         ]);
 
     $roleResponse
-        ->assertCreated()
-        ->assertJsonPath('success', true)
-        ->assertJsonPath('data.vai_tro.ten_vai_tro', 'Talent Acquisition Lead')
-        ->assertJsonPath('data.vai_tro.vai_tro_goc', CongTy::VAI_TRO_NOI_BO_RECRUITER);
-
-    $roleCode = $roleResponse->json('data.vai_tro.ma_vai_tro');
+        ->assertUnprocessable()
+        ->assertJsonPath('success', false)
+        ->assertJsonPath('message', 'Hệ thống hiện chỉ giữ 2 vai trò nội bộ: Owner và HR thường.');
 
     $this->actingAs($owner, 'sanctum')
-        ->postJson('/api/v1/nha-tuyen-dung/cong-ty/thanh-viens', [
-            'ho_ten' => 'Custom HR',
-            'email' => 'custom.hr@example.com',
-            'mat_khau' => 'Password123!',
-            'vai_tro_noi_bo' => $roleCode,
-        ])
-        ->assertCreated()
-        ->assertJsonFragment(['ten_vai_tro_noi_bo' => 'Talent Acquisition Lead']);
-
-    $hr = NguoiDung::query()->where('email', 'custom.hr@example.com')->firstOrFail();
-
-    expect($hr->layVaiTroNoiBoCongTy($company))->toBe($roleCode);
-    expect($hr->coVaiTroNoiBoCongTy(CongTy::VAI_TRO_NOI_BO_RECRUITER, $company))->toBeTrue();
-
-    $role = CongTyVaiTroNoiBo::query()->where('ma_vai_tro', $roleCode)->firstOrFail();
-
-    $this->actingAs($owner, 'sanctum')
-        ->patchJson("/api/v1/nha-tuyen-dung/cong-ty/vai-tro-noi-bo/{$role->id}", [
+        ->patchJson('/api/v1/nha-tuyen-dung/cong-ty/vai-tro-noi-bo/999999', [
             'ten_vai_tro' => 'Senior Talent Lead',
             'mo_ta' => 'Lead tuyển dụng senior',
-            'vai_tro_goc' => CongTy::VAI_TRO_NOI_BO_ADMIN_HR,
+            'vai_tro_goc' => 'admin_hr',
         ])
-        ->assertOk()
-        ->assertJsonPath('data.vai_tro.ten_vai_tro', 'Senior Talent Lead')
-        ->assertJsonFragment(['ten_vai_tro_noi_bo' => 'Senior Talent Lead']);
-
-    expect($hr->fresh()->coVaiTroNoiBoCongTy(CongTy::VAI_TRO_NOI_BO_ADMIN_HR, $company))->toBeTrue();
+        ->assertUnprocessable()
+        ->assertJsonPath('message', 'Hệ thống hiện chỉ giữ 2 vai trò nội bộ: Owner và HR thường.');
 });
 
 it('lets company owner configure feature permissions for each hr account', function () {
@@ -157,7 +133,7 @@ it('lets company owner configure feature permissions for each hr account', funct
         'email_verified_at' => now(),
     ]);
     $company->thanhViens()->attach($hr->id, [
-        'vai_tro_noi_bo' => CongTy::VAI_TRO_NOI_BO_VIEWER,
+        'vai_tro_noi_bo' => CongTy::VAI_TRO_NOI_BO_MEMBER,
         'quyen_noi_bo' => json_encode(CongTy::normalizeHrPermissions(null)),
         'duoc_tao_boi' => $owner->id,
         'created_at' => now(),
@@ -198,7 +174,7 @@ it('maps a newly created hr permission to an existing employer feature', functio
         'email_verified_at' => now(),
     ]);
     $company->thanhViens()->attach($hr->id, [
-        'vai_tro_noi_bo' => CongTy::VAI_TRO_NOI_BO_VIEWER,
+        'vai_tro_noi_bo' => CongTy::VAI_TRO_NOI_BO_MEMBER,
         'quyen_noi_bo' => json_encode(CongTy::normalizeHrPermissions(null)),
         'duoc_tao_boi' => $owner->id,
         'created_at' => now(),
@@ -250,7 +226,7 @@ it('prevents hr without members permission from reading hr management data', fun
         'email_verified_at' => now(),
     ]);
     $company->thanhViens()->attach($hr->id, [
-        'vai_tro_noi_bo' => CongTy::VAI_TRO_NOI_BO_VIEWER,
+        'vai_tro_noi_bo' => CongTy::VAI_TRO_NOI_BO_MEMBER,
         'quyen_noi_bo' => json_encode(CongTy::normalizeHrPermissions([
             'company_profile' => true,
             'jobs' => true,

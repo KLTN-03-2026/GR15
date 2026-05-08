@@ -124,10 +124,12 @@ const parseStatusMeta = (profile) => {
   }
 }
 
-const cvFileUrl = (path) => {
-  if (!path) return ''
-  if (path.startsWith('http')) return path
-  return `http://127.0.0.1:8000/storage/${path}`
+const hasUploadedCv = (profile) => Boolean(profile?.file_cv_url || profile?.file_cv)
+const canOpenAnyCv = (profile) => hasUploadedCv(profile) || hasBuilderCv(profile)
+const primaryCvActionLabel = (profile) => {
+  if (hasUploadedCv(profile)) return 'Xem file CV'
+  if (hasBuilderCv(profile)) return 'Xem CV hệ thống'
+  return 'Xem CV'
 }
 
 const formatDisplayText = (value) => {
@@ -177,6 +179,9 @@ const normalizedSectionItems = (value) => {
 const parsedSkills = computed(() => normalizedSkillItems(parseResult.value?.parsed_skills_json).slice(0, 12))
 const parsedEducation = computed(() => normalizedSectionItems(parseResult.value?.parsed_education_json).slice(0, 8))
 const parsedExperience = computed(() => normalizedSectionItems(parseResult.value?.parsed_experience_json).slice(0, 8))
+const parseQualityWarnings = computed(() => Array.isArray(parseResult.value?.quality_warnings_json) ? parseResult.value.quality_warnings_json : [])
+const parseSuggestedActions = computed(() => Array.isArray(parseResult.value?.suggested_actions) ? parseResult.value.suggested_actions : [])
+const parseLayoutAnalysis = computed(() => parseResult.value?.layout_analysis_json || {})
 const normalizedParsedPhone = computed(() => {
   const raw = String(parseResult.value?.parsed_phone || '').replace(/\D/g, '')
   if (/^0\d{9}$/.test(raw)) return raw
@@ -272,15 +277,45 @@ const openDetailModal = (profile) => {
   detailModalOpen.value = true
 }
 
-const downloadBuilderProfile = (profile) => {
+const openBuilderProfileCv = (profile) => {
   const opened = openCvPrintPreview({
     profile,
     owner: currentCandidate.value,
   })
 
   if (!opened) {
-    notify.warning('Trình duyệt đang chặn cửa sổ tải xuống. Hãy cho phép popup và thử lại.')
+    notify.warning('Trình duyệt đang chặn cửa sổ xem CV. Hãy cho phép popup và thử lại.')
   }
+}
+
+const openUploadedProfileCv = async (profile) => {
+  if (!profile?.id) {
+    notify.warning('Không xác định được hồ sơ cần mở file CV.')
+    return
+  }
+
+  try {
+    const { blob } = await profileService.viewProfileCv(profile.id)
+    const objectUrl = URL.createObjectURL(blob)
+    window.open(objectUrl, '_blank', 'noopener')
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000)
+  } catch (error) {
+    notify.apiError(error, 'Không mở được file CV đã tải lên.')
+  }
+}
+
+const openPrimaryProfileCv = async (profile) => {
+  if (hasUploadedCv(profile)) {
+    await openUploadedProfileCv(profile)
+    return
+  }
+
+  if (hasBuilderCv(profile)) {
+    openBuilderProfileCv(profile)
+    return
+  }
+
+  notify.info('Hồ sơ này chưa có file CV hoặc dữ liệu CV tạo trên hệ thống để xem.')
 }
 
 const closeDetailModal = () => {
@@ -612,12 +647,13 @@ onMounted(fetchProfiles)
 
           <div class="flex flex-wrap items-center gap-2 shrink-0">
             <button
-              v-if="hasBuilderCv(profile)"
+              v-if="canOpenAnyCv(profile)"
               class="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
               type="button"
-              @click="downloadBuilderProfile(profile)"
+              @click="openPrimaryProfileCv(profile)"
             >
-              <span class="material-symbols-outlined text-[18px]">picture_as_pdf</span> Tải PDF
+              <span class="material-symbols-outlined text-[18px]">visibility</span>
+              {{ primaryCvActionLabel(profile) }}
             </button>
             <button
               class="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors"
@@ -900,17 +936,28 @@ onMounted(fetchProfiles)
 
             <div class="rounded-2xl border border-slate-200 px-4 py-4">
               <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">File CV</p>
-              <div class="mt-3">
+              <div class="mt-3 flex flex-wrap gap-3">
+                <button
+                  v-if="hasUploadedCv(selectedProfileDetail)"
+                  class="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+                  type="button"
+                  @click="openUploadedProfileCv(selectedProfileDetail)"
+                >
+                  <span class="material-symbols-outlined text-[18px]">visibility</span>
+                  Xem file CV
+                </button>
                 <button
                   v-if="hasBuilderCv(selectedProfileDetail)"
                   class="inline-flex items-center gap-2 rounded-xl bg-[#2463eb]/10 px-4 py-2.5 text-sm font-semibold text-[#2463eb] transition hover:bg-[#2463eb] hover:text-white"
                   type="button"
-                  @click="downloadBuilderProfile(selectedProfileDetail)"
+                  @click="openBuilderProfileCv(selectedProfileDetail)"
                 >
-                  <span class="material-symbols-outlined text-[18px]">picture_as_pdf</span>
-                  Tải PDF
+                  <span class="material-symbols-outlined text-[18px]">article</span>
+                  Xem CV hệ thống
                 </button>
-                <p v-else class="text-sm text-slate-500">Hồ sơ này không hỗ trợ tải xuống trực tiếp.</p>
+                <p v-if="!hasUploadedCv(selectedProfileDetail) && !hasBuilderCv(selectedProfileDetail)" class="text-sm text-slate-500">
+                  Hồ sơ này chưa có file CV hoặc dữ liệu CV để xem trực tiếp.
+                </p>
               </div>
             </div>
           </div>
@@ -997,6 +1044,43 @@ onMounted(fetchProfiles)
             </div>
           </div>
 
+          <div
+            v-if="parseQualityWarnings.length || parseSuggestedActions.length"
+            class="mt-4 rounded-3xl border border-amber-200 bg-amber-50/80 p-5"
+          >
+            <div class="flex items-start gap-3">
+              <div class="rounded-2xl bg-amber-100 p-2 text-amber-700">
+                <span class="material-symbols-outlined">fact_check</span>
+              </div>
+              <div class="flex-1">
+                <div class="flex flex-wrap items-center gap-2">
+                  <h4 class="text-base font-bold text-amber-950">Cần xác nhận kết quả parse</h4>
+                  <span
+                    v-if="parseLayoutAnalysis?.is_complex_layout"
+                    class="rounded-full bg-white px-3 py-1 text-xs font-bold text-amber-700"
+                  >
+                    Layout phức tạp · {{ parseLayoutAnalysis.complexity_score || 0 }}/100
+                  </span>
+                </div>
+                <ul v-if="parseQualityWarnings.length" class="mt-3 space-y-2 text-sm leading-6 text-amber-900">
+                  <li v-for="warning in parseQualityWarnings" :key="warning.code || warning.message" class="flex gap-2">
+                    <span class="material-symbols-outlined mt-0.5 text-[16px]">priority_high</span>
+                    <span>{{ warning.message || warning }}</span>
+                  </li>
+                </ul>
+                <div v-if="parseSuggestedActions.length" class="mt-4 flex flex-wrap gap-2">
+                  <span
+                    v-for="action in parseSuggestedActions"
+                    :key="action"
+                    class="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-amber-800"
+                  >
+                    {{ action }}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div class="mt-4 rounded-3xl border border-blue-200 bg-blue-50/70 p-5">
             <div class="flex flex-col gap-4">
               <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
@@ -1015,6 +1099,33 @@ onMounted(fetchProfiles)
                 >
                   {{ applyingPersonalInfo ? 'Đang áp dụng...' : 'Áp dụng thông tin cá nhân từ CV' }}
                 </button>
+              </div>
+
+              <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
+                <label class="block">
+                  <span class="mb-2 block text-xs font-bold uppercase tracking-[0.18em] text-blue-500">Họ tên AI đọc được</span>
+                  <input
+                    v-model="parseResult.parsed_name"
+                    class="w-full rounded-2xl border border-blue-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                    type="text"
+                  />
+                </label>
+                <label class="block">
+                  <span class="mb-2 block text-xs font-bold uppercase tracking-[0.18em] text-blue-500">Email AI đọc được</span>
+                  <input
+                    v-model="parseResult.parsed_email"
+                    class="w-full rounded-2xl border border-blue-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                    type="email"
+                  />
+                </label>
+                <label class="block">
+                  <span class="mb-2 block text-xs font-bold uppercase tracking-[0.18em] text-blue-500">Số điện thoại AI đọc được</span>
+                  <input
+                    v-model="parseResult.parsed_phone"
+                    class="w-full rounded-2xl border border-blue-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                    type="text"
+                  />
+                </label>
               </div>
 
               <div v-if="availablePersonalFields.length" class="grid grid-cols-1 items-stretch gap-3 md:grid-cols-3">

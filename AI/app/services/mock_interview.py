@@ -7,14 +7,17 @@ from app.core.config import settings
 from app.core.logger import get_logger
 from app.providers.mock_interview_ollama_provider import OllamaMockInterviewProvider
 from app.services.skill_catalog import extract_skills_from_text, normalize_search_text
+from app.services.vietnamese_text import (
+    normalize_vietnamese_ai_text,
+    normalize_vietnamese_text_list,
+)
 
 
 logger = get_logger(__name__)
 
 MODEL_VERSION = f"mock_interview_v3.0::{settings.mock_interview_provider}::{settings.local_llm_model}"
 DEFAULT_MAX_QUESTIONS = 5
-MIN_MAX_QUESTIONS = 3
-HARD_MAX_QUESTIONS = 7
+MIN_MAX_QUESTIONS = 2
 ollama_provider = OllamaMockInterviewProvider()
 
 
@@ -34,7 +37,9 @@ def generate_mock_interview_question(
         question_plan = _build_question_plan(interview_context)
         resolved_max_questions = _resolve_max_questions(max_questions)
         question_payload = _resolve_initial_question_payload(question_plan, question_index, resolved_max_questions)
-        question_payload = _refine_question_payload(question_payload, interview_context, transcript)
+        question_payload = _normalize_question_payload(
+            _refine_question_payload(question_payload, interview_context, transcript)
+        )
 
         return {
             "success": True,
@@ -92,6 +97,20 @@ def evaluate_mock_interview_answer(
         clarity_score = _score_clarity(answer)
         specificity_score = _score_specificity(answer, normalized_answer, focus_skills)
         structure_score = _score_structure(answer)
+        answer_quality = _assess_answer_quality(
+            answer=answer,
+            normalized_answer=normalized_answer,
+            question_payload=question_payload,
+            focus_skills=focus_skills,
+        )
+        score_penalties = _score_penalties_for_answer_quality(answer_quality)
+
+        technical_score = max(0.0, technical_score - score_penalties["technical_score"])
+        communication_score = max(0.0, communication_score - score_penalties["communication_score"])
+        jd_fit_score = max(0.0, jd_fit_score - score_penalties["jd_fit_score"])
+        clarity_score = max(0.0, clarity_score - score_penalties["clarity_score"])
+        specificity_score = max(0.0, specificity_score - score_penalties["specificity_score"])
+        structure_score = max(0.0, structure_score - score_penalties["structure_score"])
 
         total_score = round(
             technical_score * 0.28
@@ -114,6 +133,7 @@ def evaluate_mock_interview_answer(
 
         strengths = _detect_strengths(answer, normalized_answer, focus_skills, rubric_breakdown)
         weaknesses = _detect_weaknesses(answer, normalized_answer, focus_skills, rubric_breakdown)
+        weaknesses = _merge_unique_texts([*answer_quality.get("messages", []), *weaknesses])[:5]
         weakest_dimension = min(rubric_breakdown.items(), key=lambda item: item[1])[0]
 
         feedback_text = _build_feedback_text(
@@ -143,13 +163,16 @@ def evaluate_mock_interview_answer(
             else:
                 next_question = _select_next_question(
                     question_plan=question_plan,
+                    interview_context=interview_context,
                     transcript=transcript,
                     rubric_breakdown=rubric_breakdown,
                     current_question_payload=question_payload,
                     question_index=next_index,
                     max_questions=resolved_max_questions,
                 )
-            next_question = _refine_question_payload(next_question, interview_context, transcript)
+            next_question = _normalize_question_payload(
+                _refine_question_payload(next_question, interview_context, transcript)
+            )
 
         return {
             "success": True,
@@ -165,10 +188,12 @@ def evaluate_mock_interview_answer(
                 "clarity_score": clarity_score,
                 "specificity_score": specificity_score,
                 "structure_score": structure_score,
+                "answer_quality": answer_quality,
+                "score_penalties": score_penalties,
                 "weakest_dimension": weakest_dimension,
-                "strengths": strengths,
-                "weaknesses": weaknesses,
-                "feedback_text": feedback_text,
+                "strengths": normalize_vietnamese_text_list(strengths),
+                "weaknesses": normalize_vietnamese_text_list(weaknesses),
+                "feedback_text": normalize_vietnamese_ai_text(feedback_text, ensure_punctuation=False),
                 "completed": completed,
                 "next_question": next_question,
                 "generation_provider": next_question.get("generation_provider") if next_question else "rule_based",
@@ -242,7 +267,10 @@ def generate_mock_interview_report(
                 ),
             },
         }
-        improvement_text = _refine_report_text(report_payload, interview_context)
+        improvement_text = normalize_vietnamese_ai_text(
+            _refine_report_text(report_payload, interview_context),
+            ensure_punctuation=False,
+        )
 
         return {
             "success": True,
@@ -253,8 +281,8 @@ def generate_mock_interview_report(
                 "diem_ky_thuat": averages["technical_score"],
                 "diem_giao_tiep": averages["communication_score"],
                 "diem_phu_hop_jd": averages["jd_fit_score"],
-                "diem_manh": strengths,
-                "diem_yeu": weaknesses,
+                "diem_manh": normalize_vietnamese_text_list(strengths),
+                "diem_yeu": normalize_vietnamese_text_list(weaknesses),
                 "de_xuat_cai_thien": improvement_text,
                 "metadata": {
                     "rubric_summary": averages["rubric_summary"],
@@ -299,7 +327,8 @@ def _build_question_plan(interview_context: dict) -> list[dict]:
 
     candidate_skills = (candidate.get("parsed_skills") or [])[:6]
     related_job_skills = (related_job.get("skills") or [])[:6]
-    job_title = related_job.get("title") or interview_context.get("career_report", {}).get("nghe_de_xuat") or "vị trí mục tiêu"
+    career_report = interview_context.get("career_report") or {}
+    job_title = related_job.get("title") or career_report.get("nghe_de_xuat") or "vị trí mục tiêu"
 
     role_defaults = {
         "backend": ("Laravel", "REST API", "Docker", "MySQL"),
@@ -398,19 +427,21 @@ def _build_question_plan(interview_context: dict) -> list[dict]:
 
 
 def _resolve_max_questions(max_questions: int) -> int:
-    return max(MIN_MAX_QUESTIONS, min(int(max_questions or DEFAULT_MAX_QUESTIONS), HARD_MAX_QUESTIONS))
+    return max(MIN_MAX_QUESTIONS, int(max_questions or DEFAULT_MAX_QUESTIONS))
 
 
 def _resolve_generation_provider() -> str:
-    provider = (settings.mock_interview_provider or "rule_based").strip().lower()
-    if provider in {"ollama", "rule_based"}:
+    provider = (settings.mock_interview_provider or "ollama").strip().lower()
+    if provider == "ollama":
         return provider
-    return "rule_based"
+    logger.warning("Unknown or non-LLM MOCK_INTERVIEW_PROVIDER=%s, forcing ollama LLM provider.", settings.mock_interview_provider)
+    return "ollama"
 
 
 def _refine_question_payload(question_payload: dict, interview_context: dict, transcript: list[dict]) -> dict:
     refined = question_payload.copy()
     provider = _resolve_generation_provider()
+    asked_questions = _asked_question_texts(transcript)
 
     if provider != "ollama":
         refined["question_text"] = _sanitize_interview_question_text(refined.get("question_text") or "")
@@ -421,19 +452,21 @@ def _refine_question_payload(question_payload: dict, interview_context: dict, tr
         refined_text = ollama_provider.refine_question(refined, interview_context, transcript)
         if refined_text:
             sanitized_text = _sanitize_interview_question_text(refined_text)
-            if _is_valid_refined_question(sanitized_text, refined, interview_context):
+            if _is_valid_refined_question(sanitized_text, refined, interview_context) and not _is_duplicate_question(sanitized_text, asked_questions):
                 refined["question_text"] = sanitized_text
                 refined["generation_provider"] = "ollama"
                 return refined
             logger.warning(
-                "Fallback to rule_based question because refined question is off-topic: %s",
+                "Fallback to guarded question because refined question is invalid or duplicated: %s",
                 sanitized_text,
             )
     except Exception as exc:
         logger.warning("Fallback to rule_based question generation: %s", exc)
 
     refined["question_text"] = _sanitize_interview_question_text(refined.get("question_text") or "")
-    refined["generation_provider"] = "rule_based"
+    if _is_duplicate_question(refined["question_text"], asked_questions):
+        refined = _build_dynamic_unasked_question(refined, interview_context, transcript)
+    refined["generation_provider"] = "rule_guarded_after_llm"
     return refined
 
 
@@ -614,6 +647,136 @@ def _detect_weaknesses(answer: str, normalized_answer: str, focus_skills: list[s
     return weaknesses[:4] or ["Nên tăng thêm ví dụ thực tế để câu trả lời thuyết phục hơn"]
 
 
+def _assess_answer_quality(
+    *,
+    answer: str,
+    normalized_answer: str,
+    question_payload: dict,
+    focus_skills: list[str],
+) -> dict:
+    question_text = str(question_payload.get("question_text") or "")
+    normalized_question = normalize_search_text(question_text)
+    word_count = len(normalized_answer.split())
+    focus_hits = sum(1 for skill in focus_skills if skill and normalize_search_text(skill) in normalized_answer)
+    question_tokens = {
+        token
+        for token in re.findall(r"[a-z0-9+#./-]+", normalized_question)
+        if len(token) >= 4 and token not in {"trong", "cau", "hoi", "hay", "ban", "what", "with", "your", "about"}
+    }
+    answer_tokens = {
+        token
+        for token in re.findall(r"[a-z0-9+#./-]+", normalized_answer)
+        if len(token) >= 4
+    }
+    overlap_ratio = len(question_tokens & answer_tokens) / max(len(question_tokens), 1)
+    generic_markers = [
+        "em se co gang",
+        "toi se co gang",
+        "em se hoc hoi",
+        "toi se hoc hoi",
+        "em nghi minh phu hop",
+        "toi nghi minh phu hop",
+        "khong biet",
+        "chua tung",
+        "khong ro",
+    ]
+    generic_hits = [marker for marker in generic_markers if marker in normalized_answer]
+
+    flags = []
+    if word_count < 12:
+        flags.append("too_short")
+    if word_count < 24 and not any(char.isdigit() for char in answer):
+        flags.append("thin_answer")
+    if focus_skills and focus_hits == 0:
+        flags.append("missing_focus_skill")
+    if overlap_ratio < 0.08 and focus_hits == 0:
+        flags.append("possibly_irrelevant")
+    if generic_hits:
+        flags.append("generic_answer")
+    if not any(marker in normalized_answer for marker in ["du an", "project", "ket qua", "result", "boi canh", "hanh dong", "giai phap", "xu ly"]):
+        flags.append("no_evidence")
+
+    severity = "good"
+    if "possibly_irrelevant" in flags or "too_short" in flags:
+        severity = "high_risk"
+    elif {"generic_answer", "missing_focus_skill", "no_evidence"} & set(flags):
+        severity = "needs_review"
+
+    return {
+        "word_count": word_count,
+        "focus_skill_hits": focus_hits,
+        "question_overlap_ratio": round(overlap_ratio, 2),
+        "flags": flags,
+        "severity": severity,
+        "messages": _answer_quality_messages(flags),
+    }
+
+
+def _score_penalties_for_answer_quality(answer_quality: dict) -> dict[str, float]:
+    flags = set(answer_quality.get("flags") or [])
+    penalties = {
+        "technical_score": 0.0,
+        "communication_score": 0.0,
+        "jd_fit_score": 0.0,
+        "clarity_score": 0.0,
+        "specificity_score": 0.0,
+        "structure_score": 0.0,
+    }
+
+    if "too_short" in flags:
+        penalties.update({
+            "technical_score": penalties["technical_score"] + 24,
+            "communication_score": penalties["communication_score"] + 20,
+            "jd_fit_score": penalties["jd_fit_score"] + 22,
+            "clarity_score": penalties["clarity_score"] + 18,
+            "specificity_score": penalties["specificity_score"] + 26,
+            "structure_score": penalties["structure_score"] + 22,
+        })
+    if "thin_answer" in flags:
+        penalties["specificity_score"] += 12
+        penalties["structure_score"] += 8
+    if "missing_focus_skill" in flags:
+        penalties["technical_score"] += 18
+        penalties["jd_fit_score"] += 18
+    if "possibly_irrelevant" in flags:
+        penalties["technical_score"] += 28
+        penalties["jd_fit_score"] += 30
+        penalties["clarity_score"] += 16
+    if "generic_answer" in flags:
+        penalties["communication_score"] += 8
+        penalties["specificity_score"] += 16
+    if "no_evidence" in flags:
+        penalties["specificity_score"] += 14
+        penalties["structure_score"] += 10
+
+    return {key: round(min(value, 55.0), 2) for key, value in penalties.items()}
+
+
+def _answer_quality_messages(flags: list[str]) -> list[str]:
+    mapping = {
+        "too_short": "Câu trả lời quá ngắn nên bị trừ điểm ở hầu hết tiêu chí.",
+        "thin_answer": "Câu trả lời thiếu dữ kiện/số liệu nên điểm cụ thể và cấu trúc bị giảm.",
+        "missing_focus_skill": "Chưa nhắc đúng kỹ năng trọng tâm của câu hỏi.",
+        "possibly_irrelevant": "Câu trả lời có dấu hiệu lệch câu hỏi nên điểm phù hợp JD và kỹ thuật bị giảm mạnh.",
+        "generic_answer": "Câu trả lời còn chung chung, thiên về cam kết thay vì minh chứng.",
+        "no_evidence": "Thiếu bối cảnh, hành động hoặc kết quả cụ thể để chứng minh năng lực.",
+    }
+    return [mapping[flag] for flag in flags if flag in mapping]
+
+
+def _merge_unique_texts(items: list[str]) -> list[str]:
+    results = []
+    seen = set()
+    for item in items:
+        text = str(item or "").strip()
+        normalized = normalize_search_text(text)
+        if not text or normalized in seen:
+            continue
+        seen.add(normalized)
+        results.append(text)
+    return results
+
+
 def _build_feedback_text(
     *,
     question_payload: dict,
@@ -718,6 +881,7 @@ def _build_follow_up_question(
 def _select_next_question(
     *,
     question_plan: list[dict],
+    interview_context: dict,
     transcript: list[dict],
     rubric_breakdown: dict[str, float],
     current_question_payload: dict,
@@ -748,7 +912,7 @@ def _select_next_question(
 
     candidate = _find_unasked_question(question_plan, asked_types, [item["question_type"] for item in question_plan], exclude=None)
     if not candidate:
-        candidate = question_plan[min(question_index - 1, len(question_plan) - 1)]
+        candidate = _build_dynamic_unasked_question(current_question_payload, interview_context, transcript)
 
     return _materialize_question_payload(candidate, question_index=question_index, max_questions=max_questions, selection_strategy="plan_progression")
 
@@ -763,6 +927,99 @@ def _find_unasked_question(question_plan: list[dict], asked_types: list[str | No
             if item["question_type"] == question_type:
                 return item
     return None
+
+
+def _asked_question_texts(transcript: list[dict]) -> list[str]:
+    return [
+        str(item.get("content") or "").strip()
+        for item in transcript
+        if (item.get("metadata") or {}).get("type") == "interview_question" and str(item.get("content") or "").strip()
+    ]
+
+
+def _normalize_question_payload(question_payload: dict) -> dict:
+    payload = question_payload.copy()
+    payload["interview_stage_label"] = normalize_vietnamese_ai_text(
+        str(payload.get("interview_stage_label") or ""),
+        keep_blank_lines=False,
+        trim_tail=False,
+        ensure_punctuation=False,
+    )
+    payload["question_text"] = normalize_vietnamese_ai_text(
+        str(payload.get("question_text") or ""),
+        keep_blank_lines=False,
+        trim_tail=False,
+        ensure_punctuation=False,
+    )
+    payload["suggested_answer_points"] = normalize_vietnamese_text_list(payload.get("suggested_answer_points") or [])
+    return payload
+
+
+def _is_duplicate_question(candidate: str, asked_questions: list[str]) -> bool:
+    normalized_candidate = normalize_search_text(candidate)
+    if not normalized_candidate:
+        return True
+
+    candidate_tokens = {token for token in normalized_candidate.split() if len(token) > 2}
+    for asked in asked_questions:
+        normalized_asked = normalize_search_text(asked)
+        if not normalized_asked:
+            continue
+
+        if normalized_candidate == normalized_asked:
+            return True
+        if normalized_candidate in normalized_asked or normalized_asked in normalized_candidate:
+            return True
+
+        asked_tokens = {token for token in normalized_asked.split() if len(token) > 2}
+        if not candidate_tokens or not asked_tokens:
+            continue
+        overlap = len(candidate_tokens & asked_tokens) / max(len(candidate_tokens | asked_tokens), 1)
+        if overlap >= 0.72:
+            return True
+
+    return False
+
+
+def _build_dynamic_unasked_question(current_payload: dict, interview_context: dict, transcript: list[dict]) -> dict:
+    related_job = interview_context.get("related_job") or {}
+    candidate = interview_context.get("candidate_profile") or {}
+    career_report = interview_context.get("career_report") or {}
+    job_title = related_job.get("title") or career_report.get("nghe_de_xuat") or "vị trí mục tiêu"
+    skills = (
+        (current_payload.get("focus_skills") or [])
+        + (related_job.get("skills") or [])
+        + (candidate.get("parsed_skills") or [])
+    )
+    primary_skill = next((str(skill).strip() for skill in skills if str(skill).strip()), "kỹ năng trọng tâm")
+    asked_count = len(_asked_question_texts(transcript))
+
+    dynamic_prompts = [
+        f"Hãy chọn một dự án hoặc bài tập cụ thể liên quan tới {primary_skill}; bạn đã gặp vấn đề gì, xử lý ra sao và kết quả đo được là gì?",
+        f"Nếu nhận một task mới cho {job_title} có liên quan tới {primary_skill}, bạn sẽ làm rõ yêu cầu, chia nhỏ công việc và kiểm chứng kết quả theo các bước nào?",
+        f"Khi kiến thức về {primary_skill} chưa đủ sâu, bạn sẽ học nhanh, hỏi hỗ trợ và giảm rủi ro trong công việc thực tế như thế nào?",
+        f"Hãy kể một lần bạn phải sửa lỗi hoặc cải thiện chất lượng sản phẩm; bạn phát hiện nguyên nhân, ưu tiên giải pháp và xác nhận thành công ra sao?",
+    ]
+    question_text = dynamic_prompts[asked_count % len(dynamic_prompts)]
+
+    payload = {
+        "question_type": "dynamic_follow_up",
+        "interview_stage_label": "Đào sâu mở rộng",
+        "focus_skills": [primary_skill] if primary_skill else [],
+        "suggested_answer_points": [
+            "Nêu bối cảnh cụ thể",
+            "Giải thích hành động của bạn",
+            "Nêu kết quả, số liệu hoặc bài học",
+        ],
+        "question_text": question_text,
+    }
+
+    for key in ("question_index", "max_questions", "selection_strategy"):
+        if key in current_payload:
+            payload[key] = current_payload[key]
+
+    payload["selection_strategy"] = "dynamic_unasked_guard"
+    return payload
 
 
 def _calculate_report_averages(evaluation_items: list[dict]) -> dict:

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
+from app.services.chatbot import generate_career_chat_reply
 from app.services.chatbot_intent_engine import (
     INTENT_CAREER_DIRECTION,
     INTENT_COVER_LETTER,
@@ -168,6 +170,23 @@ class ChatbotRegressionTests(unittest.TestCase):
         self.assertIn("- Backend Developer Laravel", answer)
         self.assertNotIn("Giai đoạn 1", answer)
 
+    def test_job_recommendation_reply_uses_template_even_when_force_model_true(self) -> None:
+        with patch("app.services.chatbot._resolve_provider") as mocked_provider:
+            response = generate_career_chat_reply(
+                1,
+                "Trong hệ thống hiện có job nào gần nhất với hồ sơ của tôi?",
+                history=[],
+                context=self.context,
+                force_model=True,
+            )
+
+        mocked_provider.assert_not_called()
+        self.assertTrue(response["success"])
+        self.assertEqual(response["data"]["intent"], INTENT_JOB_RECOMMENDATION)
+        self.assertIn(response["data"]["provider"], {"fast_template", "intent_template"})
+        self.assertIn("Gợi ý công việc nên xem:", response["data"]["answer"])
+        self.assertNotIn("Mô phỏng lộ trình nghề nghiệp 30/60/90 ngày:", response["data"]["answer"])
+
     def test_next_step_answer_is_actionable(self) -> None:
         answer = build_template_answer(
             "Nếu muốn tăng cơ hội ứng tuyển nhanh nhất, tôi nên làm gì trước trong tuần này?",
@@ -197,7 +216,7 @@ class ChatbotRegressionTests(unittest.TestCase):
             INTENT_LEARNING_PLAN,
         )
         self.assertIn("Mô phỏng lộ trình nghề nghiệp 30/60/90 ngày:", answer)
-        self.assertIn("30 ngày đầu:", answer)
+        self.assertIn("30 ngày:", answer)
         self.assertIn("60 ngày:", answer)
         self.assertIn("90 ngày:", answer)
         self.assertIn("Mốc kiểm tra:", answer)

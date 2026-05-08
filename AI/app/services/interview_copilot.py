@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from app.core.config import settings
 from app.services.skill_catalog import normalize_search_text
+from app.services.vietnamese_text import (
+    normalize_vietnamese_ai_text,
+    normalize_vietnamese_text_list,
+)
 
 
 MODEL_VERSION = f"interview_copilot_v1.0::rule_based::{settings.local_llm_model}"
@@ -19,11 +23,14 @@ def generate_interview_copilot(ung_tuyen_id: int, application_context: dict | No
 
     data = {
         "ung_tuyen_id": ung_tuyen_id,
-        "candidate_summary": _candidate_summary(context, matched_skills, missing_skills),
-        "focus_areas": _focus_areas(job, candidate, matched_skills, missing_skills),
-        "questions": _question_groups(job, candidate, matched_skills, missing_skills),
-        "rubric": _rubric(job, missing_skills),
-        "red_flags": _red_flags(candidate, missing_skills),
+        "candidate_summary": normalize_vietnamese_ai_text(
+            _candidate_summary(context, matched_skills, missing_skills),
+            ensure_punctuation=True,
+        ),
+        "focus_areas": normalize_vietnamese_text_list(_focus_areas(job, candidate, matched_skills, missing_skills)),
+        "questions": _normalize_question_groups(_question_groups(job, candidate, matched_skills, missing_skills)),
+        "rubric": _normalize_rubric(_rubric(job, missing_skills)),
+        "red_flags": normalize_vietnamese_text_list(_red_flags(candidate, missing_skills)),
         "model_version": MODEL_VERSION,
     }
 
@@ -53,11 +60,16 @@ def evaluate_interview_copilot(
 
     data = {
         "ung_tuyen_id": ung_tuyen_id,
-        "summary": _evaluation_summary(context, note_text, average),
-        "strengths": _evaluation_strengths(note_text, scores, average),
-        "concerns": _evaluation_concerns(note_text, scores, average),
-        "next_steps": _evaluation_next_steps(average, decision),
-        "recommendation": decision or _recommendation_from_average(average),
+        "summary": normalize_vietnamese_ai_text(_evaluation_summary(context, note_text, average), ensure_punctuation=True),
+        "strengths": normalize_vietnamese_text_list(_evaluation_strengths(note_text, scores, average)),
+        "concerns": normalize_vietnamese_text_list(_evaluation_concerns(note_text, scores, average)),
+        "next_steps": normalize_vietnamese_text_list(_evaluation_next_steps(average, decision)),
+        "recommendation": normalize_vietnamese_ai_text(
+            decision or _recommendation_from_average(average),
+            keep_blank_lines=False,
+            trim_tail=False,
+            ensure_punctuation=True,
+        ),
         "model_version": MODEL_VERSION,
     }
 
@@ -136,6 +148,24 @@ def _question_groups(job: dict, candidate: dict, matched_skills: list[str], miss
     return questions
 
 
+def _normalize_question_groups(groups: list[dict]) -> list[dict]:
+    normalized_groups = []
+    for group in groups:
+        normalized_groups.append(
+            {
+                **group,
+                "group": normalize_vietnamese_ai_text(
+                    str(group.get("group") or ""),
+                    keep_blank_lines=False,
+                    trim_tail=False,
+                    ensure_punctuation=False,
+                ),
+                "items": normalize_vietnamese_text_list(group.get("items") or []),
+            }
+        )
+    return normalized_groups
+
+
 def _rubric(job: dict, missing_skills: list[str]) -> list[dict]:
     return [
         {
@@ -159,6 +189,29 @@ def _rubric(job: dict, missing_skills: list[str]) -> list[dict]:
             "expectation": "Trả lời mạch lạc, hợp tác tốt, kỳ vọng phù hợp với team và vai trò.",
         },
     ]
+
+
+def _normalize_rubric(rubric: list[dict]) -> list[dict]:
+    normalized = []
+    for item in rubric:
+        normalized.append(
+            {
+                **item,
+                "criterion": normalize_vietnamese_ai_text(
+                    str(item.get("criterion") or ""),
+                    keep_blank_lines=False,
+                    trim_tail=False,
+                    ensure_punctuation=False,
+                ),
+                "expectation": normalize_vietnamese_ai_text(
+                    str(item.get("expectation") or ""),
+                    keep_blank_lines=False,
+                    trim_tail=False,
+                    ensure_punctuation=True,
+                ),
+            }
+        )
+    return normalized
 
 
 def _red_flags(candidate: dict, missing_skills: list[str]) -> list[str]:

@@ -422,7 +422,7 @@ class NguoiDung extends Authenticatable implements MustVerifyEmail
             ->first();
 
         if ($membership?->pivot?->vai_tro_noi_bo) {
-            return $membership->pivot->vai_tro_noi_bo;
+            return CongTy::normalizeVaiTroNoiBo($membership->pivot->vai_tro_noi_bo);
         }
 
         if ($this->congTy()->whereKey($company->id)->exists()) {
@@ -434,16 +434,15 @@ class NguoiDung extends Authenticatable implements MustVerifyEmail
 
     public function coVaiTroNoiBoCongTy(array|string $roles, ?CongTy $congTy = null): bool
     {
-        $company = $congTy ?? $this->congTyHienTai();
         $currentRole = $this->layVaiTroNoiBoCongTy($congTy);
-        $allowedRoles = is_array($roles) ? $roles : [$roles];
-        $baseRole = CongTy::vaiTroGocNoiBo($currentRole, $company);
+        $allowedRoles = collect(is_array($roles) ? $roles : [$roles])
+            ->map(fn (string $role) => CongTy::normalizeVaiTroNoiBo($role))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
 
-        return $currentRole !== null
-            && (
-                in_array($currentRole, $allowedRoles, true)
-                || ($baseRole !== null && in_array($baseRole, $allowedRoles, true))
-            );
+        return $currentRole !== null && in_array($currentRole, $allowedRoles, true);
     }
 
     public function layQuyenNoiBoCongTy(?CongTy $congTy = null): array
@@ -474,7 +473,7 @@ class NguoiDung extends Authenticatable implements MustVerifyEmail
             return CongTy::normalizeHrPermissions($permissions);
         }
 
-        return CongTy::normalizeHrPermissions(CongTy::defaultHrPermissionsForRole($role));
+        return CongTy::normalizeHrPermissions(CongTy::defaultHrPermissionsForRole($role, $company));
     }
 
     public function coQuyenNoiBoCongTy(array|string $permissions, ?CongTy $congTy = null): bool

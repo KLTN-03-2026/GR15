@@ -2,6 +2,7 @@
 
 namespace App\Services\Ai;
 
+use App\Support\ApiErrorMessage;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
@@ -187,23 +188,87 @@ class AiClientService
                 ->post($this->baseUrl . $uri, $payload)
                 ->throw();
         } catch (ConnectionException $e) {
-            $exception = new RuntimeException('Không thể kết nối tới AI service.', 0, $e);
+            $exception = new RuntimeException(
+                ApiErrorMessage::fromThrowable($e, 503, 'Không thể kết nối tới AI service.'),
+                0,
+                $e
+            );
             $this->usageLogger->logError($feature, $uri, $payload, $exception, $startedAt);
             throw $exception;
         } catch (RequestException $e) {
-            $message = $e->response?->json('message')
+            $message = $this->resolveAiErrorMessage($e)
+                ?? $e->response?->json('message')
                 ?? $e->response?->body()
                 ?? 'AI service trả về lỗi.';
 
-            $exception = new RuntimeException((string) $message, 0, $e);
+            $exception = new RuntimeException(
+                ApiErrorMessage::fromRawMessage((string) $message, $e->response?->status(), 'AI service trả về lỗi.'),
+                0,
+                $e
+            );
             $this->usageLogger->logError($feature, $uri, $payload, $exception, $startedAt, $e->response?->status());
             throw $exception;
         }
 
         $json = $response->json();
+        if (is_array($json) && ($json['success'] ?? true) === false) {
+            $exception = new RuntimeException(
+                ApiErrorMessage::fromRawMessage(
+                    (string) ($json['error'] ?? $json['message'] ?? 'AI service trả về lỗi.'),
+                    $response->status(),
+                    'AI service trả về lỗi.'
+                )
+            );
+            $this->usageLogger->logError($feature, $uri, $payload, $exception, $startedAt, $response->status());
+            throw $exception;
+        }
+
         $this->usageLogger->logSuccess($feature, $uri, $payload, $json, $startedAt, $response);
 
         return $json;
+    }
+
+    private function resolveAiErrorMessage(RequestException $exception): ?string
+    {
+        $detail = $exception->response?->json('detail');
+        if (!is_array($detail)) {
+            return null;
+        }
+
+        $messages = [];
+        foreach ($detail as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $field = collect($item['loc'] ?? [])
+                ->reject(static fn ($part) => $part === 'body')
+                ->last();
+            $type = (string) ($item['type'] ?? '');
+            $context = is_array($item['ctx'] ?? null) ? $item['ctx'] : [];
+
+            if ($field === 'max_questions' && $type === 'greater_than_equal') {
+                $messages[] = 'Số câu hỏi phỏng vấn tối thiểu là ' . (int) ($context['ge'] ?? 2) . ' câu.';
+                continue;
+            }
+
+            if ($field === 'max_questions' && $type === 'less_than_equal') {
+                $messages[] = 'Số câu hỏi phỏng vấn tối đa là ' . (int) ($context['le'] ?? 7) . ' câu.';
+                continue;
+            }
+
+            if (isset($item['msg'])) {
+                $messages[] = ApiErrorMessage::fromRawMessage(
+                    (string) $item['msg'],
+                    422,
+                    'Dữ liệu gửi lên chưa hợp lệ. Vui lòng kiểm tra lại.'
+                );
+            }
+        }
+
+        $messages = array_values(array_unique(array_filter($messages)));
+
+        return $messages === [] ? null : implode("\n", $messages);
     }
 
     private function stream(string $uri, array $payload, string $feature, ?callable $onEvent = null): void
@@ -240,7 +305,13 @@ class AiClientService
             $curl = curl_init($url);
 
             if ($curl === false) {
-                throw new RuntimeException('Không thể khởi tạo kết nối stream tới AI service.');
+                throw new RuntimeException(
+                    ApiErrorMessage::fromRawMessage(
+                        'Không thể khởi tạo kết nối stream tới AI service.',
+                        503,
+                        'Không thể khởi tạo kết nối stream tới AI service.'
+                    )
+                );
             }
 
             curl_setopt_array($curl, [
@@ -286,7 +357,7 @@ class AiClientService
             if ($result === false) {
                 $error = curl_error($curl) ?: 'Không thể stream dữ liệu từ AI service.';
                 curl_close($curl);
-                throw new RuntimeException($error);
+                throw new RuntimeException(ApiErrorMessage::fromRawMessage($error, 503, 'Không thể stream dữ liệu từ AI service.'));
             }
 
             $remaining = trim(str_replace("\r", '', $buffer));
@@ -309,7 +380,13 @@ class AiClientService
             curl_close($curl);
 
             if ($statusCode >= 400) {
-                throw new RuntimeException('AI service trả về lỗi khi stream hội thoại.');
+                throw new RuntimeException(
+                    ApiErrorMessage::fromRawMessage(
+                        'AI service trả về lỗi khi stream hội thoại.',
+                        $statusCode,
+                        'AI service trả về lỗi khi stream hội thoại.'
+                    )
+                );
             }
 
             $this->usageLogger->logSuccess($feature, $uri, $payload, $lastPayload, $startedAt);

@@ -4,6 +4,7 @@
  */
 
 import { clearAuthStorage, getAuthToken } from '@/utils/authStorage'
+import { normalizeApiErrorObject } from '@/utils/apiErrors'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL
 
@@ -12,6 +13,9 @@ const buildHeaders = (options = {}) => {
   const headers = {
     ...options.headers,
   }
+
+  headers.Accept = headers.Accept || 'application/json'
+  headers['X-Requested-With'] = headers['X-Requested-With'] || 'XMLHttpRequest'
 
   if (!isFormData) {
     headers['Content-Type'] = headers['Content-Type'] || 'application/json'
@@ -52,11 +56,15 @@ const apiCall = async (endpoint, options = {}) => {
     } else {
       const text = await response.text()
       if (!response.ok) {
-        throw {
+        throw normalizeApiErrorObject({
           status: response.status,
-          message: `API Error: ${response.status} ${response.statusText}`,
-          details: text.substring(0, 200)
-        }
+          message: `Lỗi ${response.status}: ${response.statusText}`,
+          details: text.substring(0, 400),
+          data: {
+            message: `Lỗi ${response.status}: ${response.statusText}`,
+            details: text.substring(0, 400),
+          },
+        }, 'Máy chủ trả về phản hồi không thể xử lý. Vui lòng thử lại sau.')
       }
       return { data: {} }
     }
@@ -65,11 +73,12 @@ const apiCall = async (endpoint, options = {}) => {
       if (response.status === 401) {
         handleUnauthorized()
       }
-      throw {
+      throw normalizeApiErrorObject({
         status: response.status,
         message: data.message || `Lỗi ${response.status}: ${response.statusText}`,
         code: data.code || null,
         errors: data.errors || null,
+        details: data.details || null,
         requiredRoles: data.required_roles || null,
         requiredRoleLabels: data.required_role_labels || null,
         currentRole: data.current_role || null,
@@ -79,18 +88,20 @@ const apiCall = async (endpoint, options = {}) => {
         currentCompanyRole: data.current_company_role || null,
         currentCompanyRoleLabel: data.current_company_role_label || null,
         data
-      }
+      }, response.status >= 500
+        ? 'Hệ thống gặp lỗi khi xử lý yêu cầu. Vui lòng thử lại sau.'
+        : 'Yêu cầu không thể thực hiện. Vui lòng kiểm tra lại dữ liệu và thử lại.')
     }
 
     return data
   } catch (err) {
     // Nếu lỗi network
     if (err instanceof TypeError) {
-      throw {
+      throw normalizeApiErrorObject({
         status: 0,
-        message: 'Không thể kết nối đến API. Kiểm tra:\n1. Backend đang chạy tại ' + API_BASE_URL + '\n2. CORS được bật\n3. Network connection',
+        message: err.message,
         error: err.message
-      }
+      }, 'Không thể kết nối đến API. Vui lòng kiểm tra backend và kết nối mạng.')
     }
     throw err
   }
@@ -109,7 +120,7 @@ const blobApiCall = async (endpoint, options = {}) => {
   const headers = buildHeaders({
     ...options,
     headers: {
-      Accept: 'application/pdf',
+      Accept: 'application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,*/*',
       ...(options.headers || {}),
     },
   })
@@ -132,11 +143,22 @@ const blobApiCall = async (endpoint, options = {}) => {
       if (contentType.includes('application/json')) {
         const data = await response.json()
         message = data?.message || message
-        throw { status: response.status, message, data }
+        throw normalizeApiErrorObject({
+          status: response.status,
+          message,
+          details: data?.details || null,
+          data,
+        }, response.status >= 500
+          ? 'Không thể tải file từ máy chủ. Vui lòng thử lại sau.'
+          : 'Không thể tải file theo yêu cầu.')
       }
 
       const text = await response.text()
-      throw { status: response.status, message: text || message }
+      throw normalizeApiErrorObject({
+        status: response.status,
+        message: text || message,
+        details: text || null,
+      }, 'Không thể tải file từ máy chủ. Vui lòng thử lại sau.')
     }
 
     return {
@@ -145,11 +167,11 @@ const blobApiCall = async (endpoint, options = {}) => {
     }
   } catch (err) {
     if (err instanceof TypeError) {
-      throw {
+      throw normalizeApiErrorObject({
         status: 0,
-        message: 'Không thể tải file từ API. Kiểm tra backend và kết nối mạng.',
+        message: err.message,
         error: err.message,
-      }
+      }, 'Không thể tải file từ API. Vui lòng kiểm tra backend và kết nối mạng.')
     }
     throw err
   }
@@ -176,29 +198,33 @@ const streamApiCall = async (endpoint, options = {}, handlers = {}) => {
       if (contentType.includes('application/json')) {
         const data = await response.json()
         message = data?.message || message
-        throw {
+        throw normalizeApiErrorObject({
           status: response.status,
           message,
           code: data?.code || null,
           errors: data?.errors || null,
           data,
-        }
+        }, response.status >= 500
+          ? 'Không thể xử lý yêu cầu stream từ máy chủ. Vui lòng thử lại sau.'
+          : 'Yêu cầu stream không thể thực hiện.')
       } else {
         const text = await response.text()
         message = text || message
       }
 
-      throw {
+      throw normalizeApiErrorObject({
         status: response.status,
         message,
-      }
+      }, response.status >= 500
+        ? 'Không thể xử lý yêu cầu stream từ máy chủ. Vui lòng thử lại sau.'
+        : 'Yêu cầu stream không thể thực hiện.')
     }
 
     if (!response.body) {
-      throw {
+      throw normalizeApiErrorObject({
         status: 0,
         message: 'Trình duyệt không hỗ trợ stream response.',
-      }
+      }, 'Trình duyệt hiện tại không hỗ trợ phản hồi stream.')
     }
 
     const reader = response.body.getReader()
@@ -264,11 +290,11 @@ const streamApiCall = async (endpoint, options = {}, handlers = {}) => {
     return true
   } catch (err) {
     if (err instanceof TypeError) {
-      throw {
+      throw normalizeApiErrorObject({
         status: 0,
-        message: 'Không thể kết nối đến API stream. Vui lòng kiểm tra backend hoặc network.',
+        message: err.message,
         error: err.message,
-      }
+      }, 'Không thể kết nối đến API stream. Vui lòng kiểm tra backend hoặc kết nối mạng.')
     }
 
     throw err
@@ -1219,23 +1245,6 @@ export const employerCompanyService = {
       method: 'GET',
     }),
 
-  createInternalRole: (payload) =>
-    apiCall('/nha-tuyen-dung/cong-ty/vai-tro-noi-bo', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    }),
-
-  updateInternalRole: (roleId, payload) =>
-    apiCall(`/nha-tuyen-dung/cong-ty/vai-tro-noi-bo/${roleId}`, {
-      method: 'PATCH',
-      body: JSON.stringify(payload),
-    }),
-
-  deleteInternalRole: (roleId) =>
-    apiCall(`/nha-tuyen-dung/cong-ty/vai-tro-noi-bo/${roleId}`, {
-      method: 'DELETE',
-    }),
-
   getHrAuditLogs: (options = {}) => {
     const params = new URLSearchParams()
     if (options.page) params.append('page', options.page)
@@ -1302,6 +1311,25 @@ export const employerBillingService = {
 
   getTopUp: (maGiaoDichNoiBo) =>
     apiCall(`/nha-tuyen-dung/vi/nap-tien/${maGiaoDichNoiBo}`, {
+      method: 'GET',
+    }),
+
+  getPayments: (options = {}) => {
+    const params = new URLSearchParams()
+
+    if (options.page) params.append('page', options.page)
+    if (options.per_page) params.append('per_page', options.per_page)
+    if (options.loai_giao_dich) params.append('loai_giao_dich', options.loai_giao_dich)
+    if (options.trang_thai) params.append('trang_thai', options.trang_thai)
+
+    const query = params.toString()
+    return apiCall(`/nha-tuyen-dung/payments${query ? `?${query}` : ''}`, {
+      method: 'GET',
+    })
+  },
+
+  getPaymentDetail: (maGiaoDichNoiBo) =>
+    apiCall(`/nha-tuyen-dung/payments/${maGiaoDichNoiBo}`, {
       method: 'GET',
     }),
 }
@@ -1704,6 +1732,11 @@ export const profileService = {
   getProfileById: (id) =>
     apiCall(`/ung-vien/ho-sos/${id}`, {
       method: 'GET'
+    }),
+
+  viewProfileCv: (id) =>
+    blobApiCall(`/ung-vien/ho-sos/${id}/cv`, {
+      method: 'GET',
     }),
 
   createProfile: (data) =>

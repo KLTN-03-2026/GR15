@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { employerBillingService } from '@/services/api'
 import { useNotify } from '@/composables/useNotify'
 import {
@@ -173,6 +173,15 @@ const changePage = async (page) => {
   await loadBillingData(page, false)
 }
 
+const buildTopUpReturnStorageKey = () => {
+  const topupState = typeof route.query.topup === 'string' ? route.query.topup : ''
+  const orderId = typeof route.query.orderId === 'string' ? route.query.orderId : ''
+
+  if (!topupState && !orderId) return ''
+
+  return `employer-topup-return:${topupState || 'unknown'}:${orderId || 'no-order'}`
+}
+
 const maybeHandleTopUpReturn = async () => {
   const topupState = typeof route.query.topup === 'string' ? route.query.topup : ''
   const orderId = typeof route.query.orderId === 'string' ? route.query.orderId : ''
@@ -180,7 +189,14 @@ const maybeHandleTopUpReturn = async () => {
     ? route.query.message
     : ''
 
-  if (!topupState && !orderId) return
+  if (!topupState && !orderId) return false
+
+  const handledKey = buildTopUpReturnStorageKey()
+  const alreadyHandled = handledKey && window.sessionStorage.getItem(handledKey) === '1'
+
+  if (alreadyHandled) {
+    return false
+  }
 
   if (orderId) {
     try {
@@ -200,7 +216,12 @@ const maybeHandleTopUpReturn = async () => {
     notify.info(message || 'Giao dịch đang chờ đối soát từ cổng thanh toán.')
   }
 
-  await router.replace({ path: '/employer/billing' })
+  if (handledKey) {
+    window.sessionStorage.setItem(handledKey, '1')
+  }
+
+  await router.push({ path: '/employer/billing' })
+  return true
 }
 
 const createTopUp = async () => {
@@ -235,9 +256,9 @@ const createTopUp = async () => {
 }
 
 onMounted(async () => {
-  await maybeHandleTopUpReturn()
+  const handledReturn = await maybeHandleTopUpReturn()
 
-  if (!route.query.topup && !route.query.orderId) {
+  if (!handledReturn) {
     await loadBillingData(1)
   }
 })
@@ -358,6 +379,14 @@ onMounted(async () => {
             <p class="mt-1">Số tiền: <span class="font-semibold">{{ formatCurrency(paymentDraft.so_tien) }}</span></p>
             <p class="mt-1">Cổng thanh toán: <span class="font-semibold">{{ getGatewayLabel(paymentDraft.gateway) }}</span></p>
           </div>
+
+          <RouterLink
+            :to="{ name: 'EmployerPayments' }"
+            class="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 px-5 py-3.5 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
+          >
+            <span class="material-symbols-outlined text-[18px]">receipt_long</span>
+            Xem lịch sử thanh toán
+          </RouterLink>
         </section>
 
         <section class="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
@@ -416,15 +445,25 @@ onMounted(async () => {
             </p>
           </div>
 
-          <button
-            type="button"
-            class="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
-            :disabled="refreshing"
-            @click="loadBillingData(pagination.current_page, false)"
-          >
-            <span class="material-symbols-outlined">{{ refreshing ? 'progress_activity' : 'refresh' }}</span>
-            Làm mới
-          </button>
+          <div class="flex flex-wrap items-center gap-3">
+            <RouterLink
+              :to="{ name: 'EmployerPayments' }"
+              class="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+            >
+              <span class="material-symbols-outlined">receipt_long</span>
+              Xem lịch sử thanh toán
+            </RouterLink>
+
+            <button
+              type="button"
+              class="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+              :disabled="refreshing"
+              @click="loadBillingData(pagination.current_page, false)"
+            >
+              <span class="material-symbols-outlined">{{ refreshing ? 'progress_activity' : 'refresh' }}</span>
+              Làm mới
+            </button>
+          </div>
         </div>
 
         <div v-if="loading" class="mt-5 space-y-3">

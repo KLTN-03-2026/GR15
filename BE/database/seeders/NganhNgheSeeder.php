@@ -99,9 +99,12 @@ class NganhNgheSeeder extends Seeder
         $tongCon = 0;
 
         foreach ($danhMuc as $goc) {
-            $nganhGoc = NganhNghe::create([
+            $slugGoc = Str::slug($goc['ten_nganh']);
+            $nganhGoc = NganhNghe::updateOrCreate([
+                'slug' => $slugGoc,
+            ], [
                 'ten_nganh' => $goc['ten_nganh'],
-                'slug' => Str::slug($goc['ten_nganh']),
+                'slug' => $slugGoc,
                 'mo_ta' => $goc['mo_ta'],
                 'danh_muc_cha_id' => null,
                 'icon' => $goc['icon'],
@@ -110,9 +113,12 @@ class NganhNgheSeeder extends Seeder
             $tongGoc++;
 
             foreach ($goc['con'] as $con) {
-                NganhNghe::create([
+                $slugCon = Str::slug($con['ten_nganh']);
+                NganhNghe::updateOrCreate([
+                    'slug' => $slugCon,
+                ], [
                     'ten_nganh' => $con['ten_nganh'],
-                    'slug' => Str::slug($con['ten_nganh']),
+                    'slug' => $slugCon,
                     'mo_ta' => $con['mo_ta'],
                     'danh_muc_cha_id' => $nganhGoc->id,
                     'icon' => $con['icon'],
@@ -123,7 +129,9 @@ class NganhNgheSeeder extends Seeder
         }
 
         // Tạo 1 ngành bị ẩn (để test)
-        NganhNghe::create([
+        NganhNghe::updateOrCreate([
+            'slug' => 'nganh-test-an',
+        ], [
             'ten_nganh' => 'Ngành test (ẩn)',
             'slug' => 'nganh-test-an',
             'mo_ta' => 'Ngành nghề tạm ẩn để test.',

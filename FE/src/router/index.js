@@ -315,6 +315,24 @@ const routes = [
     meta: { layout: 'employer', requiresAuth: true, role: ROLE_EMPLOYER, employerPermission: 'billing' }
   },
   {
+    path: '/employer/payments',
+    name: 'EmployerPayments',
+    component: () => import('@/components/Employer/EmployerPaymentsPage.vue'),
+    meta: { layout: 'employer', requiresAuth: true, role: ROLE_EMPLOYER, employerPermission: 'billing' }
+  },
+  {
+    path: '/employer/payments/:maGiaoDichNoiBo',
+    name: 'EmployerPaymentDetail',
+    component: () => import('@/components/Employer/EmployerPaymentDetailPage.vue'),
+    meta: { layout: 'employer', requiresAuth: true, role: ROLE_EMPLOYER, employerPermission: 'billing' }
+  },
+  {
+    path: '/employer/billing/payment-result/:maGiaoDichNoiBo',
+    name: 'EmployerPaymentResult',
+    component: () => import('@/components/Employer/EmployerPaymentResultPage.vue'),
+    meta: { layout: 'employer', requiresAuth: true, role: ROLE_EMPLOYER, employerPermission: 'billing' }
+  },
+  {
     path: '/employer/company',
     name: 'EmployerCompany',
     component: () => import('@/components/Employer/EmployerCompanyPage.vue'),

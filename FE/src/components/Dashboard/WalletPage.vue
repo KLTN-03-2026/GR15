@@ -198,17 +198,51 @@ const changePage = async (page) => {
   await loadBillingData(page, false)
 }
 
+const buildTopUpReturnStorageKey = () => {
+  const topupState = typeof route.query.topup === 'string' ? route.query.topup : ''
+  const orderId = typeof route.query.orderId === 'string' ? route.query.orderId : ''
+
+  if (!topupState && !orderId) return ''
+
+  return `wallet-topup-return:${topupState || 'unknown'}:${orderId || 'no-order'}`
+}
+
 const maybeHandleTopUpReturn = async () => {
-  if (route.query.topup !== 'success') return
+  const topupState = typeof route.query.topup === 'string' ? route.query.topup : ''
+  const orderId = typeof route.query.orderId === 'string' ? route.query.orderId : ''
+  if (!topupState && !orderId) return false
+
+  const handledKey = buildTopUpReturnStorageKey()
+  const alreadyHandled = handledKey && window.sessionStorage.getItem(handledKey) === '1'
+
+  if (alreadyHandled) {
+    return false
+  }
 
   const message = typeof route.query.message === 'string' && route.query.message
     ? route.query.message
-    : 'Nạp tiền thành công.'
+    : (topupState === 'success'
+        ? 'Nạp tiền thành công.'
+        : topupState === 'pending'
+          ? 'Giao dịch đang chờ đối soát từ cổng thanh toán.'
+          : 'Giao dịch nạp tiền chưa thành công.')
 
   await loadBillingData(1)
-  notify.success(message)
 
-  await router.replace({ path: '/wallet' })
+  if (topupState === 'success') {
+    notify.success(message)
+  } else if (topupState === 'pending') {
+    notify.info(message)
+  } else {
+    notify.warning(message)
+  }
+
+  if (handledKey) {
+    window.sessionStorage.setItem(handledKey, '1')
+  }
+
+  await router.push({ path: '/wallet' })
+  return true
 }
 
 const createTopUp = async () => {
@@ -242,9 +276,9 @@ const createTopUp = async () => {
 }
 
 onMounted(async () => {
-  await maybeHandleTopUpReturn()
+  const handledReturn = await maybeHandleTopUpReturn()
 
-  if (route.query.topup !== 'success') {
+  if (!handledReturn) {
     await loadBillingData(1)
   }
 })
