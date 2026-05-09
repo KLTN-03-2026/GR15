@@ -1,3 +1,228 @@
+<template>
+  <section class="grid min-h-[calc(100vh-5rem)] grid-cols-1 overflow-hidden bg-[#f8f4f1] xl:h-[calc(100dvh-5rem)] xl:max-h-[calc(100dvh-5rem)] xl:min-h-[calc(100dvh-5rem)] xl:grid-cols-[400px_minmax(0,1fr)]">
+    <aside class="flex min-h-0 flex-col border-r border-slate-200 bg-white">
+      <div class="border-b border-slate-200 p-5">
+        <button
+          class="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#f45112] px-5 py-4 text-sm font-black text-white shadow-[0_16px_34px_rgba(244,81,18,0.22)] transition hover:bg-[#e6470e] disabled:cursor-not-allowed disabled:opacity-70"
+          :disabled="creatingChatSession || loadingBootstrap"
+          type="button"
+          @click="createChatSession"
+        >
+          <span class="material-symbols-outlined text-[20px]">add</span>
+          {{ creatingChatSession ? 'Đang tạo...' : 'Cuộc hội thoại mới' }}
+        </button>
+
+        <div class="mt-4 space-y-3 rounded-2xl border border-orange-100 bg-orange-50/50 p-4">
+          <label class="block">
+            <span class="mb-1.5 block text-xs font-black uppercase tracking-[0.18em] text-slate-500">Tiêu đề hội thoại</span>
+            <input
+              v-model="chatSessionForm.title"
+              class="w-full rounded-xl border border-orange-100 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-[#f45112]"
+              placeholder="Ví dụ: Tư vấn lộ trình Frontend"
+              type="text"
+            >
+          </label>
+          <label class="block">
+            <span class="mb-1.5 block text-xs font-black uppercase tracking-[0.18em] text-slate-500">Hồ sơ dùng để tư vấn</span>
+            <select
+              v-model="chatSessionForm.related_ho_so_id"
+              class="w-full rounded-xl border border-orange-100 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[#f45112]"
+            >
+              <option value="">Chọn hồ sơ công khai</option>
+              <option v-for="profile in availableProfiles" :key="profile.id" :value="String(profile.id)">
+                {{ profile.tieu_de_ho_so }}
+              </option>
+            </select>
+          </label>
+          <label class="block">
+            <span class="mb-1.5 block text-xs font-black uppercase tracking-[0.18em] text-slate-500">Tin tuyển dụng tham chiếu</span>
+            <select
+              v-model="chatSessionForm.related_tin_tuyen_dung_id"
+              class="w-full rounded-xl border border-orange-100 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[#f45112]"
+            >
+              <option value="">Không chọn tin tuyển dụng</option>
+              <option v-for="job in jobs" :key="job.id" :value="String(job.id)">
+                {{ job.tieu_de }}
+              </option>
+            </select>
+          </label>
+          <p v-if="!availableProfiles.length" class="text-xs leading-5 text-orange-700">
+            Bạn chưa có CV công khai. Hãy bật công khai ít nhất một hồ sơ trong mục CV của tôi.
+          </p>
+        </div>
+      </div>
+
+      <div class="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+        <div class="mb-3 flex items-center justify-between">
+          <p class="text-xs font-black uppercase tracking-[0.28em] text-slate-400">Gần đây</p>
+          <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-500">{{ chatSessions.length }}</span>
+        </div>
+
+        <div v-if="loadingChatSessions" class="space-y-3">
+          <div v-for="index in 5" :key="index" class="h-20 animate-pulse rounded-2xl bg-slate-100" />
+        </div>
+        <div v-else-if="!chatSessionOptions.length" class="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-5 text-sm leading-6 text-slate-500">
+          Chưa có cuộc hội thoại nào. Tạo cuộc hội thoại đầu tiên để bắt đầu cùng AI.
+        </div>
+        <div v-else class="space-y-1">
+          <button
+            v-for="session in chatSessionOptions"
+            :key="session.id"
+            type="button"
+            class="w-full rounded-2xl px-4 py-4 text-left transition"
+            :class="session.id === activeChatSessionId
+              ? 'border border-orange-200 bg-orange-50 text-[#f45112]'
+              : 'text-slate-700 hover:bg-slate-50'"
+            @click="selectChatSession(session.id)"
+          >
+            <div class="flex items-start justify-between gap-3">
+              <p class="min-w-0 truncate text-sm font-black">{{ session.title || 'Tư vấn nghề nghiệp' }}</p>
+              <span class="shrink-0 text-xs text-slate-400">{{ formatDateTime(session.updated_at) }}</span>
+            </div>
+            <p class="mt-2 line-clamp-2 text-sm italic leading-6 text-slate-500">"{{ chatPreview(session) }}"</p>
+          </button>
+        </div>
+      </div>
+
+      <div class="space-y-3 border-t border-slate-200 p-5">
+        <div class="rounded-xl bg-slate-50 px-4 py-3 text-sm font-medium text-slate-500">
+          <span class="material-symbols-outlined mr-2 align-[-4px] text-[18px]">info</span>
+          Hạn mức AI: {{ chatAiQuotaText }}
+          <p class="mt-2 text-xs leading-5 text-slate-500">{{ chatBillingNote }}</p>
+          <p class="mt-1 text-xs leading-5 text-slate-400">{{ chatUsageHint }}</p>
+          <p v-if="!hasIncludedChatQuota && chatMessagePrice > 0" class="mt-1 text-xs font-bold leading-5 text-slate-500">
+            Ví khả dụng: {{ formatCurrency(walletAvailable) }}
+          </p>
+        </div>
+        <div class="rounded-xl bg-slate-50 px-4 py-3 text-sm font-medium text-slate-500">
+          <span class="material-symbols-outlined mr-2 align-[-4px] text-[18px]">bolt</span>
+          Stream: {{ streamEnabled ? 'đang bật' : 'đang tắt' }}
+        </div>
+      </div>
+    </aside>
+
+    <main ref="chatPanel" class="flex min-h-0 flex-col xl:h-full">
+      <header class="flex h-20 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-8">
+        <div class="inline-flex rounded-2xl bg-slate-100 p-1">
+          <span class="rounded-xl bg-white px-5 py-3 text-sm font-black text-[#f45112] shadow-sm">Tư vấn lộ trình</span>
+          <RouterLink
+            :to="{ name: 'AICenterMockInterview' }"
+            class="rounded-xl px-5 py-3 text-sm font-semibold text-slate-500 transition hover:text-slate-900"
+          >
+            Phỏng vấn giả lập
+          </RouterLink>
+        </div>
+        <div class="flex items-center gap-3">
+          <span class="inline-flex h-2.5 w-2.5 rounded-full bg-emerald-400"></span>
+          <span class="text-xs font-bold uppercase tracking-[0.28em] text-slate-500">AI Agent Online</span>
+        </div>
+      </header>
+
+      <div ref="chatMessagesContainer" class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-8 py-7">
+        <div v-if="loadingChatMessages" class="space-y-5">
+          <div v-for="index in 4" :key="index" class="h-24 animate-pulse rounded-[24px] bg-white" />
+        </div>
+        <div v-else-if="!activeChatSessionId" class="flex h-full items-center justify-center text-center text-sm leading-7 text-slate-500">
+          Chọn một cuộc hội thoại gần đây hoặc tạo cuộc hội thoại mới để AI bắt đầu tư vấn trên hồ sơ của bạn.
+        </div>
+        <div v-else-if="!hasChatMessages" class="flex h-full items-center justify-center text-center text-sm leading-7 text-slate-500">
+          Cuộc hội thoại này chưa có tin nhắn. Hãy hỏi AI về job gần nhất, kỹ năng còn thiếu hoặc cách cải thiện CV.
+        </div>
+        <div v-else class="space-y-8">
+          <article
+            v-for="message in chatMessages"
+            :key="message.id"
+            class="flex gap-5"
+            :class="message.role === 'user' ? 'justify-end' : 'justify-start'"
+          >
+            <div v-if="message.role === 'assistant'" class="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#f45112] text-white shadow-[0_12px_24px_rgba(244,81,18,0.2)]">
+              <span class="material-symbols-outlined">smart_toy</span>
+            </div>
+            <div class="max-w-[82%]">
+              <div class="mb-2 flex items-center gap-2" :class="message.role === 'user' ? 'justify-end' : ''">
+                <span class="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                  {{ message.role === 'user' ? 'Bạn' : 'SmartJob AI' }}
+                </span>
+              </div>
+              <div
+                class="rounded-[24px] px-7 py-5 text-base leading-8 shadow-sm"
+                :class="message.role === 'user'
+                  ? 'rounded-tr-none bg-[#f45112] text-white shadow-[0_18px_36px_rgba(244,81,18,0.22)]'
+                  : 'rounded-tl-none border border-slate-200 bg-white text-slate-900'"
+              >
+                <div
+                  v-if="message.role === 'assistant' && message.metadata?.streaming && !message.content"
+                  class="inline-flex items-center gap-2 text-slate-500"
+                >
+                  <span>Đang phân tích</span>
+                  <span class="inline-flex gap-1">
+                    <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-[#f45112]" />
+                    <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-[#f45112] [animation-delay:150ms]" />
+                    <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-[#f45112] [animation-delay:300ms]" />
+                  </span>
+                </div>
+                <p v-else class="whitespace-pre-wrap">{{ message.content }}</p>
+              </div>
+            </div>
+            <div v-if="message.role === 'user'" class="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-slate-200 text-slate-700">
+              <span class="material-symbols-outlined">person</span>
+            </div>
+          </article>
+        </div>
+      </div>
+
+      <footer class="shrink-0 border-t border-slate-200 bg-white px-10 py-6">
+        <div class="flex items-center gap-4 rounded-2xl bg-slate-100 px-6 py-4">
+          <textarea
+            ref="chatComposerInput"
+            v-model="chatMessageInput"
+            class="max-h-32 min-h-[44px] flex-1 resize-none bg-transparent text-base leading-7 text-slate-900 outline-none placeholder:text-slate-400"
+            placeholder="Nhập câu hỏi của bạn tại đây..."
+            @keydown.enter.exact.prevent="sendChatMessage"
+          />
+          <button
+            class="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-[#f45112] text-white shadow-[0_12px_24px_rgba(244,81,18,0.24)] transition hover:bg-[#e6470e] disabled:cursor-not-allowed disabled:opacity-50"
+            :disabled="!chatCanSend"
+            type="button"
+            @click="sendChatMessage"
+          >
+            <span class="material-symbols-outlined">{{ sendingChatMessage ? 'hourglass_top' : 'send' }}</span>
+          </button>
+        </div>
+        <div class="mt-4 flex flex-wrap items-center justify-between gap-3">
+          <div class="flex flex-wrap gap-4 text-sm font-medium text-slate-500">
+            <button type="button" class="inline-flex items-center gap-1 hover:text-[#f45112]" @click="chatMessageInput = 'Trong hệ thống hiện có job nào gần nhất với hồ sơ của tôi?'">
+              <span class="material-symbols-outlined text-[18px]">attach_file</span>
+              Gợi ý job
+            </button>
+            <button type="button" class="inline-flex items-center gap-1 hover:text-[#f45112]" @click="chatMessageInput = 'Tôi đang thiếu những kỹ năng nào để phù hợp hơn với vị trí này?'">
+              <span class="material-symbols-outlined text-[18px]">mic</span>
+              Kỹ năng thiếu
+            </button>
+            <label class="inline-flex items-center gap-2">
+              <input v-model="streamEnabled" class="accent-[#f45112]" type="checkbox">
+              Stream SSE
+            </label>
+          </div>
+          <div class="flex gap-3">
+            <RouterLink to="/matched-jobs" class="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50">
+              Việc phù hợp
+            </RouterLink>
+            <button
+              class="rounded-xl bg-slate-950 px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
+              :disabled="!activeChatSessionId"
+              type="button"
+              @click="deleteChatSession"
+            >
+              Xóa phiên
+            </button>
+          </div>
+        </div>
+      </footer>
+    </main>
+  </section>
+</template>
+
 <script setup>
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
@@ -168,6 +393,8 @@ const getChatProviderLabel = (provider) => {
       return 'Sinh bởi Ollama'
     case 'openai':
       return 'Sinh bởi OpenAI'
+    case 'gemini':
+      return 'Sinh bởi Gemini'
     case 'intent_template':
       return 'Template theo ý định'
     case 'fast_template':
@@ -193,6 +420,8 @@ const getChatProviderTone = (provider) => {
       return 'bg-emerald-500/15 text-emerald-200'
     case 'openai':
       return 'bg-cyan-500/15 text-cyan-200'
+    case 'gemini':
+      return 'bg-violet-500/15 text-violet-200'
     case 'intent_template':
     case 'fast_template':
     case 'template':
@@ -546,228 +775,3 @@ watch(
   }
 )
 </script>
-
-<template>
-  <section class="grid min-h-[calc(100vh-5rem)] grid-cols-1 overflow-hidden bg-[#f8f4f1] xl:h-[calc(100dvh-5rem)] xl:max-h-[calc(100dvh-5rem)] xl:min-h-[calc(100dvh-5rem)] xl:grid-cols-[400px_minmax(0,1fr)]">
-    <aside class="flex min-h-0 flex-col border-r border-slate-200 bg-white">
-      <div class="border-b border-slate-200 p-5">
-        <button
-          class="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#f45112] px-5 py-4 text-sm font-black text-white shadow-[0_16px_34px_rgba(244,81,18,0.22)] transition hover:bg-[#e6470e] disabled:cursor-not-allowed disabled:opacity-70"
-          :disabled="creatingChatSession || loadingBootstrap"
-          type="button"
-          @click="createChatSession"
-        >
-          <span class="material-symbols-outlined text-[20px]">add</span>
-          {{ creatingChatSession ? 'Đang tạo...' : 'Cuộc hội thoại mới' }}
-        </button>
-
-        <div class="mt-4 space-y-3 rounded-2xl border border-orange-100 bg-orange-50/50 p-4">
-          <label class="block">
-            <span class="mb-1.5 block text-xs font-black uppercase tracking-[0.18em] text-slate-500">Tiêu đề hội thoại</span>
-            <input
-              v-model="chatSessionForm.title"
-              class="w-full rounded-xl border border-orange-100 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-[#f45112]"
-              placeholder="Ví dụ: Tư vấn lộ trình Frontend"
-              type="text"
-            >
-          </label>
-          <label class="block">
-            <span class="mb-1.5 block text-xs font-black uppercase tracking-[0.18em] text-slate-500">Hồ sơ dùng để tư vấn</span>
-            <select
-              v-model="chatSessionForm.related_ho_so_id"
-              class="w-full rounded-xl border border-orange-100 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[#f45112]"
-            >
-              <option value="">Chọn hồ sơ công khai</option>
-              <option v-for="profile in availableProfiles" :key="profile.id" :value="String(profile.id)">
-                {{ profile.tieu_de_ho_so }}
-              </option>
-            </select>
-          </label>
-          <label class="block">
-            <span class="mb-1.5 block text-xs font-black uppercase tracking-[0.18em] text-slate-500">Tin tuyển dụng tham chiếu</span>
-            <select
-              v-model="chatSessionForm.related_tin_tuyen_dung_id"
-              class="w-full rounded-xl border border-orange-100 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[#f45112]"
-            >
-              <option value="">Không chọn tin tuyển dụng</option>
-              <option v-for="job in jobs" :key="job.id" :value="String(job.id)">
-                {{ job.tieu_de }}
-              </option>
-            </select>
-          </label>
-          <p v-if="!availableProfiles.length" class="text-xs leading-5 text-orange-700">
-            Bạn chưa có CV công khai. Hãy bật công khai ít nhất một hồ sơ trong mục CV của tôi.
-          </p>
-        </div>
-      </div>
-
-      <div class="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-        <div class="mb-3 flex items-center justify-between">
-          <p class="text-xs font-black uppercase tracking-[0.28em] text-slate-400">Gần đây</p>
-          <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-500">{{ chatSessions.length }}</span>
-        </div>
-
-        <div v-if="loadingChatSessions" class="space-y-3">
-          <div v-for="index in 5" :key="index" class="h-20 animate-pulse rounded-2xl bg-slate-100" />
-        </div>
-        <div v-else-if="!chatSessionOptions.length" class="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-5 text-sm leading-6 text-slate-500">
-          Chưa có cuộc hội thoại nào. Tạo cuộc hội thoại đầu tiên để bắt đầu cùng AI.
-        </div>
-        <div v-else class="space-y-1">
-          <button
-            v-for="session in chatSessionOptions"
-            :key="session.id"
-            type="button"
-            class="w-full rounded-2xl px-4 py-4 text-left transition"
-            :class="session.id === activeChatSessionId
-              ? 'border border-orange-200 bg-orange-50 text-[#f45112]'
-              : 'text-slate-700 hover:bg-slate-50'"
-            @click="selectChatSession(session.id)"
-          >
-            <div class="flex items-start justify-between gap-3">
-              <p class="min-w-0 truncate text-sm font-black">{{ session.title || 'Tư vấn nghề nghiệp' }}</p>
-              <span class="shrink-0 text-xs text-slate-400">{{ formatDateTime(session.updated_at) }}</span>
-            </div>
-            <p class="mt-2 line-clamp-2 text-sm italic leading-6 text-slate-500">"{{ chatPreview(session) }}"</p>
-          </button>
-        </div>
-      </div>
-
-      <div class="space-y-3 border-t border-slate-200 p-5">
-        <div class="rounded-xl bg-slate-50 px-4 py-3 text-sm font-medium text-slate-500">
-          <span class="material-symbols-outlined mr-2 align-[-4px] text-[18px]">info</span>
-          Hạn mức AI: {{ chatAiQuotaText }}
-          <p class="mt-2 text-xs leading-5 text-slate-500">{{ chatBillingNote }}</p>
-          <p class="mt-1 text-xs leading-5 text-slate-400">{{ chatUsageHint }}</p>
-          <p v-if="!hasIncludedChatQuota && chatMessagePrice > 0" class="mt-1 text-xs font-bold leading-5 text-slate-500">
-            Ví khả dụng: {{ formatCurrency(walletAvailable) }}
-          </p>
-        </div>
-        <div class="rounded-xl bg-slate-50 px-4 py-3 text-sm font-medium text-slate-500">
-          <span class="material-symbols-outlined mr-2 align-[-4px] text-[18px]">bolt</span>
-          Stream: {{ streamEnabled ? 'đang bật' : 'đang tắt' }}
-        </div>
-      </div>
-    </aside>
-
-    <main ref="chatPanel" class="flex min-h-0 flex-col xl:h-full">
-      <header class="flex h-20 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-8">
-        <div class="inline-flex rounded-2xl bg-slate-100 p-1">
-          <span class="rounded-xl bg-white px-5 py-3 text-sm font-black text-[#f45112] shadow-sm">Tư vấn lộ trình</span>
-          <RouterLink
-            :to="{ name: 'AICenterMockInterview' }"
-            class="rounded-xl px-5 py-3 text-sm font-semibold text-slate-500 transition hover:text-slate-900"
-          >
-            Phỏng vấn giả lập
-          </RouterLink>
-        </div>
-        <div class="flex items-center gap-3">
-          <span class="inline-flex h-2.5 w-2.5 rounded-full bg-emerald-400"></span>
-          <span class="text-xs font-bold uppercase tracking-[0.28em] text-slate-500">AI Agent Online</span>
-        </div>
-      </header>
-
-      <div ref="chatMessagesContainer" class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-8 py-7">
-        <div v-if="loadingChatMessages" class="space-y-5">
-          <div v-for="index in 4" :key="index" class="h-24 animate-pulse rounded-[24px] bg-white" />
-        </div>
-        <div v-else-if="!activeChatSessionId" class="flex h-full items-center justify-center text-center text-sm leading-7 text-slate-500">
-          Chọn một cuộc hội thoại gần đây hoặc tạo cuộc hội thoại mới để AI bắt đầu tư vấn trên hồ sơ của bạn.
-        </div>
-        <div v-else-if="!hasChatMessages" class="flex h-full items-center justify-center text-center text-sm leading-7 text-slate-500">
-          Cuộc hội thoại này chưa có tin nhắn. Hãy hỏi AI về job gần nhất, kỹ năng còn thiếu hoặc cách cải thiện CV.
-        </div>
-        <div v-else class="space-y-8">
-          <article
-            v-for="message in chatMessages"
-            :key="message.id"
-            class="flex gap-5"
-            :class="message.role === 'user' ? 'justify-end' : 'justify-start'"
-          >
-            <div v-if="message.role === 'assistant'" class="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#f45112] text-white shadow-[0_12px_24px_rgba(244,81,18,0.2)]">
-              <span class="material-symbols-outlined">smart_toy</span>
-            </div>
-            <div class="max-w-[82%]">
-              <div class="mb-2 flex items-center gap-2" :class="message.role === 'user' ? 'justify-end' : ''">
-                <span class="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
-                  {{ message.role === 'user' ? 'Bạn' : 'SmartJob AI' }}
-                </span>
-              </div>
-              <div
-                class="rounded-[24px] px-7 py-5 text-base leading-8 shadow-sm"
-                :class="message.role === 'user'
-                  ? 'rounded-tr-none bg-[#f45112] text-white shadow-[0_18px_36px_rgba(244,81,18,0.22)]'
-                  : 'rounded-tl-none border border-slate-200 bg-white text-slate-900'"
-              >
-                <div
-                  v-if="message.role === 'assistant' && message.metadata?.streaming && !message.content"
-                  class="inline-flex items-center gap-2 text-slate-500"
-                >
-                  <span>Đang phân tích</span>
-                  <span class="inline-flex gap-1">
-                    <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-[#f45112]" />
-                    <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-[#f45112] [animation-delay:150ms]" />
-                    <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-[#f45112] [animation-delay:300ms]" />
-                  </span>
-                </div>
-                <p v-else class="whitespace-pre-wrap">{{ message.content }}</p>
-              </div>
-            </div>
-            <div v-if="message.role === 'user'" class="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-slate-200 text-slate-700">
-              <span class="material-symbols-outlined">person</span>
-            </div>
-          </article>
-        </div>
-      </div>
-
-      <footer class="shrink-0 border-t border-slate-200 bg-white px-10 py-6">
-        <div class="flex items-center gap-4 rounded-2xl bg-slate-100 px-6 py-4">
-          <textarea
-            ref="chatComposerInput"
-            v-model="chatMessageInput"
-            class="max-h-32 min-h-[44px] flex-1 resize-none bg-transparent text-base leading-7 text-slate-900 outline-none placeholder:text-slate-400"
-            placeholder="Nhập câu hỏi của bạn tại đây..."
-            @keydown.enter.exact.prevent="sendChatMessage"
-          />
-          <button
-            class="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-[#f45112] text-white shadow-[0_12px_24px_rgba(244,81,18,0.24)] transition hover:bg-[#e6470e] disabled:cursor-not-allowed disabled:opacity-50"
-            :disabled="!chatCanSend"
-            type="button"
-            @click="sendChatMessage"
-          >
-            <span class="material-symbols-outlined">{{ sendingChatMessage ? 'hourglass_top' : 'send' }}</span>
-          </button>
-        </div>
-        <div class="mt-4 flex flex-wrap items-center justify-between gap-3">
-          <div class="flex flex-wrap gap-4 text-sm font-medium text-slate-500">
-            <button type="button" class="inline-flex items-center gap-1 hover:text-[#f45112]" @click="chatMessageInput = 'Trong hệ thống hiện có job nào gần nhất với hồ sơ của tôi?'">
-              <span class="material-symbols-outlined text-[18px]">attach_file</span>
-              Gợi ý job
-            </button>
-            <button type="button" class="inline-flex items-center gap-1 hover:text-[#f45112]" @click="chatMessageInput = 'Tôi đang thiếu những kỹ năng nào để phù hợp hơn với vị trí này?'">
-              <span class="material-symbols-outlined text-[18px]">mic</span>
-              Kỹ năng thiếu
-            </button>
-            <label class="inline-flex items-center gap-2">
-              <input v-model="streamEnabled" class="accent-[#f45112]" type="checkbox">
-              Stream SSE
-            </label>
-          </div>
-          <div class="flex gap-3">
-            <RouterLink to="/matched-jobs" class="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50">
-              Việc phù hợp
-            </RouterLink>
-            <button
-              class="rounded-xl bg-slate-950 px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
-              :disabled="!activeChatSessionId"
-              type="button"
-              @click="deleteChatSession"
-            >
-              Xóa phiên
-            </button>
-          </div>
-        </div>
-      </footer>
-    </main>
-  </section>
-</template>

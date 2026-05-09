@@ -1,22 +1,3 @@
-<script setup>
-defineProps({
-  summary: {
-    type: String,
-    default: '',
-  },
-  currentPage: {
-    type: Number,
-    required: true,
-  },
-  totalPages: {
-    type: Number,
-    required: true,
-  },
-})
-
-defineEmits(['prev', 'next'])
-</script>
-
 <template>
   <div class="flex flex-col gap-3 border-t border-slate-200 px-6 py-5 text-sm dark:border-slate-800 md:flex-row md:items-center md:justify-between">
     <p class="text-slate-500 dark:text-slate-400">
@@ -45,3 +26,22 @@ defineEmits(['prev', 'next'])
     </div>
   </div>
 </template>
+
+<script setup>
+defineProps({
+  summary: {
+    type: String,
+    default: '',
+  },
+  currentPage: {
+    type: Number,
+    required: true,
+  },
+  totalPages: {
+    type: Number,
+    required: true,
+  },
+})
+
+defineEmits(['prev', 'next'])
+</script>

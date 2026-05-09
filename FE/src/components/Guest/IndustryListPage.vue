@@ -1,85 +1,3 @@
-<script setup>
-import { computed, onMounted, ref, watch } from 'vue'
-import { RouterLink, useRoute, useRouter } from 'vue-router'
-import { jobService } from '@/services/api'
-import { useNotify } from '@/composables/useNotify'
-
-const route = useRoute()
-const router = useRouter()
-const notify = useNotify()
-
-const loading = ref(false)
-const industries = ref([])
-const totalIndustries = ref(0)
-const filters = ref({
-  search: route.query.search || '',
-  parentId: route.query.parent_id || '',
-  page: Number(route.query.page || 1),
-  perPage: Number(route.query.per_page || 9),
-})
-
-const extractList = (response) => {
-  const payload = response?.data
-  if (Array.isArray(payload?.data)) return payload.data
-  if (Array.isArray(payload)) return payload
-  return []
-}
-
-const parentOptions = computed(() => industries.value.filter((item) => !item.danh_muc_cha_id))
-const totalPages = computed(() => Math.max(1, Math.ceil(totalIndustries.value / filters.value.perPage)))
-
-const syncRoute = () => {
-  router.replace({
-    path: '/industries',
-    query: {
-      ...(filters.value.search ? { search: filters.value.search } : {}),
-      ...(filters.value.parentId ? { parent_id: filters.value.parentId } : {}),
-      ...(filters.value.page > 1 ? { page: filters.value.page } : {}),
-      per_page: filters.value.perPage,
-    },
-  })
-}
-
-const loadIndustries = async () => {
-  loading.value = true
-  try {
-    const response = await jobService.getIndustries({
-      search: filters.value.search.trim() || undefined,
-      danh_muc_cha_id: filters.value.parentId || undefined,
-      per_page: filters.value.perPage,
-    })
-
-    const list = extractList(response)
-    industries.value = list
-    totalIndustries.value = Number(response?.data?.total || list.length || 0)
-  } catch (error) {
-    industries.value = []
-    totalIndustries.value = 0
-    notify.apiError(error, 'Không thể tải danh sách ngành nghề.')
-  } finally {
-    loading.value = false
-  }
-}
-
-const applyFilters = () => {
-  filters.value.page = 1
-  syncRoute()
-  loadIndustries()
-}
-
-watch(
-  () => route.query,
-  (query) => {
-    filters.value.search = query.search || ''
-    filters.value.parentId = query.parent_id || ''
-    filters.value.page = Number(query.page || 1)
-    filters.value.perPage = Number(query.per_page || 9)
-  },
-)
-
-onMounted(loadIndustries)
-</script>
-
 <template>
   <section class="py-14 lg:py-16">
     <div class="mx-auto max-w-7xl px-6">
@@ -211,3 +129,85 @@ onMounted(loadIndustries)
     </div>
   </section>
 </template>
+
+<script setup>
+import { computed, onMounted, ref, watch } from 'vue'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
+import { jobService } from '@/services/api'
+import { useNotify } from '@/composables/useNotify'
+
+const route = useRoute()
+const router = useRouter()
+const notify = useNotify()
+
+const loading = ref(false)
+const industries = ref([])
+const totalIndustries = ref(0)
+const filters = ref({
+  search: route.query.search || '',
+  parentId: route.query.parent_id || '',
+  page: Number(route.query.page || 1),
+  perPage: Number(route.query.per_page || 9),
+})
+
+const extractList = (response) => {
+  const payload = response?.data
+  if (Array.isArray(payload?.data)) return payload.data
+  if (Array.isArray(payload)) return payload
+  return []
+}
+
+const parentOptions = computed(() => industries.value.filter((item) => !item.danh_muc_cha_id))
+const totalPages = computed(() => Math.max(1, Math.ceil(totalIndustries.value / filters.value.perPage)))
+
+const syncRoute = () => {
+  router.replace({
+    path: '/industries',
+    query: {
+      ...(filters.value.search ? { search: filters.value.search } : {}),
+      ...(filters.value.parentId ? { parent_id: filters.value.parentId } : {}),
+      ...(filters.value.page > 1 ? { page: filters.value.page } : {}),
+      per_page: filters.value.perPage,
+    },
+  })
+}
+
+const loadIndustries = async () => {
+  loading.value = true
+  try {
+    const response = await jobService.getIndustries({
+      search: filters.value.search.trim() || undefined,
+      danh_muc_cha_id: filters.value.parentId || undefined,
+      per_page: filters.value.perPage,
+    })
+
+    const list = extractList(response)
+    industries.value = list
+    totalIndustries.value = Number(response?.data?.total || list.length || 0)
+  } catch (error) {
+    industries.value = []
+    totalIndustries.value = 0
+    notify.apiError(error, 'Không thể tải danh sách ngành nghề.')
+  } finally {
+    loading.value = false
+  }
+}
+
+const applyFilters = () => {
+  filters.value.page = 1
+  syncRoute()
+  loadIndustries()
+}
+
+watch(
+  () => route.query,
+  (query) => {
+    filters.value.search = query.search || ''
+    filters.value.parentId = query.parent_id || ''
+    filters.value.page = Number(query.page || 1)
+    filters.value.perPage = Number(query.per_page || 9)
+  },
+)
+
+onMounted(loadIndustries)
+</script>

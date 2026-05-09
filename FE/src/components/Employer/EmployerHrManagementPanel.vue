@@ -1,3 +1,636 @@
+<template>
+  <div v-if="error" class="mb-6 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-900 dark:bg-red-900/20">
+    <span class="material-symbols-outlined mt-1 flex-shrink-0 text-red-600">error</span>
+    <div class="flex-1 whitespace-pre-wrap break-words text-sm text-red-700 dark:text-red-400">{{ error }}</div>
+    <button class="mt-1 flex-shrink-0 text-red-600 hover:text-red-700" type="button" @click="error = null">
+      <span class="material-symbols-outlined">close</span>
+    </button>
+  </div>
+
+  <div class="mb-8 flex flex-wrap items-center justify-between gap-4">
+    <div class="flex flex-col gap-1">
+      <h1 class="text-3xl font-black leading-tight tracking-tight text-slate-900 dark:text-white">Quản Lý Nhân Sự HR</h1>
+      <p class="text-base text-slate-500 dark:text-slate-400">{{ ownerSummary }}</p>
+    </div>
+    <div class="flex flex-wrap gap-3">
+      <button
+        class="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+        type="button"
+        @click="refreshData"
+      >
+        <span class="material-symbols-outlined text-[18px]">refresh</span>
+        Tải lại
+      </button>
+      <button
+        class="inline-flex items-center gap-2 rounded-2xl bg-[#2463eb] px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#1d56cf] disabled:cursor-not-allowed disabled:opacity-60"
+        :disabled="!hasCompany || !canManageMembers"
+        type="button"
+        @click="openCreateModal"
+      >
+        <span class="material-symbols-outlined text-[18px]">person_add</span>
+        Tạo HR mới
+      </button>
+    </div>
+  </div>
+
+  <div class="mb-6 flex flex-wrap gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <button
+      :class="[
+        'inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition',
+        activeTab === 'members'
+          ? 'bg-[#2463eb] text-white shadow-sm'
+          : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800',
+      ]"
+      type="button"
+      @click="switchTab('members')"
+    >
+      <span class="material-symbols-outlined text-[18px]">groups</span>
+      Tài khoản HR
+    </button>
+    <button
+      :class="[
+        'inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition',
+        activeTab === 'permissions'
+          ? 'bg-[#2463eb] text-white shadow-sm'
+          : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800',
+      ]"
+      type="button"
+      @click="switchTab('permissions')"
+    >
+      <span class="material-symbols-outlined text-[18px]">tune</span>
+      Chức năng
+    </button>
+    <button
+      :class="[
+        'inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition',
+        activeTab === 'audit'
+          ? 'bg-[#2463eb] text-white shadow-sm'
+          : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800',
+      ]"
+      type="button"
+      @click="switchTab('audit')"
+    >
+      <span class="material-symbols-outlined text-[18px]">history</span>
+      Lịch sử thao tác
+    </button>
+  </div>
+
+  <template v-if="activeTab === 'members'">
+    <div class="mb-6 flex flex-wrap items-center gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div class="relative min-w-[280px] flex-1">
+        <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">search</span>
+        <input
+          v-model="searchQuery"
+          class="w-full rounded-lg bg-slate-50 py-2 pl-10 pr-4 text-sm outline-none focus:ring-2 focus:ring-[#2463eb] dark:bg-slate-800"
+          placeholder="Tìm theo tên, email hoặc số điện thoại..."
+          type="text"
+          @input="onSearch"
+        >
+      </div>
+      <div class="flex flex-wrap items-center gap-3">
+        <select
+          v-model="selectedRole"
+          class="rounded-lg bg-slate-50 px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-[#2463eb] dark:bg-slate-800"
+          @change="onFilterChange"
+        >
+          <option value="">Tất cả HR</option>
+          <option v-for="[role, label] in roleFilterOptions" :key="role" :value="role">
+            {{ label }}
+          </option>
+        </select>
+        <select
+          v-model.number="perPage"
+          class="rounded-lg bg-slate-50 px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-[#2463eb] dark:bg-slate-800"
+          @change="onFilterChange"
+        >
+          <option :value="10">10 / trang</option>
+          <option :value="20">20 / trang</option>
+          <option :value="50">50 / trang</option>
+        </select>
+        <button
+          class="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium transition hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+          type="button"
+          @click="resetFilters"
+        >
+          Reset bộ lọc
+        </button>
+      </div>
+    </div>
+
+    <div ref="listSectionRef" class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div class="overflow-x-auto">
+        <table class="w-full border-collapse text-left">
+          <thead>
+            <tr class="border-b border-slate-200 bg-slate-50/50 dark:border-slate-800 dark:bg-slate-800/50">
+              <th class="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-slate-500">Tài khoản HR</th>
+              <th class="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-slate-500">Chức năng</th>
+              <th class="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-slate-500">Liên hệ</th>
+              <th class="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-slate-500">Phạm vi quyền</th>
+              <th class="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-slate-500">Trạng thái</th>
+              <th class="px-6 py-4 text-center text-xs font-semibold uppercase tracking-wider text-slate-500">Hành động</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+            <tr v-if="loading">
+              <td colspan="6" class="px-6 py-8 text-center text-slate-500">
+                <span class="material-symbols-outlined animate-spin">hourglass_empty</span>
+                <div>Đang tải...</div>
+              </td>
+            </tr>
+            <tr v-else-if="!hasCompany">
+              <td colspan="6" class="px-6 py-8 text-center text-slate-500">
+                <span class="material-symbols-outlined mb-2 text-3xl">domain_disabled</span>
+                <div>Bạn cần tạo công ty trước khi sử dụng module quản lý HR.</div>
+              </td>
+            </tr>
+            <tr v-else-if="filteredMembers.length === 0">
+              <td colspan="6" class="px-6 py-8 text-center text-slate-500">
+                <span class="material-symbols-outlined mb-2 text-3xl">groups</span>
+                <div>Không tìm thấy HR phù hợp</div>
+              </td>
+            </tr>
+            <template v-else>
+              <tr v-for="member in paginatedMembers" :key="member.id" class="transition-colors hover:bg-slate-50/50 dark:hover:bg-slate-800/50">
+                <td class="px-6 py-4">
+                  <div class="flex items-center gap-3">
+                    <div class="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-[#2463eb]/10 font-bold text-[#2463eb]">
+                      <img v-if="member.avatar_url" :src="member.avatar_url" alt="avatar HR" class="h-full w-full object-cover">
+                      <span v-else>{{ String(member.ho_ten || 'H').trim().charAt(0).toUpperCase() }}</span>
+                    </div>
+                    <div class="min-w-0">
+                      <div class="text-sm font-semibold text-slate-900 dark:text-white">{{ member.ho_ten }}</div>
+                      <div class="truncate text-xs text-slate-500">{{ member.email }}</div>
+                    </div>
+                  </div>
+                </td>
+                <td class="px-6 py-4">
+                  <span class="inline-flex rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
+                    {{ member.so_quyen_noi_bo || 0 }}/{{ member.tong_quyen_noi_bo || permissionCatalog.length }} chức năng
+                  </span>
+                </td>
+                <td class="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">
+                  {{ member.so_dien_thoai || 'Chưa cập nhật' }}
+                </td>
+                <td class="px-6 py-4">
+                  <span
+                    :class="[
+                      'inline-flex rounded-full px-3 py-1 text-xs font-semibold',
+                      member.la_chu_so_huu
+                        ? 'border border-amber-200 bg-amber-50 text-amber-700'
+                        : 'border border-blue-200 bg-blue-50 text-blue-700',
+                    ]"
+                  >
+                    {{ member.la_chu_so_huu ? 'Tài khoản sở hữu' : 'Theo quyền chức năng' }}
+                  </span>
+                </td>
+                <td class="px-6 py-4">
+                  <div class="flex items-center gap-2">
+                    <div :class="['h-2 w-2 rounded-full', Number(member.trang_thai) === 1 ? 'bg-emerald-500' : 'bg-red-500']"></div>
+                    <span :class="['text-sm font-medium', Number(member.trang_thai) === 1 ? 'text-emerald-600' : 'text-red-600']">
+                      {{ Number(member.trang_thai) === 1 ? 'Hoạt động' : 'Đã khóa' }}
+                    </span>
+                  </div>
+                </td>
+                <td class="px-6 py-4">
+                  <div class="flex items-center justify-center gap-2">
+                    <template v-if="canManageMembers && !member.la_chu_so_huu">
+                      <button class="rounded-lg p-2 text-slate-400 transition-colors hover:text-[#2463eb]" title="Chỉnh sửa" type="button" @click="openEditMemberModal(member)">
+                        <span class="material-symbols-outlined text-xl">edit</span>
+                      </button>
+                      <button
+                        :class="[
+                          'rounded-lg p-2 transition-colors disabled:cursor-not-allowed disabled:opacity-60',
+                          Number(member.trang_thai) === 1 ? 'text-slate-400 hover:text-amber-600' : 'text-slate-400 hover:text-green-600',
+                        ]"
+                        :disabled="roleUpdatingIds.includes(member.id)"
+                        :title="Number(member.trang_thai) === 1 ? 'Khóa' : 'Mở khóa'"
+                        type="button"
+                        @click="toggleHrMemberStatus(member)"
+                      >
+                        <span class="material-symbols-outlined text-xl">{{ Number(member.trang_thai) === 1 ? 'block' : 'lock_open' }}</span>
+                      </button>
+                      <button class="rounded-lg p-2 text-slate-400 transition-colors hover:text-violet-600" title="Phân quyền chức năng" type="button" @click="openPermissionTab(member)">
+                        <span class="material-symbols-outlined text-xl">tune</span>
+                      </button>
+                      <button
+                        class="rounded-lg p-2 text-slate-400 transition-colors hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-60"
+                        :disabled="removingMemberIds.includes(member.id) || roleUpdatingIds.includes(member.id)"
+                        title="Gỡ HR"
+                        type="button"
+                        @click="confirmRemoveMember(member)"
+                      >
+                        <span class="material-symbols-outlined text-xl">person_remove</span>
+                      </button>
+                    </template>
+
+
+<span v-else class="inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                      {{ member.la_chu_so_huu ? 'Tài khoản sở hữu' : 'Chỉ xem' }}
+                    </span>
+                  </div>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+
+      <AdminPaginationBar
+        v-if="!loading && filteredMembers.length > 0"
+        :summary="`Hiển thị ${paginatedMembers.length} / ${filteredMembers.length} nhân sự HR`"
+        :current-page="currentPage"
+        :total-pages="totalMemberPages"
+        @prev="goToPreviousPage"
+        @next="goToNextPage"
+      />
+    </div>
+  </template>
+
+  <template v-else-if="activeTab === 'permissions'">
+    <div class="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
+      <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div class="mb-4">
+          <p class="text-xs font-semibold uppercase tracking-[0.24em] text-[#2463eb]">Tab chức năng</p>
+          <h2 class="mt-2 text-xl font-black text-slate-900 dark:text-white">Cấp quyền theo HR</h2>
+          <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">Chọn một tài khoản HR để bật hoặc tắt từng chức năng mà tài khoản đó được phép thao tác.</p>
+        </div>
+
+        <div v-if="assignablePermissionMembers.length === 0" class="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-800/50">
+          Chưa có HR thường nào để cấu hình quyền.
+        </div>
+
+        <div v-else class="space-y-3">
+          <button
+            v-for="member in assignablePermissionMembers"
+            :key="member.id"
+            :class="[
+              'w-full rounded-2xl border px-4 py-4 text-left transition',
+              Number(member.id) === Number(selectedPermissionMemberId)
+                ? 'border-[#2463eb] bg-[#2463eb]/5 shadow-sm'
+                : 'border-slate-200 bg-slate-50/80 hover:border-slate-300 hover:bg-white dark:border-slate-700 dark:bg-slate-800/60',
+            ]"
+            type="button"
+            @click="selectedPermissionMemberId = member.id; loadMemberPermissionSettings(member.id)"
+          >
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <p class="truncate font-semibold text-slate-900 dark:text-white">{{ member.ho_ten }}</p>
+                <p class="mt-1 truncate text-xs text-slate-500">{{ member.email }}</p>
+              </div>
+              <span class="inline-flex shrink-0 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[11px] font-semibold text-blue-700">
+                {{ member.so_quyen_noi_bo || 0 }} quyền
+              </span>
+            </div>
+            <div class="mt-4 flex items-center justify-between gap-3 text-xs text-slate-500">
+              <span>{{ member.so_quyen_noi_bo || 0 }}/{{ member.tong_quyen_noi_bo || permissionCatalog.length }} chức năng</span>
+              <span class="inline-flex items-center gap-1 font-medium text-[#2463eb]">
+                <span class="material-symbols-outlined text-[16px]">arrow_forward</span>
+                Chỉnh quyền
+              </span>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <template v-if="selectedPermissionMember">
+          <div class="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">HR được chọn</p>
+              <h2 class="mt-2 text-2xl font-black text-slate-900 dark:text-white">{{ selectedPermissionMember.ho_ten }}</h2>
+              <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{ selectedPermissionMember.email }}</p>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <span class="inline-flex rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
+                {{ permissionSummaryText }}
+              </span>
+              <span class="inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
+                Tài khoản HR
+              </span>
+            </div>
+          </div>
+
+          <div class="mb-6 flex flex-wrap gap-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-4 dark:border-slate-700 dark:bg-slate-800/50">
+            <button class="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800" type="button" @click="selectAllPermissions">
+              Cấp toàn bộ
+            </button>
+            <button class="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800" type="button" @click="clearAllPermissions">
+              Bỏ toàn bộ
+            </button>
+            <button
+              class="inline-flex items-center gap-2 rounded-xl bg-[#2463eb] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#1d56cf] disabled:cursor-not-allowed disabled:opacity-60"
+              type="button"
+              :disabled="permissionSaving || permissionLoading || !permissionDirty"
+              @click="savePermissions"
+            >
+              <span class="material-symbols-outlined text-[18px]">{{ permissionSaving ? 'hourglass_top' : 'save' }}</span>
+              {{ permissionSaving ? 'Đang lưu...' : 'Lưu quyền chức năng' }}
+            </button>
+            <button
+              class="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+              type="button"
+              @click="openPermissionDefinitionModal"
+            >
+              <span class="material-symbols-outlined text-[18px]">add</span>
+              Thêm chức năng
+            </button>
+          </div>
+
+          <div v-if="permissionLoading" class="flex min-h-[260px] items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-700 dark:bg-slate-800/50">
+            <div class="text-center">
+              <span class="material-symbols-outlined animate-spin text-3xl">hourglass_empty</span>
+              <p class="mt-3 text-sm">Đang tải cấu hình quyền...</p>
+            </div>
+          </div>
+
+          <div v-else class="grid gap-4 lg:grid-cols-2">
+            <label
+              v-for="permission in permissionCatalog"
+              :key="permission.key"
+              class="flex cursor-pointer items-start gap-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-4 transition hover:border-slate-300 hover:bg-white dark:border-slate-700 dark:bg-slate-800/60"
+            >
+              <input
+                v-model="permissionForm[permission.key]"
+                class="mt-1 h-5 w-5 rounded border-slate-300 text-[#2463eb] focus:ring-[#2463eb]"
+                type="checkbox"
+              >
+              <div class="min-w-0">
+                <div class="flex flex-wrap items-center gap-2">
+                  <p class="font-semibold text-slate-900 dark:text-white">{{ permission.label }}</p>
+                  <span
+                    :class="[
+                      'inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold',
+                      permissionForm[permission.key]
+                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
+                        : 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-200',
+                    ]"
+                  >
+                    {{ permissionForm[permission.key] ? 'Đã cấp' : 'Đã tắt' }}
+                  </span>
+                </div>
+                <p class="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">{{ permission.description }}</p>
+              </div>
+            </label>
+          </div>
+        </template>
+
+        <div v-else class="flex min-h-[340px] items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-800/50">
+          Chọn một tài khoản HR ở cột bên trái để cấu hình quyền chức năng.
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <template v-else>
+    <div class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div class="flex flex-col gap-3 border-b border-slate-200 bg-slate-50/50 px-6 py-5 dark:border-slate-800 dark:bg-slate-800/50 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h2 class="text-lg font-bold text-slate-900 dark:text-white">Lịch sử thao tác HR nội bộ</h2>
+          <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Theo dõi các thay đổi quan trọng như thêm HR, cập nhật quyền chức năng và gỡ thành viên khỏi công ty.</p>
+        </div>
+        <button
+          class="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800"
+          type="button"
+          @click="fetchHrAuditLogs(hrAuditPagination?.current_page || 1)"
+        >
+          <span class="material-symbols-outlined text-[18px]">refresh</span>
+          Tải lại log
+        </button>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full border-collapse text-left">
+          <thead>
+            <tr class="border-b border-slate-200 bg-slate-50/50 dark:border-slate-800 dark:bg-slate-800/50">
+              <th class="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-slate-500">Nội dung thao tác</th>
+              <th class="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-slate-500">Người thực hiện</th>
+              <th class="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-slate-500">Đối tượng</th>
+              <th class="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-slate-500">Thời gian</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+            <tr v-if="hrAuditLogs.length === 0">
+              <td colspan="4" class="px-6 py-8 text-center text-slate-500">
+                <span class="material-symbols-outlined mb-2 text-3xl">history</span>
+                <div>Chưa có lịch sử thao tác HR nội bộ nào để hiển thị.</div>
+              </td>
+            </tr>
+            <template v-else>
+              <tr v-for="log in hrAuditLogs" :key="`audit-${log.id}`" class="transition-colors hover:bg-slate-50/50 dark:hover:bg-slate-800/50">
+                <td class="px-6 py-4">
+                  <p class="text-sm font-semibold text-slate-900 dark:text-white">{{ log.mo_ta }}</p>
+                </td>
+                <td class="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">
+                  {{ log.nguoi_thuc_hien?.ho_ten || log.nguoi_thuc_hien?.email || 'Hệ thống' }}
+                </td>
+                <td class="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">
+                  {{ log.nguoi_bi_tac_dong?.ho_ten || log.nguoi_bi_tac_dong?.email || 'Không có' }}
+                </td>
+                <td class="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">
+                  {{ log.created_at ? new Date(log.created_at).toLocaleString('vi-VN') : 'N/A' }}
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+
+      <AdminPaginationBar
+        v-if="hrAuditPagination && hrAuditLogs.length > 0"
+        :summary="`Hiển thị ${hrAuditLogs.length} / ${hrAuditPagination.total || hrAuditLogs.length} lịch sử thao tác`"
+        :current-page="auditCurrentPage"
+        :total-pages="auditTotalPages"
+        @prev="goToPreviousAuditPage"
+        @next="goToNextAuditPage"
+      />
+    </div>
+  </template>
+
+  <FormModalShell
+    v-if="showCreateModal"
+    eyebrow="Quản lý nhân sự HR"
+    title="Tạo tài khoản HR mới"
+    description="Tài khoản HR được gắn vào công ty hiện tại và đăng nhập bằng mật khẩu khởi tạo do bạn đặt."
+    max-width-class="max-w-4xl"
+    submit-label="Tạo HR"
+    submit-loading-label="Đang tạo..."
+    :saving="memberSubmitting"
+    @close="closeCreateModal"
+    @submit="addHrMember"
+  >
+    <template #summary>
+      <div class="rounded-2xl border border-slate-200 bg-white p-4">
+        <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Công ty</p>
+        <p class="mt-2 text-sm font-semibold text-slate-900">{{ company?.ten_cong_ty || company?.ten || 'Công ty hiện tại' }}</p>
+      </div>
+      <div class="rounded-2xl border border-slate-200 bg-white p-4">
+        <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Phân quyền</p>
+        <div class="mt-3">
+          <span class="inline-flex rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-700">
+            Theo quyền chức năng
+          </span>
+        </div>
+      </div>
+      <div class="rounded-2xl border border-slate-200 bg-white p-4">
+        <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Quyền tạo</p>
+        <p class="mt-2 text-sm text-slate-500">Chỉ owner công ty có thể tạo, cấp quyền chức năng hoặc gỡ HR nội bộ.</p>
+      </div>
+    </template>
+
+    <div class="grid gap-5 lg:grid-cols-2">
+      <div class="space-y-2">
+        <label class="block text-sm font-semibold text-slate-700">Họ tên</label>
+        <input v-model="memberForm.ho_ten" type="text" required class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20" placeholder="Nguyễn Văn A">
+      </div>
+      <div class="space-y-2">
+        <label class="block text-sm font-semibold text-slate-700">Email</label>
+        <input v-model="memberForm.email" type="email" required class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20" placeholder="hr@company.com">
+      </div>
+      <div class="space-y-2">
+        <label class="block text-sm font-semibold text-slate-700">Mật khẩu</label>
+        <input v-model="memberForm.mat_khau" type="password" required minlength="6" autocomplete="new-password" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20" placeholder="Tối thiểu 6 ký tự">
+        <p class="text-xs text-slate-400">HR sẽ dùng mật khẩu này để đăng nhập lần đầu.</p>
+      </div>
+      <div class="space-y-2">
+        <label class="block text-sm font-semibold text-slate-700">Số điện thoại</label>
+        <input v-model="memberForm.so_dien_thoai" type="tel" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20" placeholder="090...">
+      </div>
+    </div>
+  </FormModalShell>
+
+  <FormModalShell
+    v-if="showEditMemberModal"
+    eyebrow="Quản lý nhân sự HR"
+    title="Chỉnh sửa tài khoản HR"
+    description="Cập nhật thông tin đăng nhập, liên hệ và trạng thái hoạt động của tài khoản HR."
+    max-width-class="max-w-4xl"
+    submit-label="Lưu thay đổi"
+    submit-loading-label="Đang lưu..."
+    :saving="memberSubmitting"
+    @close="closeEditMemberModal"
+    @submit="updateHrMember"
+  >
+    <template #summary>
+      <div class="rounded-2xl border border-slate-200 bg-white p-4">
+        <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Tài khoản</p>
+        <p class="mt-2 text-base font-semibold text-slate-900">{{ memberEditForm.ho_ten || 'Chưa nhập họ tên' }}</p>
+        <p class="mt-1 text-sm text-slate-500">{{ memberEditForm.email || 'Chưa có email' }}</p>
+      </div>
+      <div class="rounded-2xl border border-slate-200 bg-white p-4">
+        <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Phân quyền</p>
+        <div class="mt-3">
+          <span class="inline-flex rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-700">
+            Theo quyền chức năng
+          </span>
+        </div>
+        <p class="mt-2 text-sm text-slate-500">Quyền chi tiết được chỉnh ở tab Chức năng.</p>
+      </div>
+      <div class="rounded-2xl border border-slate-200 bg-white p-4">
+        <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Trạng thái</p>
+        <div class="mt-3">
+          <span
+            :class="[
+              'inline-flex rounded-full px-3 py-1 text-sm font-semibold',
+              Number(memberEditForm.trang_thai) === 1
+                ? 'border border-emerald-200 bg-emerald-50 text-emerald-700'
+                : 'border border-rose-200 bg-rose-50 text-rose-700',
+            ]"
+          >
+            {{ Number(memberEditForm.trang_thai) === 1 ? 'Hoạt động' : 'Khóa' }}
+          </span>
+        </div>
+        <p class="mt-2 text-sm text-slate-500">Tài khoản bị khóa sẽ không thể đăng nhập hệ thống.</p>
+      </div>
+    </template>
+
+    <div class="grid gap-5 lg:grid-cols-2">
+      <div class="space-y-2">
+        <label class="block text-sm font-semibold text-slate-700">Họ tên</label>
+        <input v-model="memberEditForm.ho_ten" type="text" required class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20">
+      </div>
+      <div class="space-y-2">
+        <label class="block text-sm font-semibold text-slate-700">Email</label>
+        <input v-model="memberEditForm.email" type="email" required class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20">
+      </div>
+      <div class="space-y-2">
+        <label class="block text-sm font-semibold text-slate-700">Mật khẩu mới</label>
+        <input v-model="memberEditForm.mat_khau" type="password" minlength="6" autocomplete="new-password" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20">
+        <p class="text-xs text-slate-400">Để trống nếu không muốn đổi mật khẩu.</p>
+      </div>
+      <div class="space-y-2">
+        <label class="block text-sm font-semibold text-slate-700">Số điện thoại</label>
+        <input v-model="memberEditForm.so_dien_thoai" type="tel" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20">
+      </div>
+      <div class="space-y-2">
+        <label class="block text-sm font-semibold text-slate-700">Trạng thái</label>
+        <select v-model.number="memberEditForm.trang_thai" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20">
+          <option :value="1">Hoạt động</option>
+          <option :value="0">Khóa</option>
+        </select>
+      </div>
+    </div>
+  </FormModalShell>
+
+  <FormModalShell
+    v-if="showPermissionDefinitionModal"
+    eyebrow="Chức năng HR"
+    title="Tạo chức năng HR mới"
+    description="Chức năng mới sẽ xuất hiện trong tab Chức năng để bật hoặc tắt cho từng tài khoản HR."
+    max-width-class="max-w-3xl"
+    submit-label="Tạo chức năng"
+    submit-loading-label="Đang tạo..."
+    :saving="permissionDefinitionSaving"
+    @close="closePermissionDefinitionModal"
+    @submit="createPermissionDefinition"
+  >
+    <div class="grid gap-5">
+      <div class="space-y-2">
+        <label class="block text-sm font-semibold text-slate-700">Tên chức năng</label>
+        <input v-model="permissionDefinitionForm.label" type="text" required class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20" placeholder="Ví dụ: Quản lý ví" />
+      </div>
+      <div class="space-y-2">
+        <label class="block text-sm font-semibold text-slate-700">Gắn vào tab/chức năng đang có</label>
+        <select v-model="permissionDefinitionForm.mapped_permission_key" required class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20">
+          <option v-for="permission in systemPermissionOptions" :key="permission.key" :value="permission.key">
+            {{ permission.label }}
+          </option>
+        </select>
+      </div>
+      <div class="space-y-2">
+        <label class="block text-sm font-semibold text-slate-700">Mô tả</label>
+        <textarea v-model="permissionDefinitionForm.description" rows="4" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20" placeholder="Mô tả phạm vi thao tác của chức năng này." />
+      </div>
+    </div>
+  </FormModalShell>
+
+  <div v-if="showRemoveModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 dark:bg-black/70">
+    <div class="mx-4 w-full max-w-sm rounded-xl bg-white shadow-xl dark:bg-slate-900">
+      <div class="p-6">
+        <div class="mb-4 flex items-center gap-3">
+          <span class="material-symbols-outlined text-2xl text-red-600">warning</span>
+          <h3 class="text-lg font-semibold text-slate-900 dark:text-white">Gỡ HR khỏi công ty</h3>
+        </div>
+        <p class="mb-6 text-slate-600 dark:text-slate-400">
+          Bạn có chắc muốn gỡ <strong>{{ removingMember?.ho_ten }}</strong> khỏi công ty? Tài khoản này sẽ không còn quyền thao tác trong workspace hiện tại.
+        </p>
+        <div class="flex gap-3">
+          <button class="flex-1 rounded-lg border border-slate-300 px-4 py-2 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800" type="button" @click="closeRemoveModal">
+            Hủy
+          </button>
+          <button
+            class="flex-1 rounded-lg bg-red-600 px-4 py-2 font-medium text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+            :disabled="removingMemberIds.includes(removingMember?.id)"
+            type="button"
+            @click="removeHrMember"
+          >
+            {{ removingMemberIds.includes(removingMember?.id) ? 'Đang gỡ...' : 'Gỡ HR' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
 <script setup>
 import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import { employerCompanyService } from '@/services/api'
@@ -664,634 +1297,3 @@ onMounted(async () => {
   await refreshData()
 })
 </script>
-
-<template>
-  <div v-if="error" class="mb-6 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-900 dark:bg-red-900/20">
-    <span class="material-symbols-outlined mt-1 flex-shrink-0 text-red-600">error</span>
-    <div class="flex-1 whitespace-pre-wrap break-words text-sm text-red-700 dark:text-red-400">{{ error }}</div>
-    <button class="mt-1 flex-shrink-0 text-red-600 hover:text-red-700" type="button" @click="error = null">
-      <span class="material-symbols-outlined">close</span>
-    </button>
-  </div>
-
-  <div class="mb-8 flex flex-wrap items-center justify-between gap-4">
-    <div class="flex flex-col gap-1">
-      <h1 class="text-3xl font-black leading-tight tracking-tight text-slate-900 dark:text-white">Quản Lý Nhân Sự HR</h1>
-      <p class="text-base text-slate-500 dark:text-slate-400">{{ ownerSummary }}</p>
-    </div>
-    <div class="flex flex-wrap gap-3">
-      <button
-        class="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-        type="button"
-        @click="refreshData"
-      >
-        <span class="material-symbols-outlined text-[18px]">refresh</span>
-        Tải lại
-      </button>
-      <button
-        class="inline-flex items-center gap-2 rounded-2xl bg-[#2463eb] px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#1d56cf] disabled:cursor-not-allowed disabled:opacity-60"
-        :disabled="!hasCompany || !canManageMembers"
-        type="button"
-        @click="openCreateModal"
-      >
-        <span class="material-symbols-outlined text-[18px]">person_add</span>
-        Tạo HR mới
-      </button>
-    </div>
-  </div>
-
-  <div class="mb-6 flex flex-wrap gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-    <button
-      :class="[
-        'inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition',
-        activeTab === 'members'
-          ? 'bg-[#2463eb] text-white shadow-sm'
-          : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800',
-      ]"
-      type="button"
-      @click="switchTab('members')"
-    >
-      <span class="material-symbols-outlined text-[18px]">groups</span>
-      Tài khoản HR
-    </button>
-    <button
-      :class="[
-        'inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition',
-        activeTab === 'permissions'
-          ? 'bg-[#2463eb] text-white shadow-sm'
-          : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800',
-      ]"
-      type="button"
-      @click="switchTab('permissions')"
-    >
-      <span class="material-symbols-outlined text-[18px]">tune</span>
-      Chức năng
-    </button>
-    <button
-      :class="[
-        'inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition',
-        activeTab === 'audit'
-          ? 'bg-[#2463eb] text-white shadow-sm'
-          : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800',
-      ]"
-      type="button"
-      @click="switchTab('audit')"
-    >
-      <span class="material-symbols-outlined text-[18px]">history</span>
-      Lịch sử thao tác
-    </button>
-  </div>
-
-  <template v-if="activeTab === 'members'">
-    <div class="mb-6 flex flex-wrap items-center gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-      <div class="relative min-w-[280px] flex-1">
-        <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">search</span>
-        <input
-          v-model="searchQuery"
-          class="w-full rounded-lg bg-slate-50 py-2 pl-10 pr-4 text-sm outline-none focus:ring-2 focus:ring-[#2463eb] dark:bg-slate-800"
-          placeholder="Tìm theo tên, email hoặc số điện thoại..."
-          type="text"
-          @input="onSearch"
-        >
-      </div>
-      <div class="flex flex-wrap items-center gap-3">
-        <select
-          v-model="selectedRole"
-          class="rounded-lg bg-slate-50 px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-[#2463eb] dark:bg-slate-800"
-          @change="onFilterChange"
-        >
-          <option value="">Tất cả HR</option>
-          <option v-for="[role, label] in roleFilterOptions" :key="role" :value="role">
-            {{ label }}
-          </option>
-        </select>
-        <select
-          v-model.number="perPage"
-          class="rounded-lg bg-slate-50 px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-[#2463eb] dark:bg-slate-800"
-          @change="onFilterChange"
-        >
-          <option :value="10">10 / trang</option>
-          <option :value="20">20 / trang</option>
-          <option :value="50">50 / trang</option>
-        </select>
-        <button
-          class="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium transition hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
-          type="button"
-          @click="resetFilters"
-        >
-          Reset bộ lọc
-        </button>
-      </div>
-    </div>
-
-    <div ref="listSectionRef" class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-      <div class="overflow-x-auto">
-        <table class="w-full border-collapse text-left">
-          <thead>
-            <tr class="border-b border-slate-200 bg-slate-50/50 dark:border-slate-800 dark:bg-slate-800/50">
-              <th class="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-slate-500">Tài khoản HR</th>
-              <th class="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-slate-500">Chức năng</th>
-              <th class="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-slate-500">Liên hệ</th>
-              <th class="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-slate-500">Phạm vi quyền</th>
-              <th class="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-slate-500">Trạng thái</th>
-              <th class="px-6 py-4 text-center text-xs font-semibold uppercase tracking-wider text-slate-500">Hành động</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
-            <tr v-if="loading">
-              <td colspan="6" class="px-6 py-8 text-center text-slate-500">
-                <span class="material-symbols-outlined animate-spin">hourglass_empty</span>
-                <div>Đang tải...</div>
-              </td>
-            </tr>
-            <tr v-else-if="!hasCompany">
-              <td colspan="6" class="px-6 py-8 text-center text-slate-500">
-                <span class="material-symbols-outlined mb-2 text-3xl">domain_disabled</span>
-                <div>Bạn cần tạo công ty trước khi sử dụng module quản lý HR.</div>
-              </td>
-            </tr>
-            <tr v-else-if="filteredMembers.length === 0">
-              <td colspan="6" class="px-6 py-8 text-center text-slate-500">
-                <span class="material-symbols-outlined mb-2 text-3xl">groups</span>
-                <div>Không tìm thấy HR phù hợp</div>
-              </td>
-            </tr>
-            <template v-else>
-              <tr v-for="member in paginatedMembers" :key="member.id" class="transition-colors hover:bg-slate-50/50 dark:hover:bg-slate-800/50">
-                <td class="px-6 py-4">
-                  <div class="flex items-center gap-3">
-                    <div class="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-[#2463eb]/10 font-bold text-[#2463eb]">
-                      <img v-if="member.avatar_url" :src="member.avatar_url" alt="avatar HR" class="h-full w-full object-cover">
-                      <span v-else>{{ String(member.ho_ten || 'H').trim().charAt(0).toUpperCase() }}</span>
-                    </div>
-                    <div class="min-w-0">
-                      <div class="text-sm font-semibold text-slate-900 dark:text-white">{{ member.ho_ten }}</div>
-                      <div class="truncate text-xs text-slate-500">{{ member.email }}</div>
-                    </div>
-                  </div>
-                </td>
-                <td class="px-6 py-4">
-                  <span class="inline-flex rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
-                    {{ member.so_quyen_noi_bo || 0 }}/{{ member.tong_quyen_noi_bo || permissionCatalog.length }} chức năng
-                  </span>
-                </td>
-                <td class="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">
-                  {{ member.so_dien_thoai || 'Chưa cập nhật' }}
-                </td>
-                <td class="px-6 py-4">
-                  <span
-                    :class="[
-                      'inline-flex rounded-full px-3 py-1 text-xs font-semibold',
-                      member.la_chu_so_huu
-                        ? 'border border-amber-200 bg-amber-50 text-amber-700'
-                        : 'border border-blue-200 bg-blue-50 text-blue-700',
-                    ]"
-                  >
-                    {{ member.la_chu_so_huu ? 'Tài khoản sở hữu' : 'Theo quyền chức năng' }}
-                  </span>
-                </td>
-                <td class="px-6 py-4">
-                  <div class="flex items-center gap-2">
-                    <div :class="['h-2 w-2 rounded-full', Number(member.trang_thai) === 1 ? 'bg-emerald-500' : 'bg-red-500']"></div>
-                    <span :class="['text-sm font-medium', Number(member.trang_thai) === 1 ? 'text-emerald-600' : 'text-red-600']">
-                      {{ Number(member.trang_thai) === 1 ? 'Hoạt động' : 'Đã khóa' }}
-                    </span>
-                  </div>
-                </td>
-                <td class="px-6 py-4">
-                  <div class="flex items-center justify-center gap-2">
-                    <template v-if="canManageMembers && !member.la_chu_so_huu">
-                      <button class="rounded-lg p-2 text-slate-400 transition-colors hover:text-[#2463eb]" title="Chỉnh sửa" type="button" @click="openEditMemberModal(member)">
-                        <span class="material-symbols-outlined text-xl">edit</span>
-                      </button>
-                      <button
-                        :class="[
-                          'rounded-lg p-2 transition-colors disabled:cursor-not-allowed disabled:opacity-60',
-                          Number(member.trang_thai) === 1 ? 'text-slate-400 hover:text-amber-600' : 'text-slate-400 hover:text-green-600',
-                        ]"
-                        :disabled="roleUpdatingIds.includes(member.id)"
-                        :title="Number(member.trang_thai) === 1 ? 'Khóa' : 'Mở khóa'"
-                        type="button"
-                        @click="toggleHrMemberStatus(member)"
-                      >
-                        <span class="material-symbols-outlined text-xl">{{ Number(member.trang_thai) === 1 ? 'block' : 'lock_open' }}</span>
-                      </button>
-                      <button class="rounded-lg p-2 text-slate-400 transition-colors hover:text-violet-600" title="Phân quyền chức năng" type="button" @click="openPermissionTab(member)">
-                        <span class="material-symbols-outlined text-xl">tune</span>
-                      </button>
-                      <button
-                        class="rounded-lg p-2 text-slate-400 transition-colors hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-60"
-                        :disabled="removingMemberIds.includes(member.id) || roleUpdatingIds.includes(member.id)"
-                        title="Gỡ HR"
-                        type="button"
-                        @click="confirmRemoveMember(member)"
-                      >
-                        <span class="material-symbols-outlined text-xl">person_remove</span>
-                      </button>
-                    </template>
-                    <span v-else class="inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
-                      {{ member.la_chu_so_huu ? 'Tài khoản sở hữu' : 'Chỉ xem' }}
-                    </span>
-                  </div>
-                </td>
-              </tr>
-            </template>
-          </tbody>
-        </table>
-      </div>
-
-      <AdminPaginationBar
-        v-if="!loading && filteredMembers.length > 0"
-        :summary="`Hiển thị ${paginatedMembers.length} / ${filteredMembers.length} nhân sự HR`"
-        :current-page="currentPage"
-        :total-pages="totalMemberPages"
-        @prev="goToPreviousPage"
-        @next="goToNextPage"
-      />
-    </div>
-  </template>
-
-  <template v-else-if="activeTab === 'permissions'">
-    <div class="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
-      <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <div class="mb-4">
-          <p class="text-xs font-semibold uppercase tracking-[0.24em] text-[#2463eb]">Tab chức năng</p>
-          <h2 class="mt-2 text-xl font-black text-slate-900 dark:text-white">Cấp quyền theo HR</h2>
-          <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">Chọn một tài khoản HR để bật hoặc tắt từng chức năng mà tài khoản đó được phép thao tác.</p>
-        </div>
-
-        <div v-if="assignablePermissionMembers.length === 0" class="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-800/50">
-          Chưa có HR thường nào để cấu hình quyền.
-        </div>
-
-        <div v-else class="space-y-3">
-          <button
-            v-for="member in assignablePermissionMembers"
-            :key="member.id"
-            :class="[
-              'w-full rounded-2xl border px-4 py-4 text-left transition',
-              Number(member.id) === Number(selectedPermissionMemberId)
-                ? 'border-[#2463eb] bg-[#2463eb]/5 shadow-sm'
-                : 'border-slate-200 bg-slate-50/80 hover:border-slate-300 hover:bg-white dark:border-slate-700 dark:bg-slate-800/60',
-            ]"
-            type="button"
-            @click="selectedPermissionMemberId = member.id; loadMemberPermissionSettings(member.id)"
-          >
-            <div class="flex items-start justify-between gap-3">
-              <div class="min-w-0">
-                <p class="truncate font-semibold text-slate-900 dark:text-white">{{ member.ho_ten }}</p>
-                <p class="mt-1 truncate text-xs text-slate-500">{{ member.email }}</p>
-              </div>
-              <span class="inline-flex shrink-0 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[11px] font-semibold text-blue-700">
-                {{ member.so_quyen_noi_bo || 0 }} quyền
-              </span>
-            </div>
-            <div class="mt-4 flex items-center justify-between gap-3 text-xs text-slate-500">
-              <span>{{ member.so_quyen_noi_bo || 0 }}/{{ member.tong_quyen_noi_bo || permissionCatalog.length }} chức năng</span>
-              <span class="inline-flex items-center gap-1 font-medium text-[#2463eb]">
-                <span class="material-symbols-outlined text-[16px]">arrow_forward</span>
-                Chỉnh quyền
-              </span>
-            </div>
-          </button>
-        </div>
-      </div>
-
-      <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <template v-if="selectedPermissionMember">
-          <div class="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">HR được chọn</p>
-              <h2 class="mt-2 text-2xl font-black text-slate-900 dark:text-white">{{ selectedPermissionMember.ho_ten }}</h2>
-              <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{ selectedPermissionMember.email }}</p>
-            </div>
-            <div class="flex flex-wrap gap-2">
-              <span class="inline-flex rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
-                {{ permissionSummaryText }}
-              </span>
-              <span class="inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
-                Tài khoản HR
-              </span>
-            </div>
-          </div>
-
-          <div class="mb-6 flex flex-wrap gap-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-4 dark:border-slate-700 dark:bg-slate-800/50">
-            <button class="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800" type="button" @click="selectAllPermissions">
-              Cấp toàn bộ
-            </button>
-            <button class="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800" type="button" @click="clearAllPermissions">
-              Bỏ toàn bộ
-            </button>
-            <button
-              class="inline-flex items-center gap-2 rounded-xl bg-[#2463eb] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#1d56cf] disabled:cursor-not-allowed disabled:opacity-60"
-              type="button"
-              :disabled="permissionSaving || permissionLoading || !permissionDirty"
-              @click="savePermissions"
-            >
-              <span class="material-symbols-outlined text-[18px]">{{ permissionSaving ? 'hourglass_top' : 'save' }}</span>
-              {{ permissionSaving ? 'Đang lưu...' : 'Lưu quyền chức năng' }}
-            </button>
-            <button
-              class="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-              type="button"
-              @click="openPermissionDefinitionModal"
-            >
-              <span class="material-symbols-outlined text-[18px]">add</span>
-              Thêm chức năng
-            </button>
-          </div>
-
-          <div v-if="permissionLoading" class="flex min-h-[260px] items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-700 dark:bg-slate-800/50">
-            <div class="text-center">
-              <span class="material-symbols-outlined animate-spin text-3xl">hourglass_empty</span>
-              <p class="mt-3 text-sm">Đang tải cấu hình quyền...</p>
-            </div>
-          </div>
-
-          <div v-else class="grid gap-4 lg:grid-cols-2">
-            <label
-              v-for="permission in permissionCatalog"
-              :key="permission.key"
-              class="flex cursor-pointer items-start gap-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-4 transition hover:border-slate-300 hover:bg-white dark:border-slate-700 dark:bg-slate-800/60"
-            >
-              <input
-                v-model="permissionForm[permission.key]"
-                class="mt-1 h-5 w-5 rounded border-slate-300 text-[#2463eb] focus:ring-[#2463eb]"
-                type="checkbox"
-              >
-              <div class="min-w-0">
-                <div class="flex flex-wrap items-center gap-2">
-                  <p class="font-semibold text-slate-900 dark:text-white">{{ permission.label }}</p>
-                  <span
-                    :class="[
-                      'inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold',
-                      permissionForm[permission.key]
-                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
-                        : 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-200',
-                    ]"
-                  >
-                    {{ permissionForm[permission.key] ? 'Đã cấp' : 'Đã tắt' }}
-                  </span>
-                </div>
-                <p class="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">{{ permission.description }}</p>
-              </div>
-            </label>
-          </div>
-        </template>
-
-        <div v-else class="flex min-h-[340px] items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-800/50">
-          Chọn một tài khoản HR ở cột bên trái để cấu hình quyền chức năng.
-        </div>
-      </div>
-    </div>
-  </template>
-
-  <template v-else>
-    <div class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-      <div class="flex flex-col gap-3 border-b border-slate-200 bg-slate-50/50 px-6 py-5 dark:border-slate-800 dark:bg-slate-800/50 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h2 class="text-lg font-bold text-slate-900 dark:text-white">Lịch sử thao tác HR nội bộ</h2>
-          <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Theo dõi các thay đổi quan trọng như thêm HR, cập nhật quyền chức năng và gỡ thành viên khỏi công ty.</p>
-        </div>
-        <button
-          class="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800"
-          type="button"
-          @click="fetchHrAuditLogs(hrAuditPagination?.current_page || 1)"
-        >
-          <span class="material-symbols-outlined text-[18px]">refresh</span>
-          Tải lại log
-        </button>
-      </div>
-
-      <div class="overflow-x-auto">
-        <table class="w-full border-collapse text-left">
-          <thead>
-            <tr class="border-b border-slate-200 bg-slate-50/50 dark:border-slate-800 dark:bg-slate-800/50">
-              <th class="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-slate-500">Nội dung thao tác</th>
-              <th class="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-slate-500">Người thực hiện</th>
-              <th class="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-slate-500">Đối tượng</th>
-              <th class="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-slate-500">Thời gian</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
-            <tr v-if="hrAuditLogs.length === 0">
-              <td colspan="4" class="px-6 py-8 text-center text-slate-500">
-                <span class="material-symbols-outlined mb-2 text-3xl">history</span>
-                <div>Chưa có lịch sử thao tác HR nội bộ nào để hiển thị.</div>
-              </td>
-            </tr>
-            <template v-else>
-              <tr v-for="log in hrAuditLogs" :key="`audit-${log.id}`" class="transition-colors hover:bg-slate-50/50 dark:hover:bg-slate-800/50">
-                <td class="px-6 py-4">
-                  <p class="text-sm font-semibold text-slate-900 dark:text-white">{{ log.mo_ta }}</p>
-                </td>
-                <td class="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">
-                  {{ log.nguoi_thuc_hien?.ho_ten || log.nguoi_thuc_hien?.email || 'Hệ thống' }}
-                </td>
-                <td class="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">
-                  {{ log.nguoi_bi_tac_dong?.ho_ten || log.nguoi_bi_tac_dong?.email || 'Không có' }}
-                </td>
-                <td class="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">
-                  {{ log.created_at ? new Date(log.created_at).toLocaleString('vi-VN') : 'N/A' }}
-                </td>
-              </tr>
-            </template>
-          </tbody>
-        </table>
-      </div>
-
-      <AdminPaginationBar
-        v-if="hrAuditPagination && hrAuditLogs.length > 0"
-        :summary="`Hiển thị ${hrAuditLogs.length} / ${hrAuditPagination.total || hrAuditLogs.length} lịch sử thao tác`"
-        :current-page="auditCurrentPage"
-        :total-pages="auditTotalPages"
-        @prev="goToPreviousAuditPage"
-        @next="goToNextAuditPage"
-      />
-    </div>
-  </template>
-
-  <FormModalShell
-    v-if="showCreateModal"
-    eyebrow="Quản lý nhân sự HR"
-    title="Tạo tài khoản HR mới"
-    description="Tài khoản HR được gắn vào công ty hiện tại và đăng nhập bằng mật khẩu khởi tạo do bạn đặt."
-    max-width-class="max-w-4xl"
-    submit-label="Tạo HR"
-    submit-loading-label="Đang tạo..."
-    :saving="memberSubmitting"
-    @close="closeCreateModal"
-    @submit="addHrMember"
-  >
-    <template #summary>
-      <div class="rounded-2xl border border-slate-200 bg-white p-4">
-        <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Công ty</p>
-        <p class="mt-2 text-sm font-semibold text-slate-900">{{ company?.ten_cong_ty || company?.ten || 'Công ty hiện tại' }}</p>
-      </div>
-      <div class="rounded-2xl border border-slate-200 bg-white p-4">
-        <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Phân quyền</p>
-        <div class="mt-3">
-          <span class="inline-flex rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-700">
-            Theo quyền chức năng
-          </span>
-        </div>
-      </div>
-      <div class="rounded-2xl border border-slate-200 bg-white p-4">
-        <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Quyền tạo</p>
-        <p class="mt-2 text-sm text-slate-500">Chỉ owner công ty có thể tạo, cấp quyền chức năng hoặc gỡ HR nội bộ.</p>
-      </div>
-    </template>
-
-    <div class="grid gap-5 lg:grid-cols-2">
-      <div class="space-y-2">
-        <label class="block text-sm font-semibold text-slate-700">Họ tên</label>
-        <input v-model="memberForm.ho_ten" type="text" required class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20" placeholder="Nguyễn Văn A">
-      </div>
-      <div class="space-y-2">
-        <label class="block text-sm font-semibold text-slate-700">Email</label>
-        <input v-model="memberForm.email" type="email" required class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20" placeholder="hr@company.com">
-      </div>
-      <div class="space-y-2">
-        <label class="block text-sm font-semibold text-slate-700">Mật khẩu</label>
-        <input v-model="memberForm.mat_khau" type="password" required minlength="6" autocomplete="new-password" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20" placeholder="Tối thiểu 6 ký tự">
-        <p class="text-xs text-slate-400">HR sẽ dùng mật khẩu này để đăng nhập lần đầu.</p>
-      </div>
-      <div class="space-y-2">
-        <label class="block text-sm font-semibold text-slate-700">Số điện thoại</label>
-        <input v-model="memberForm.so_dien_thoai" type="tel" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20" placeholder="090...">
-      </div>
-    </div>
-  </FormModalShell>
-
-  <FormModalShell
-    v-if="showEditMemberModal"
-    eyebrow="Quản lý nhân sự HR"
-    title="Chỉnh sửa tài khoản HR"
-    description="Cập nhật thông tin đăng nhập, liên hệ và trạng thái hoạt động của tài khoản HR."
-    max-width-class="max-w-4xl"
-    submit-label="Lưu thay đổi"
-    submit-loading-label="Đang lưu..."
-    :saving="memberSubmitting"
-    @close="closeEditMemberModal"
-    @submit="updateHrMember"
-  >
-    <template #summary>
-      <div class="rounded-2xl border border-slate-200 bg-white p-4">
-        <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Tài khoản</p>
-        <p class="mt-2 text-base font-semibold text-slate-900">{{ memberEditForm.ho_ten || 'Chưa nhập họ tên' }}</p>
-        <p class="mt-1 text-sm text-slate-500">{{ memberEditForm.email || 'Chưa có email' }}</p>
-      </div>
-      <div class="rounded-2xl border border-slate-200 bg-white p-4">
-        <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Phân quyền</p>
-        <div class="mt-3">
-          <span class="inline-flex rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-700">
-            Theo quyền chức năng
-          </span>
-        </div>
-        <p class="mt-2 text-sm text-slate-500">Quyền chi tiết được chỉnh ở tab Chức năng.</p>
-      </div>
-      <div class="rounded-2xl border border-slate-200 bg-white p-4">
-        <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Trạng thái</p>
-        <div class="mt-3">
-          <span
-            :class="[
-              'inline-flex rounded-full px-3 py-1 text-sm font-semibold',
-              Number(memberEditForm.trang_thai) === 1
-                ? 'border border-emerald-200 bg-emerald-50 text-emerald-700'
-                : 'border border-rose-200 bg-rose-50 text-rose-700',
-            ]"
-          >
-            {{ Number(memberEditForm.trang_thai) === 1 ? 'Hoạt động' : 'Khóa' }}
-          </span>
-        </div>
-        <p class="mt-2 text-sm text-slate-500">Tài khoản bị khóa sẽ không thể đăng nhập hệ thống.</p>
-      </div>
-    </template>
-
-    <div class="grid gap-5 lg:grid-cols-2">
-      <div class="space-y-2">
-        <label class="block text-sm font-semibold text-slate-700">Họ tên</label>
-        <input v-model="memberEditForm.ho_ten" type="text" required class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20">
-      </div>
-      <div class="space-y-2">
-        <label class="block text-sm font-semibold text-slate-700">Email</label>
-        <input v-model="memberEditForm.email" type="email" required class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20">
-      </div>
-      <div class="space-y-2">
-        <label class="block text-sm font-semibold text-slate-700">Mật khẩu mới</label>
-        <input v-model="memberEditForm.mat_khau" type="password" minlength="6" autocomplete="new-password" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20">
-        <p class="text-xs text-slate-400">Để trống nếu không muốn đổi mật khẩu.</p>
-      </div>
-      <div class="space-y-2">
-        <label class="block text-sm font-semibold text-slate-700">Số điện thoại</label>
-        <input v-model="memberEditForm.so_dien_thoai" type="tel" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20">
-      </div>
-      <div class="space-y-2">
-        <label class="block text-sm font-semibold text-slate-700">Trạng thái</label>
-        <select v-model.number="memberEditForm.trang_thai" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20">
-          <option :value="1">Hoạt động</option>
-          <option :value="0">Khóa</option>
-        </select>
-      </div>
-    </div>
-  </FormModalShell>
-
-  <FormModalShell
-    v-if="showPermissionDefinitionModal"
-    eyebrow="Chức năng HR"
-    title="Tạo chức năng HR mới"
-    description="Chức năng mới sẽ xuất hiện trong tab Chức năng để bật hoặc tắt cho từng tài khoản HR."
-    max-width-class="max-w-3xl"
-    submit-label="Tạo chức năng"
-    submit-loading-label="Đang tạo..."
-    :saving="permissionDefinitionSaving"
-    @close="closePermissionDefinitionModal"
-    @submit="createPermissionDefinition"
-  >
-    <div class="grid gap-5">
-      <div class="space-y-2">
-        <label class="block text-sm font-semibold text-slate-700">Tên chức năng</label>
-        <input v-model="permissionDefinitionForm.label" type="text" required class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20" placeholder="Ví dụ: Quản lý ví" />
-      </div>
-      <div class="space-y-2">
-        <label class="block text-sm font-semibold text-slate-700">Gắn vào tab/chức năng đang có</label>
-        <select v-model="permissionDefinitionForm.mapped_permission_key" required class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20">
-          <option v-for="permission in systemPermissionOptions" :key="permission.key" :value="permission.key">
-            {{ permission.label }}
-          </option>
-        </select>
-      </div>
-      <div class="space-y-2">
-        <label class="block text-sm font-semibold text-slate-700">Mô tả</label>
-        <textarea v-model="permissionDefinitionForm.description" rows="4" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20" placeholder="Mô tả phạm vi thao tác của chức năng này." />
-      </div>
-    </div>
-  </FormModalShell>
-
-  <div v-if="showRemoveModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 dark:bg-black/70">
-    <div class="mx-4 w-full max-w-sm rounded-xl bg-white shadow-xl dark:bg-slate-900">
-      <div class="p-6">
-        <div class="mb-4 flex items-center gap-3">
-          <span class="material-symbols-outlined text-2xl text-red-600">warning</span>
-          <h3 class="text-lg font-semibold text-slate-900 dark:text-white">Gỡ HR khỏi công ty</h3>
-        </div>
-        <p class="mb-6 text-slate-600 dark:text-slate-400">
-          Bạn có chắc muốn gỡ <strong>{{ removingMember?.ho_ten }}</strong> khỏi công ty? Tài khoản này sẽ không còn quyền thao tác trong workspace hiện tại.
-        </p>
-        <div class="flex gap-3">
-          <button class="flex-1 rounded-lg border border-slate-300 px-4 py-2 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800" type="button" @click="closeRemoveModal">
-            Hủy
-          </button>
-          <button
-            class="flex-1 rounded-lg bg-red-600 px-4 py-2 font-medium text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
-            :disabled="removingMemberIds.includes(removingMember?.id)"
-            type="button"
-            @click="removeHrMember"
-          >
-            {{ removingMemberIds.includes(removingMember?.id) ? 'Đang gỡ...' : 'Gỡ HR' }}
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-</template>

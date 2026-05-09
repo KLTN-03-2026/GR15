@@ -1,3 +1,29 @@
+<template>
+  <div class="flex min-h-screen items-center justify-center bg-slate-50 px-6 py-12">
+    <div class="w-full max-w-md rounded-3xl border border-slate-200 bg-white px-8 py-10 text-center shadow-xl shadow-slate-200/60">
+      <div
+        class="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl"
+        :class="isLoading ? 'bg-blue-50 text-blue-600' : 'bg-red-50 text-red-600'"
+      >
+        <span
+          class="material-symbols-outlined text-3xl"
+          :class="isLoading ? 'animate-spin' : ''"
+        >
+          {{ isLoading ? 'progress_activity' : 'error' }}
+        </span>
+      </div>
+
+      <h1 class="mt-6 text-2xl font-black tracking-tight text-slate-900">
+        {{ isLoading ? 'Đang hoàn tất đăng nhập Google' : 'Không thể đăng nhập với Google' }}
+      </h1>
+
+      <p class="mt-3 text-sm leading-7 text-slate-500">
+        {{ isLoading ? 'Hệ thống đang đồng bộ phiên đăng nhập và chuyển bạn tới đúng khu vực làm việc.' : errorMessage }}
+      </p>
+    </div>
+  </div>
+</template>
+
 <script setup>
 import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -68,29 +94,3 @@ onMounted(async () => {
   }
 })
 </script>
-
-<template>
-  <div class="flex min-h-screen items-center justify-center bg-slate-50 px-6 py-12">
-    <div class="w-full max-w-md rounded-3xl border border-slate-200 bg-white px-8 py-10 text-center shadow-xl shadow-slate-200/60">
-      <div
-        class="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl"
-        :class="isLoading ? 'bg-blue-50 text-blue-600' : 'bg-red-50 text-red-600'"
-      >
-        <span
-          class="material-symbols-outlined text-3xl"
-          :class="isLoading ? 'animate-spin' : ''"
-        >
-          {{ isLoading ? 'progress_activity' : 'error' }}
-        </span>
-      </div>
-
-      <h1 class="mt-6 text-2xl font-black tracking-tight text-slate-900">
-        {{ isLoading ? 'Đang hoàn tất đăng nhập Google' : 'Không thể đăng nhập với Google' }}
-      </h1>
-
-      <p class="mt-3 text-sm leading-7 text-slate-500">
-        {{ isLoading ? 'Hệ thống đang đồng bộ phiên đăng nhập và chuyển bạn tới đúng khu vực làm việc.' : errorMessage }}
-      </p>
-    </div>
-  </div>
-</template>

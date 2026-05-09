@@ -1,269 +1,3 @@
-<script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
-import { RouterLink, useRoute, useRouter } from 'vue-router'
-import { employerBillingService } from '@/services/api'
-import { useNotify } from '@/composables/useNotify'
-import {
-  getBillingFeatureLabel,
-} from '@/utils/billing'
-
-const notify = useNotify()
-const route = useRoute()
-const router = useRouter()
-
-const loading = ref(false)
-const refreshing = ref(false)
-const creatingTopUp = ref(false)
-const selectedAmount = ref(100000)
-const selectedGateway = ref('momo')
-const wallet = ref(null)
-const pricing = ref([])
-const transactions = ref([])
-const paymentDraft = ref(null)
-
-const pagination = reactive({
-  current_page: 1,
-  last_page: 1,
-  per_page: 10,
-  total: 0,
-  from: 0,
-  to: 0,
-})
-
-const quickAmounts = [50000, 100000, 200000, 500000]
-const paymentGateways = [
-  {
-    value: 'momo',
-    label: 'MoMo',
-    description: 'Quét QR hoặc ví điện tử',
-  },
-  {
-    value: 'vnpay',
-    label: 'VNPay',
-    description: 'ATM, QR hoặc app ngân hàng',
-  },
-]
-
-const walletStats = computed(() => ({
-  current: Number(wallet.value?.so_du_hien_tai || 0),
-  hold: Number(wallet.value?.so_du_tam_giu || 0),
-  available: Number(wallet.value?.so_du_kha_dung || 0),
-}))
-
-const featuredPricing = computed(() =>
-  pricing.value.filter((item) => String(item.feature_code || '').startsWith('employer_featured_job_'))
-)
-const aiPricing = computed(() =>
-  pricing.value.filter((item) => !String(item.feature_code || '').startsWith('employer_featured_job_'))
-)
-
-const formatCurrency = (value) =>
-  `${new Intl.NumberFormat('vi-VN').format(Number(value || 0))} đ`
-
-const formatDateTime = (value) => {
-  if (!value) return 'Chưa cập nhật'
-
-  return new Intl.DateTimeFormat('vi-VN', {
-    dateStyle: 'short',
-    timeStyle: 'short',
-  }).format(new Date(value))
-}
-
-const getGatewayLabel = (gateway) => {
-  if (gateway === 'vnpay') return 'VNPay'
-  if (gateway === 'momo') return 'MoMo'
-  return 'cổng thanh toán'
-}
-
-const getFeatureDescription = (featureCode) => {
-  if (featureCode === 'employer_featured_job_7d') return 'Đẩy tin lên nhóm nổi bật trong 7 ngày.'
-  if (featureCode === 'employer_featured_job_30d') return 'Đẩy tin lên nhóm nổi bật trong 30 ngày.'
-  if (featureCode === 'employer_shortlist_ai_explanation') return 'AI chấm nhanh shortlist và giải thích lý do phù hợp.'
-  if (featureCode === 'employer_candidate_compare_ai') return 'AI so sánh nhiều CV trên cùng một JD.'
-  if (featureCode === 'interview_copilot_generate') return 'Sinh câu hỏi và rubric phỏng vấn theo từng hồ sơ.'
-  if (featureCode === 'interview_copilot_evaluate') return 'Đánh giá ghi chú phỏng vấn và gợi ý quyết định.'
-  return 'Tính năng đang dùng ví AI pay-per-use.'
-}
-
-const getTransactionLabel = (transaction) => {
-  switch (transaction?.loai_bien_dong) {
-    case 'topup_credit':
-      return 'Nạp tiền vào ví employer'
-    case 'usage_reserve':
-      return `Tạm giữ cho ${getBillingFeatureLabel(transaction?.metadata_json?.feature_code)}`
-    case 'usage_capture':
-      return `Đã thanh toán cho ${getBillingFeatureLabel(transaction?.metadata_json?.feature_code)}`
-    case 'usage_release':
-      return `Hoàn tạm giữ cho ${getBillingFeatureLabel(transaction?.metadata_json?.feature_code)}`
-    default:
-      return transaction?.mo_ta || 'Biến động ví'
-  }
-}
-
-const getTransactionDescription = (transaction) => {
-  const featureLabel = getBillingFeatureLabel(transaction?.metadata_json?.feature_code)
-
-  switch (transaction?.loai_bien_dong) {
-    case 'topup_credit':
-      return 'Số tiền đã được cộng vào ví để dùng cho featured listing và các chức năng AI tuyển dụng.'
-    case 'usage_reserve':
-      return `Hệ thống đang tạm giữ tiền để xử lý ${featureLabel}.`
-    case 'usage_capture':
-      return `${featureLabel} đã hoàn tất và số tiền đã được khấu trừ.`
-    case 'usage_release':
-      return `${featureLabel} không hoàn tất nên số tiền tạm giữ đã được hoàn lại.`
-    default:
-      return transaction?.mo_ta || 'Không có mô tả thêm.'
-  }
-}
-
-const getTransactionTone = (transaction) => {
-  switch (transaction?.loai_bien_dong) {
-    case 'topup_credit':
-      return 'bg-emerald-500/10 text-emerald-700 border-emerald-200'
-    case 'usage_capture':
-      return 'bg-rose-500/10 text-rose-700 border-rose-200'
-    case 'usage_release':
-      return 'bg-amber-500/10 text-amber-700 border-amber-200'
-    default:
-      return 'bg-blue-500/10 text-blue-700 border-blue-200'
-  }
-}
-
-const normalizeTransactions = (response) => {
-  const payload = response?.data || {}
-  transactions.value = payload.data || []
-  pagination.current_page = payload.current_page || 1
-  pagination.last_page = payload.last_page || 1
-  pagination.total = payload.total || 0
-  pagination.from = payload.from || 0
-  pagination.to = payload.to || 0
-}
-
-const loadBillingData = async (page = pagination.current_page, showLoading = true) => {
-  if (showLoading) {
-    loading.value = true
-  } else {
-    refreshing.value = true
-  }
-
-  try {
-    const [walletResponse, pricingResponse, transactionsResponse] = await Promise.all([
-      employerBillingService.getWallet(),
-      employerBillingService.getPricing(),
-      employerBillingService.getTransactions({
-        page,
-        per_page: pagination.per_page,
-      }),
-    ])
-
-    wallet.value = walletResponse?.data?.wallet || null
-    pricing.value = pricingResponse?.data || []
-    normalizeTransactions(transactionsResponse)
-  } catch (error) {
-    notify.apiError(error, 'Không thể tải dữ liệu ví employer.')
-  } finally {
-    loading.value = false
-    refreshing.value = false
-  }
-}
-
-const changePage = async (page) => {
-  if (page < 1 || page > pagination.last_page || page === pagination.current_page) return
-  await loadBillingData(page, false)
-}
-
-const buildTopUpReturnStorageKey = () => {
-  const topupState = typeof route.query.topup === 'string' ? route.query.topup : ''
-  const orderId = typeof route.query.orderId === 'string' ? route.query.orderId : ''
-
-  if (!topupState && !orderId) return ''
-
-  return `employer-topup-return:${topupState || 'unknown'}:${orderId || 'no-order'}`
-}
-
-const maybeHandleTopUpReturn = async () => {
-  const topupState = typeof route.query.topup === 'string' ? route.query.topup : ''
-  const orderId = typeof route.query.orderId === 'string' ? route.query.orderId : ''
-  const message = typeof route.query.message === 'string' && route.query.message
-    ? route.query.message
-    : ''
-
-  if (!topupState && !orderId) return false
-
-  const handledKey = buildTopUpReturnStorageKey()
-  const alreadyHandled = handledKey && window.sessionStorage.getItem(handledKey) === '1'
-
-  if (alreadyHandled) {
-    return false
-  }
-
-  if (orderId) {
-    try {
-      paymentDraft.value = (await employerBillingService.getTopUp(orderId))?.data || null
-    } catch {
-      paymentDraft.value = null
-    }
-  }
-
-  await loadBillingData(1)
-
-  if (topupState === 'success') {
-    notify.success(message || 'Nạp tiền thành công.')
-  } else if (topupState === 'failed') {
-    notify.warning(message || 'Giao dịch nạp tiền chưa thành công.')
-  } else if (topupState === 'pending') {
-    notify.info(message || 'Giao dịch đang chờ đối soát từ cổng thanh toán.')
-  }
-
-  if (handledKey) {
-    window.sessionStorage.setItem(handledKey, '1')
-  }
-
-  await router.push({ path: '/employer/billing' })
-  return true
-}
-
-const createTopUp = async () => {
-  const amount = Number(selectedAmount.value || 0)
-  if (!Number.isFinite(amount) || amount < 1000) {
-    notify.warning('Số tiền nạp tối thiểu là 1.000 đ.')
-    return
-  }
-
-  creatingTopUp.value = true
-  try {
-    const createPayment = selectedGateway.value === 'vnpay'
-      ? employerBillingService.createVnpayTopUp
-      : employerBillingService.createMomoTopUp
-    const response = await createPayment(amount)
-    const payment = response?.data?.payment || null
-    const payUrl = response?.data?.pay_url || ''
-
-    paymentDraft.value = payment
-
-    if (payUrl) {
-      window.location.href = payUrl
-      return
-    }
-
-    notify.warning('Giao dịch đã được tạo nhưng chưa có liên kết thanh toán để chuyển tiếp.')
-  } catch (error) {
-    notify.apiError(error, `Không thể tạo giao dịch nạp tiền qua ${getGatewayLabel(selectedGateway.value)}.`)
-  } finally {
-    creatingTopUp.value = false
-  }
-}
-
-onMounted(async () => {
-  const handledReturn = await maybeHandleTopUpReturn()
-
-  if (!handledReturn) {
-    await loadBillingData(1)
-  }
-})
-</script>
-
 <template>
   <div class="space-y-8">
     <section class="overflow-hidden rounded-[30px] border border-slate-200 bg-gradient-to-r from-slate-950 via-[#143c8c] to-[#2f7de1] px-8 py-8 text-white shadow-[0_24px_70px_rgba(15,23,42,0.28)]">
@@ -548,3 +282,269 @@ onMounted(async () => {
     </div>
   </div>
 </template>
+
+<script setup>
+import { computed, onMounted, reactive, ref } from 'vue'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
+import { employerBillingService } from '@/services/api'
+import { useNotify } from '@/composables/useNotify'
+import {
+  getBillingFeatureLabel,
+} from '@/utils/billing'
+
+const notify = useNotify()
+const route = useRoute()
+const router = useRouter()
+
+const loading = ref(false)
+const refreshing = ref(false)
+const creatingTopUp = ref(false)
+const selectedAmount = ref(100000)
+const selectedGateway = ref('momo')
+const wallet = ref(null)
+const pricing = ref([])
+const transactions = ref([])
+const paymentDraft = ref(null)
+
+const pagination = reactive({
+  current_page: 1,
+  last_page: 1,
+  per_page: 10,
+  total: 0,
+  from: 0,
+  to: 0,
+})
+
+const quickAmounts = [50000, 100000, 200000, 500000]
+const paymentGateways = [
+  {
+    value: 'momo',
+    label: 'MoMo',
+    description: 'Quét QR hoặc ví điện tử',
+  },
+  {
+    value: 'vnpay',
+    label: 'VNPay',
+    description: 'ATM, QR hoặc app ngân hàng',
+  },
+]
+
+const walletStats = computed(() => ({
+  current: Number(wallet.value?.so_du_hien_tai || 0),
+  hold: Number(wallet.value?.so_du_tam_giu || 0),
+  available: Number(wallet.value?.so_du_kha_dung || 0),
+}))
+
+const featuredPricing = computed(() =>
+  pricing.value.filter((item) => String(item.feature_code || '').startsWith('employer_featured_job_'))
+)
+const aiPricing = computed(() =>
+  pricing.value.filter((item) => !String(item.feature_code || '').startsWith('employer_featured_job_'))
+)
+
+const formatCurrency = (value) =>
+  `${new Intl.NumberFormat('vi-VN').format(Number(value || 0))} đ`
+
+const formatDateTime = (value) => {
+  if (!value) return 'Chưa cập nhật'
+
+  return new Intl.DateTimeFormat('vi-VN', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  }).format(new Date(value))
+}
+
+const getGatewayLabel = (gateway) => {
+  if (gateway === 'vnpay') return 'VNPay'
+  if (gateway === 'momo') return 'MoMo'
+  return 'cổng thanh toán'
+}
+
+const getFeatureDescription = (featureCode) => {
+  if (featureCode === 'employer_featured_job_7d') return 'Đẩy tin lên nhóm nổi bật trong 7 ngày.'
+  if (featureCode === 'employer_featured_job_30d') return 'Đẩy tin lên nhóm nổi bật trong 30 ngày.'
+  if (featureCode === 'employer_shortlist_ai_explanation') return 'AI chấm nhanh shortlist và giải thích lý do phù hợp.'
+  if (featureCode === 'employer_candidate_compare_ai') return 'AI so sánh nhiều CV trên cùng một JD.'
+  if (featureCode === 'interview_copilot_generate') return 'Sinh câu hỏi và rubric phỏng vấn theo từng hồ sơ.'
+  if (featureCode === 'interview_copilot_evaluate') return 'Đánh giá ghi chú phỏng vấn và gợi ý quyết định.'
+  return 'Tính năng đang dùng ví AI pay-per-use.'
+}
+
+const getTransactionLabel = (transaction) => {
+  switch (transaction?.loai_bien_dong) {
+    case 'topup_credit':
+      return 'Nạp tiền vào ví employer'
+    case 'usage_reserve':
+      return `Tạm giữ cho ${getBillingFeatureLabel(transaction?.metadata_json?.feature_code)}`
+    case 'usage_capture':
+      return `Đã thanh toán cho ${getBillingFeatureLabel(transaction?.metadata_json?.feature_code)}`
+    case 'usage_release':
+      return `Hoàn tạm giữ cho ${getBillingFeatureLabel(transaction?.metadata_json?.feature_code)}`
+    default:
+      return transaction?.mo_ta || 'Biến động ví'
+  }
+}
+
+const getTransactionDescription = (transaction) => {
+  const featureLabel = getBillingFeatureLabel(transaction?.metadata_json?.feature_code)
+
+  switch (transaction?.loai_bien_dong) {
+    case 'topup_credit':
+      return 'Số tiền đã được cộng vào ví để dùng cho featured listing và các chức năng AI tuyển dụng.'
+    case 'usage_reserve':
+      return `Hệ thống đang tạm giữ tiền để xử lý ${featureLabel}.`
+    case 'usage_capture':
+      return `${featureLabel} đã hoàn tất và số tiền đã được khấu trừ.`
+    case 'usage_release':
+      return `${featureLabel} không hoàn tất nên số tiền tạm giữ đã được hoàn lại.`
+    default:
+      return transaction?.mo_ta || 'Không có mô tả thêm.'
+  }
+}
+
+const getTransactionTone = (transaction) => {
+  switch (transaction?.loai_bien_dong) {
+    case 'topup_credit':
+      return 'bg-emerald-500/10 text-emerald-700 border-emerald-200'
+    case 'usage_capture':
+      return 'bg-rose-500/10 text-rose-700 border-rose-200'
+    case 'usage_release':
+      return 'bg-amber-500/10 text-amber-700 border-amber-200'
+    default:
+      return 'bg-blue-500/10 text-blue-700 border-blue-200'
+  }
+}
+
+const normalizeTransactions = (response) => {
+  const payload = response?.data || {}
+  transactions.value = payload.data || []
+  pagination.current_page = payload.current_page || 1
+  pagination.last_page = payload.last_page || 1
+  pagination.total = payload.total || 0
+  pagination.from = payload.from || 0
+  pagination.to = payload.to || 0
+}
+
+const loadBillingData = async (page = pagination.current_page, showLoading = true) => {
+  if (showLoading) {
+    loading.value = true
+  } else {
+    refreshing.value = true
+  }
+
+  try {
+    const [walletResponse, pricingResponse, transactionsResponse] = await Promise.all([
+      employerBillingService.getWallet(),
+      employerBillingService.getPricing(),
+      employerBillingService.getTransactions({
+        page,
+        per_page: pagination.per_page,
+      }),
+    ])
+
+    wallet.value = walletResponse?.data?.wallet || null
+    pricing.value = pricingResponse?.data || []
+    normalizeTransactions(transactionsResponse)
+  } catch (error) {
+    notify.apiError(error, 'Không thể tải dữ liệu ví employer.')
+  } finally {
+    loading.value = false
+    refreshing.value = false
+  }
+}
+
+const changePage = async (page) => {
+  if (page < 1 || page > pagination.last_page || page === pagination.current_page) return
+  await loadBillingData(page, false)
+}
+
+const buildTopUpReturnStorageKey = () => {
+  const topupState = typeof route.query.topup === 'string' ? route.query.topup : ''
+  const orderId = typeof route.query.orderId === 'string' ? route.query.orderId : ''
+
+  if (!topupState && !orderId) return ''
+
+  return `employer-topup-return:${topupState || 'unknown'}:${orderId || 'no-order'}`
+}
+
+const maybeHandleTopUpReturn = async () => {
+  const topupState = typeof route.query.topup === 'string' ? route.query.topup : ''
+  const orderId = typeof route.query.orderId === 'string' ? route.query.orderId : ''
+  const message = typeof route.query.message === 'string' && route.query.message
+    ? route.query.message
+    : ''
+
+  if (!topupState && !orderId) return false
+
+  const handledKey = buildTopUpReturnStorageKey()
+  const alreadyHandled = handledKey && window.sessionStorage.getItem(handledKey) === '1'
+
+  if (alreadyHandled) {
+    return false
+  }
+
+  if (orderId) {
+    try {
+      paymentDraft.value = (await employerBillingService.getTopUp(orderId))?.data || null
+    } catch {
+      paymentDraft.value = null
+    }
+  }
+
+  await loadBillingData(1)
+
+  if (topupState === 'success') {
+    notify.success(message || 'Nạp tiền thành công.')
+  } else if (topupState === 'failed') {
+    notify.warning(message || 'Giao dịch nạp tiền chưa thành công.')
+  } else if (topupState === 'pending') {
+    notify.info(message || 'Giao dịch đang chờ đối soát từ cổng thanh toán.')
+  }
+
+  if (handledKey) {
+    window.sessionStorage.setItem(handledKey, '1')
+  }
+
+  await router.push({ path: '/employer/billing' })
+  return true
+}
+
+const createTopUp = async () => {
+  const amount = Number(selectedAmount.value || 0)
+  if (!Number.isFinite(amount) || amount < 1000) {
+    notify.warning('Số tiền nạp tối thiểu là 1.000 đ.')
+    return
+  }
+
+  creatingTopUp.value = true
+  try {
+    const createPayment = selectedGateway.value === 'vnpay'
+      ? employerBillingService.createVnpayTopUp
+      : employerBillingService.createMomoTopUp
+    const response = await createPayment(amount)
+    const payment = response?.data?.payment || null
+    const payUrl = response?.data?.pay_url || ''
+
+    paymentDraft.value = payment
+
+    if (payUrl) {
+      window.location.href = payUrl
+      return
+    }
+
+    notify.warning('Giao dịch đã được tạo nhưng chưa có liên kết thanh toán để chuyển tiếp.')
+  } catch (error) {
+    notify.apiError(error, `Không thể tạo giao dịch nạp tiền qua ${getGatewayLabel(selectedGateway.value)}.`)
+  } finally {
+    creatingTopUp.value = false
+  }
+}
+
+onMounted(async () => {
+  const handledReturn = await maybeHandleTopUpReturn()
+
+  if (!handledReturn) {
+    await loadBillingData(1)
+  }
+})
+</script>

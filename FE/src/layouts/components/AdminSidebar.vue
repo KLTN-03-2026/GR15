@@ -1,70 +1,3 @@
-<script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import AppLogo from '@/components/AppLogo.vue'
-import { RouterLink } from 'vue-router'
-import { getStoredUser } from '@/utils/authStorage'
-import { hasAdminPermission } from '@/constants/adminPermissions'
-import { useNotify } from '@/composables/useNotify'
-
-defineProps({
-  collapsed: {
-    type: Boolean,
-    default: false,
-  },
-})
-
-const currentUser = ref(getStoredUser())
-const notify = useNotify()
-const lockedMessage = 'Bạn không có quyền thực hiện chức năng này'
-
-const syncCurrentUser = () => {
-  currentUser.value = getStoredUser()
-}
-
-const canManageAdmins = computed(() =>
-  Number(currentUser.value?.vai_tro) === 2 && currentUser.value?.cap_admin === 'super_admin'
-)
-
-const navigationItems = [
-  { to: '/admin', icon: 'dashboard', label: 'Dashboard' },
-  { to: '/admin/users', icon: 'group', label: 'Người dùng', permission: 'users' },
-  { to: '/admin/companies', icon: 'domain', label: 'Công ty', permission: 'companies' },
-  { to: '/admin/profiles', icon: 'description', label: 'Hồ sơ', permission: 'profiles' },
-  { to: '/admin/user-skills', icon: 'psychology', label: 'Kỹ năng người dùng', permission: 'user_skills' },
-  { to: '/admin/matchings', icon: 'compare_arrows', label: 'AI Matching', permission: 'matchings' },
-  { to: '/admin/career-advising', icon: 'travel_explore', label: 'AI Advising', permission: 'career_advising' },
-  { to: '/admin/ai-usage', icon: 'memory', label: 'AI Usage', permission: 'ai_usage' },
-  { to: '/admin/billing', icon: 'payments', label: 'Billing', permission: 'billing' },
-  { to: '/admin/applications', icon: 'assignment', label: 'Ứng tuyển', permission: 'applications' },
-  { to: '/admin/skills', icon: 'bolt', label: 'Kỹ năng', permission: 'skills' },
-  { to: '/admin/industries', icon: 'factory', label: 'Ngành nghề', permission: 'industries' },
-  { to: '/admin/jobs', icon: 'work', label: 'Tin tuyển dụng', permission: 'jobs' },
-  { to: '/admin/cv-templates', icon: 'palette', label: 'Template CV', permission: 'cv_templates' },
-  { to: '/admin/audit-logs', icon: 'history', label: 'Nhật ký hệ thống', permission: 'audit_logs' },
-  { to: '/admin/stats', icon: 'leaderboard', label: 'Báo cáo & phân tích', permission: 'stats' },
-]
-
-const visibleNavigationItems = computed(() =>
-  navigationItems.filter((item) => item.to !== '/admin')
-)
-
-const canAccessItem = (item) => !item.permission || hasAdminPermission(currentUser.value, item.permission)
-
-const showLockedNotice = () => {
-  notify.warning(lockedMessage)
-}
-
-onMounted(() => {
-  window.addEventListener('auth-changed', syncCurrentUser)
-  window.addEventListener('admin-profile-updated', syncCurrentUser)
-})
-
-onBeforeUnmount(() => {
-  window.removeEventListener('auth-changed', syncCurrentUser)
-  window.removeEventListener('admin-profile-updated', syncCurrentUser)
-})
-</script>
-
 <template>
   <aside
     class="sticky top-0 flex h-screen flex-col border-r border-slate-200/80 bg-white/95 backdrop-blur dark:border-slate-800 dark:bg-slate-950/90 transition-all duration-200"
@@ -131,9 +64,78 @@ onBeforeUnmount(() => {
           <span v-if="!collapsed" class="material-symbols-outlined ml-auto text-[17px]">lock</span>
         </button>
       </template>
-    </nav>
+
+
+</nav>
   </aside>
 </template>
+
+<script setup>
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import AppLogo from '@/components/AppLogo.vue'
+import { RouterLink } from 'vue-router'
+import { getStoredUser } from '@/utils/authStorage'
+import { hasAdminPermission } from '@/constants/adminPermissions'
+import { useNotify } from '@/composables/useNotify'
+
+defineProps({
+  collapsed: {
+    type: Boolean,
+    default: false,
+  },
+})
+
+const currentUser = ref(getStoredUser())
+const notify = useNotify()
+const lockedMessage = 'Bạn không có quyền thực hiện chức năng này'
+
+const syncCurrentUser = () => {
+  currentUser.value = getStoredUser()
+}
+
+const canManageAdmins = computed(() =>
+  Number(currentUser.value?.vai_tro) === 2 && currentUser.value?.cap_admin === 'super_admin'
+)
+
+const navigationItems = [
+  { to: '/admin', icon: 'dashboard', label: 'Dashboard' },
+  { to: '/admin/users', icon: 'group', label: 'Người dùng', permission: 'users' },
+  { to: '/admin/companies', icon: 'domain', label: 'Công ty', permission: 'companies' },
+  { to: '/admin/profiles', icon: 'description', label: 'Hồ sơ', permission: 'profiles' },
+  { to: '/admin/user-skills', icon: 'psychology', label: 'Kỹ năng người dùng', permission: 'user_skills' },
+  { to: '/admin/matchings', icon: 'compare_arrows', label: 'AI Matching', permission: 'matchings' },
+  { to: '/admin/career-advising', icon: 'travel_explore', label: 'AI Advising', permission: 'career_advising' },
+  { to: '/admin/ai-usage', icon: 'memory', label: 'AI Usage', permission: 'ai_usage' },
+  { to: '/admin/billing', icon: 'payments', label: 'Billing', permission: 'billing' },
+  { to: '/admin/applications', icon: 'assignment', label: 'Ứng tuyển', permission: 'applications' },
+  { to: '/admin/skills', icon: 'bolt', label: 'Kỹ năng', permission: 'skills' },
+  { to: '/admin/industries', icon: 'factory', label: 'Ngành nghề', permission: 'industries' },
+  { to: '/admin/jobs', icon: 'work', label: 'Tin tuyển dụng', permission: 'jobs' },
+  { to: '/admin/cv-templates', icon: 'palette', label: 'Template CV', permission: 'cv_templates' },
+  { to: '/admin/audit-logs', icon: 'history', label: 'Nhật ký hệ thống', permission: 'audit_logs' },
+  { to: '/admin/stats', icon: 'leaderboard', label: 'Báo cáo & phân tích', permission: 'stats' },
+]
+
+const visibleNavigationItems = computed(() =>
+  navigationItems.filter((item) => item.to !== '/admin')
+)
+
+const canAccessItem = (item) => !item.permission || hasAdminPermission(currentUser.value, item.permission)
+
+const showLockedNotice = () => {
+  notify.warning(lockedMessage)
+}
+
+onMounted(() => {
+  window.addEventListener('auth-changed', syncCurrentUser)
+  window.addEventListener('admin-profile-updated', syncCurrentUser)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('auth-changed', syncCurrentUser)
+  window.removeEventListener('admin-profile-updated', syncCurrentUser)
+})
+</script>
 
 <style scoped>
 .nav-link.active-nav {

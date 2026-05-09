@@ -3,6 +3,7 @@
 namespace App\Http\Requests\HoSo;
 
 use App\Models\HoSo;
+use App\Support\ExperienceValue;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -32,6 +33,10 @@ class TaoHoSoRequest extends FormRequest
             $payload['trinh_do'] = HoSo::normalizeTrinhDo($this->input('trinh_do'));
         }
 
+        if ($this->has('kinh_nghiem_nam')) {
+            $payload['kinh_nghiem_nam'] = ExperienceValue::normalize($this->input('kinh_nghiem_nam'));
+        }
+
         if ($payload !== []) {
             $this->merge($payload);
         }
@@ -48,7 +53,7 @@ class TaoHoSoRequest extends FormRequest
             'tieu_de_ho_so' => ['required', 'string', 'max:200'],
             'muc_tieu_nghe_nghiep' => ['nullable', 'string'],
             'trinh_do' => ['nullable', 'string', 'max:100', Rule::in(HoSo::acceptedTrinhDoValues())],
-            'kinh_nghiem_nam' => ['nullable', 'integer', 'min:0', 'max:50'],
+            'kinh_nghiem_nam' => ['nullable', 'numeric', 'min:0', 'max:50'],
             'mo_ta_ban_than' => ['nullable', 'string'],
             'file_cv' => ['nullable', 'file', 'mimes:pdf,doc,docx', 'max:5120'],
             'nguon_ho_so' => ['nullable', 'string', 'in:upload,builder,hybrid'],
@@ -75,7 +80,7 @@ class TaoHoSoRequest extends FormRequest
             'tieu_de_ho_so.required' => 'Tiêu đề hồ sơ không được để trống.',
             'tieu_de_ho_so.max' => 'Tiêu đề hồ sơ tối đa 200 ký tự.',
             'trinh_do.in' => 'Trình độ không hợp lệ.',
-            'kinh_nghiem_nam.integer' => 'Kinh nghiệm năm phải là số nguyên.',
+            'kinh_nghiem_nam.numeric' => 'Kinh nghiệm năm phải là số hợp lệ, ví dụ: 0.5 hoặc 6 tháng.',
             'kinh_nghiem_nam.min' => 'Kinh nghiệm năm không được nhỏ hơn 0.',
             'kinh_nghiem_nam.max' => 'Kinh nghiệm năm không được lớn hơn 50.',
             'file_cv.file' => 'File CV phải là một tệp tin.',

@@ -1,51 +1,3 @@
-<script setup>
-const props = defineProps({
-  maxWidthClass: {
-    type: String,
-    default: 'max-w-4xl',
-  },
-  eyebrow: {
-    type: String,
-    default: 'Quản lý dữ liệu',
-  },
-  title: {
-    type: String,
-    required: true,
-  },
-  description: {
-    type: String,
-    default: '',
-  },
-  submitLabel: {
-    type: String,
-    default: 'Lưu thay đổi',
-  },
-  submitLoadingLabel: {
-    type: String,
-    default: 'Đang cập nhật...',
-  },
-  cancelLabel: {
-    type: String,
-    default: 'Hủy',
-  },
-  saving: {
-    type: Boolean,
-    default: false,
-  },
-  disableClose: {
-    type: Boolean,
-    default: false,
-  },
-})
-
-const emit = defineEmits(['close', 'submit'])
-
-const onClose = () => {
-  if (props.disableClose) return
-  emit('close')
-}
-</script>
-
 <template>
   <div
     class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-4 backdrop-blur-sm"
@@ -107,3 +59,51 @@ const onClose = () => {
     </div>
   </div>
 </template>
+
+<script setup>
+const props = defineProps({
+  maxWidthClass: {
+    type: String,
+    default: 'max-w-4xl',
+  },
+  eyebrow: {
+    type: String,
+    default: 'Quản lý dữ liệu',
+  },
+  title: {
+    type: String,
+    required: true,
+  },
+  description: {
+    type: String,
+    default: '',
+  },
+  submitLabel: {
+    type: String,
+    default: 'Lưu thay đổi',
+  },
+  submitLoadingLabel: {
+    type: String,
+    default: 'Đang cập nhật...',
+  },
+  cancelLabel: {
+    type: String,
+    default: 'Hủy',
+  },
+  saving: {
+    type: Boolean,
+    default: false,
+  },
+  disableClose: {
+    type: Boolean,
+    default: false,
+  },
+})
+
+const emit = defineEmits(['close', 'submit'])
+
+const onClose = () => {
+  if (props.disableClose) return
+  emit('close')
+}
+</script>

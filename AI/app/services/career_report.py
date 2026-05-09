@@ -8,6 +8,7 @@ from urllib.request import Request, urlopen
 
 from app.core.config import settings
 from app.core.logger import get_logger
+from app.providers.gemini_client import generate_text as generate_gemini_text
 from app.services.skill_catalog import SKILL_CATALOG, normalize_search_text
 from app.services.vietnamese_text import (
     normalize_vietnamese_ai_text,
@@ -206,6 +207,9 @@ SUGGESTION_CANONICAL_MAP = {
     "frontend performance optimization": "Tối ưu hiệu năng frontend",
     "mobile performance optimization": "Tối ưu hiệu năng mobile",
     "application architecture": "Kiến trúc ứng dụng",
+    "requirement gathering": "Thu thập yêu cầu",
+    "requirements gathering": "Thu thập yêu cầu",
+    "phan tich yeu cau": "Thu thập yêu cầu",
 }
 
 
@@ -341,8 +345,8 @@ def _normalize_matching_profiles(matching_profiles: list[dict]) -> list[dict]:
             {
                 "job_title": item.get("job_title") or item.get("tieu_de") or "Vị trí phù hợp",
                 "score": float(item.get("diem_phu_hop") or 0),
-                "missing_skills": _extract_skill_names(item.get("missing_skills_json")),
-                "matched_skills": _extract_skill_names(item.get("matched_skills_json")),
+                "missing_skills": [_canonicalize_suggested_skill(skill) for skill in _extract_skill_names(item.get("missing_skills_json"))],
+                "matched_skills": [_canonicalize_suggested_skill(skill) for skill in _extract_skill_names(item.get("matched_skills_json"))],
                 "job_level": (item.get("chi_tiet_diem") or {}).get("job_level"),
             }
         )
@@ -645,6 +649,8 @@ def _generate_llm_report_text(reasoning_context: dict, report_outline: dict) -> 
     prompt = _build_llm_report_prompt(reasoning_context, report_outline)
     if provider == "openai":
         return _generate_openai_report(prompt)
+    if provider == "gemini":
+        return _generate_gemini_report(prompt)
     if provider == "ollama":
         return _generate_ollama_report(prompt)
 
@@ -778,6 +784,21 @@ def _generate_openai_report(prompt: str) -> str:
     content = _extract_openai_response_text(data).strip()
     if not content:
         raise RuntimeError("OpenAI không trả về nội dung Career Report.")
+    return _finalize_llm_report_text(content)
+
+
+def _generate_gemini_report(prompt: str) -> str:
+    content = generate_gemini_text(
+        system_prompt=(
+            "Bạn viết báo cáo hướng nghiệp ngắn gọn bằng tiếng Việt. "
+            "Chỉ bám sát evidence, không tự xưng 'tôi', không lan man, không thêm mục ngoài yêu cầu. "
+            "Giọng văn là hệ thống tư vấn nói với người dùng, dùng 'ứng viên', 'hồ sơ' hoặc 'bạn' khi cần. "
+            "Không dùng cụm tiếng Anh phổ thông trong phần tư vấn; chỉ giữ tên riêng công nghệ hoặc tên vị trí gốc."
+        ),
+        user_prompt=prompt,
+        max_tokens=settings.career_report_max_tokens,
+        temperature=0,
+    )
     return _finalize_llm_report_text(content)
 
 

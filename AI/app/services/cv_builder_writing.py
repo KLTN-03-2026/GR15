@@ -1,10 +1,17 @@
 from __future__ import annotations
 
+import json
+import re
+
 from app.core.config import settings
+from app.core.logger import get_logger
+from app.providers.gemini_client import generate_text
 from app.services.vietnamese_text import normalize_vietnamese_text_list
 
 
-MODEL_VERSION = f"cv_builder_writing_v1.0::rule_based::{settings.local_llm_model}"
+logger = get_logger(__name__)
+
+MODEL_VERSION = f"cv_builder_writing_v1.1::{settings.cv_builder_writing_provider}"
 
 
 def generate_cv_builder_writing(
@@ -16,6 +23,28 @@ def generate_cv_builder_writing(
     opts = options or {}
     item = opts.get("item") if isinstance(opts.get("item"), dict) else {}
     tone = str(opts.get("tone") or "professional")
+    provider_name = _resolve_provider_name()
+
+    if provider_name == "gemini":
+        try:
+            data = _generate_with_gemini(profile, section, item, tone)
+            return {
+                "success": True,
+                "message": "Đã sinh gợi ý nội dung CV Builder bằng Gemini.",
+                "model_version": f"cv_builder_writing_v1.1::gemini::{settings.gemini_model}",
+                "data": {
+                    **data,
+                    "model_version": f"cv_builder_writing_v1.1::gemini::{settings.gemini_model}",
+                    "meta": {
+                        "provider": "gemini",
+                        "model": settings.gemini_model,
+                        "section": section,
+                        "tone": tone,
+                    },
+                },
+            }
+        except Exception as exc:
+            logger.exception("Gemini CV Builder writing failed, fallback to rule-based writer.")
 
     if section == "skills":
         data = {
@@ -34,10 +63,131 @@ def generate_cv_builder_writing(
 
     return {
         "success": True,
-        "message": "Đã sinh gợi ý nội dung CV Builder.",
-        "model_version": MODEL_VERSION,
+        "message": "Đã sinh gợi ý nội dung CV Builder bằng bộ gợi ý nội bộ.",
+        "model_version": f"cv_builder_writing_v1.1::rule_based::{settings.local_llm_model}",
         "data": data,
+        "error": str(exc) if provider_name == "gemini" and "exc" in locals() else None,
     }
+
+
+def _resolve_provider_name() -> str:
+    provider = (settings.cv_builder_writing_provider or "gemini").strip().lower()
+    if provider in {"gemini", "template", "rule", "rules", "rule_based", "local"}:
+        return "gemini" if provider == "gemini" else "rule_based"
+    logger.warning("Unknown CV_BUILDER_WRITING_PROVIDER=%s, fallback to gemini", settings.cv_builder_writing_provider)
+    return "gemini"
+
+
+def _generate_with_gemini(profile: dict, section: str, item: dict, tone: str) -> dict:
+    raw = generate_text(
+        system_prompt=(
+            "Bạn là trợ lý viết CV cho hệ thống tuyển dụng. "
+            "Luôn trả lời bằng tiếng Việt, không bịa công ty, chứng chỉ, số liệu hoặc kinh nghiệm ngoài dữ liệu đầu vào. "
+            "Chỉ trả về JSON hợp lệ, không markdown, không giải thích thêm."
+        ),
+        user_prompt=_build_gemini_prompt(profile, section, item, tone),
+        max_tokens=settings.cv_builder_writing_max_tokens,
+        temperature=0.35,
+    )
+    payload = _parse_json_payload(raw)
+
+    if section == "skills":
+        skill_suggestions = _normalize_gemini_skills(payload.get("skill_suggestions") or payload.get("skills") or [], profile)
+        if not skill_suggestions:
+            raise RuntimeError("Gemini không trả về skill_suggestions hợp lệ.")
+        return {
+            "section": section,
+            "suggestions": [],
+            "skill_suggestions": skill_suggestions,
+        }
+
+    suggestions = normalize_vietnamese_text_list(_normalize_gemini_suggestions(payload.get("suggestions") or []))
+    if not suggestions:
+        raise RuntimeError("Gemini không trả về suggestions hợp lệ.")
+
+    return {
+        "section": section,
+        "suggestions": suggestions[:3],
+        "skill_suggestions": [],
+    }
+
+
+def _build_gemini_prompt(profile: dict, section: str, item: dict, tone: str) -> str:
+    schema = (
+        '{"suggestions":["gợi ý 1","gợi ý 2","gợi ý 3"],"skill_suggestions":[]}'
+        if section != "skills"
+        else '{"suggestions":[],"skill_suggestions":[{"ten":"Tên kỹ năng","muc_do":"kha"}]}'
+    )
+    section_rules = {
+        "summary": "Viết 3 phiên bản mô tả bản thân ngắn, chuyên nghiệp, 2-3 câu mỗi gợi ý.",
+        "career_goal": "Viết 3 phiên bản mục tiêu nghề nghiệp, rõ định hướng và phù hợp vị trí mục tiêu.",
+        "experience": "Viết 3 phiên bản mô tả kinh nghiệm cho item hiện tại. Có thể dùng xuống dòng bullet bằng ký tự '-'.",
+        "project": "Viết 3 phiên bản mô tả dự án/thành tựu cho item hiện tại, nhấn mạnh vai trò, công nghệ/bối cảnh và kết quả hợp lý.",
+        "skills": "Gợi ý tối đa 8 kỹ năng phù hợp với vị trí/ngành mục tiêu, bỏ qua kỹ năng đã có trong CV. muc_do chỉ dùng một trong: co_ban, kha, tot, xuat_sac.",
+    }
+    return (
+        f"Section cần sinh: {section}\n"
+        f"Tone: {tone}\n"
+        f"Yêu cầu section: {section_rules.get(section, section_rules['summary'])}\n"
+        "Quy tắc:\n"
+        "- Bám sát dữ liệu CV, vị trí mục tiêu, kỹ năng hiện có và item đang chỉnh.\n"
+        "- Không dùng câu chung chung quá mức, không tự thêm tên công ty/dự án/chứng chỉ nếu dữ liệu không có.\n"
+        "- Không nhắc rằng bạn là AI.\n"
+        "- Trả về đúng JSON theo schema, không đặt trong ```.\n"
+        f"Schema bắt buộc: {schema}\n"
+        f"Dữ liệu CV: {json.dumps(profile, ensure_ascii=False)}\n"
+        f"Item đang chỉnh: {json.dumps(item, ensure_ascii=False)}"
+    )
+
+
+def _parse_json_payload(raw: str) -> dict:
+    text = raw.strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*", "", text)
+        text = re.sub(r"\s*```$", "", text)
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        match = re.search(r"\{.*\}", text, flags=re.DOTALL)
+        if not match:
+            raise
+        payload = json.loads(match.group(0))
+    if not isinstance(payload, dict):
+        raise RuntimeError("Gemini trả về JSON không phải object.")
+    return payload
+
+
+def _normalize_gemini_suggestions(items: object) -> list[str]:
+    if not isinstance(items, list):
+        return []
+    suggestions: list[str] = []
+    for item in items[:5]:
+        text = item.get("text") if isinstance(item, dict) else item
+        text = str(text or "").strip()
+        if text:
+            suggestions.append(text)
+    return suggestions
+
+
+def _normalize_gemini_skills(items: object, profile: dict) -> list[dict]:
+    if not isinstance(items, list):
+        return []
+    existing = {skill.lower() for skill in _skill_names(profile)}
+    skills: list[dict] = []
+    seen: set[str] = set()
+    for item in items[:12]:
+        name = item.get("ten") or item.get("name") if isinstance(item, dict) else item
+        level = item.get("muc_do") or item.get("level") if isinstance(item, dict) else "kha"
+        name = str(name or "").strip()
+        normalized_name = name.lower()
+        if not name or normalized_name in existing or normalized_name in seen:
+            continue
+        seen.add(normalized_name)
+        skills.append({
+            "ten": name,
+            "muc_do": level if level in {"co_ban", "kha", "tot", "xuat_sac"} else "kha",
+        })
+    return skills[:8]
 
 
 def _suggestions(profile: dict, section: str, item: dict, tone: str) -> list[str]:

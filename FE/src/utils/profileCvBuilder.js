@@ -680,7 +680,7 @@ const escapeHtml = (value) =>
 const renderList = (items, renderItem) => asArray(items).map(renderItem).join('')
 
 const getProfileOwnerData = ({ profile, owner }) => {
-  const template = resolveCvTemplateValue(profile?.mau_cv)
+  const template = resolveCvTemplateLayout(profile?.mau_cv, profile?.bo_cuc_cv)
   const theme = getCvTemplateTheme(template)
   const fullName = owner?.ho_ten || 'Ứng viên'
   const email = owner?.email || 'Chưa cập nhật email'
@@ -1007,18 +1007,18 @@ const buildAtsSerifHtml = (data) => `
     <div class="contact">${escapeHtml(data.targetIndustry)} | ${escapeHtml(data.phone)}<br />${escapeHtml(data.email)}</div>
 
     <section class="section">
-      <h2>Summary</h2>
+      <h2>Tóm tắt</h2>
       <div class="rule"></div>
       <div class="text">${escapeHtml(data.summary || data.objective)}</div>
     </section>
 
     <section class="section">
-      <h2>Experience</h2>
+      <h2>Kinh nghiệm</h2>
       <div class="rule"></div>
       ${renderList(data.experiences, (item) => `
         <div class="entry">
           <div class="entry-title">${escapeHtml(item?.vi_tri || '')}</div>
-          <div class="entry-sub">${escapeHtml(item?.cong_ty || 'Personal Projects')}</div>
+          <div class="entry-sub">${escapeHtml(item?.cong_ty || 'Dự án cá nhân')}</div>
           <div class="meta">${escapeHtml(formatCvPeriod(item?.bat_dau, item?.ket_thuc))}</div>
           ${item?.mo_ta ? `<div class="text" style="margin-top: 6px;">${escapeHtml(item.mo_ta)}</div>` : ''}
         </div>
@@ -1026,13 +1026,13 @@ const buildAtsSerifHtml = (data) => `
     </section>
 
     <section class="section">
-      <h2>Skills</h2>
+      <h2>Kỹ năng</h2>
       <div class="rule"></div>
       <div class="skills">${data.skills.map((item) => escapeHtml(item?.ten || '')).join(', ') || 'Chưa cập nhật kỹ năng.'}</div>
     </section>
 
     <section class="section">
-      <h2>Education</h2>
+      <h2>Học vấn</h2>
       <div class="rule"></div>
       ${renderList(data.educations, (item) => `
         <div class="entry">
@@ -1044,7 +1044,7 @@ const buildAtsSerifHtml = (data) => `
     </section>
 
     <section class="section">
-      <h2>Projects & Certifications</h2>
+      <h2>Dự án & Chứng chỉ</h2>
       <div class="rule"></div>
       ${renderList(data.projects, (item) => `
         <div class="entry">

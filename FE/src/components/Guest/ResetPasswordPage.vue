@@ -1,3 +1,131 @@
+<template>
+  <div class="auth-page auth-page--reset">
+    <section class="auth-showcase">
+      <div class="showcase-inner">
+        <RouterLink to="/" class="showcase-brand">
+          <AppLogo size="lg" tone="light" title="AI Recruitment" subtitle="Career Intelligence Platform" />
+        </RouterLink>
+
+        <div class="showcase-copy">
+          <h1>Thiết lập mật khẩu mới an toàn.</h1>
+          <p>
+            Xác nhận đúng email, token và mật khẩu mới để tiếp tục quay lại hệ thống với vai trò hiện tại của bạn.
+          </p>
+        </div>
+
+        <div class="showcase-feature-list">
+          <div class="feature-item">
+            <span class="material-symbols-outlined">key</span>
+            <span>Mật khẩu mới sẽ thay thế hoàn toàn mật khẩu cũ</span>
+          </div>
+          <div class="feature-item">
+            <span class="material-symbols-outlined">lock_reset</span>
+            <span>Sau khi hoàn tất, hệ thống sẽ đưa bạn về màn đăng nhập</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="auth-panel">
+      <div class="auth-card">
+        <div v-if="errorMessage || successMessage" class="auth-alert-wrap">
+          <div v-if="errorMessage" class="auth-alert auth-alert--error">
+            <span class="material-symbols-outlined">error</span>
+            <span>{{ errorMessage }}</span>
+          </div>
+          <div v-if="successMessage" class="auth-alert auth-alert--success">
+            <span class="material-symbols-outlined">check_circle</span>
+            <span>{{ successMessage }}</span>
+          </div>
+        </div>
+
+        <div class="auth-head">
+          <h2>Đặt lại mật khẩu</h2>
+          <p>Điền đầy đủ thông tin xác thực bên dưới để cập nhật mật khẩu mới cho tài khoản của bạn.</p>
+        </div>
+
+        <div v-if="!hasValidResetLink" class="auth-alert auth-alert--error">
+          <span class="material-symbols-outlined">error</span>
+          <span>Liên kết đặt lại mật khẩu không hợp lệ. Vui lòng quay lại bước quên mật khẩu để nhận email mới.</span>
+        </div>
+
+        <form class="auth-form" @submit.prevent="handleResetPassword">
+          <div class="field-group">
+            <label for="email">Email tài khoản</label>
+            <div class="input-shell" :class="{ 'input-shell--error': resetErrors.email }">
+              <span class="material-symbols-outlined">mail</span>
+              <input
+                id="email"
+                v-model="resetForm.email"
+                type="email"
+                placeholder="your@email.com"
+                :disabled="isLoading || hasValidResetLink"
+              >
+            </div>
+            <span v-if="resetErrors.email" class="field-error">{{ resetErrors.email }}</span>
+          </div>
+
+          <div class="field-group">
+            <label for="password">Mật khẩu mới</label>
+            <div class="input-shell" :class="{ 'input-shell--error': resetErrors.password }">
+              <span class="material-symbols-outlined">lock</span>
+              <input
+                id="password"
+                v-model="resetForm.password"
+                :type="showPassword ? 'text' : 'password'"
+                placeholder="••••••••"
+                :disabled="isLoading"
+              >
+              <button
+                type="button"
+                class="toggle-visibility"
+                :aria-label="showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'"
+                @click="showPassword = !showPassword"
+              >
+                <span class="material-symbols-outlined">{{ showPassword ? 'visibility_off' : 'visibility' }}</span>
+              </button>
+            </div>
+            <span v-if="resetErrors.password" class="field-error">{{ resetErrors.password }}</span>
+          </div>
+
+          <div class="field-group">
+            <label for="confirmPassword">Xác nhận mật khẩu mới</label>
+            <div class="input-shell" :class="{ 'input-shell--error': resetErrors.confirmPassword }">
+              <span class="material-symbols-outlined">verified_user</span>
+              <input
+                id="confirmPassword"
+                v-model="resetForm.confirmPassword"
+                :type="showConfirmPassword ? 'text' : 'password'"
+                placeholder="Nhập lại mật khẩu mới"
+                :disabled="isLoading"
+              >
+              <button
+                type="button"
+                class="toggle-visibility"
+                :aria-label="showConfirmPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'"
+                @click="showConfirmPassword = !showConfirmPassword"
+              >
+                <span class="material-symbols-outlined">{{ showConfirmPassword ? 'visibility_off' : 'visibility' }}</span>
+              </button>
+            </div>
+            <span v-if="resetErrors.confirmPassword" class="field-error">{{ resetErrors.confirmPassword }}</span>
+          </div>
+
+          <button type="submit" class="submit-button" :disabled="isLoading || !hasValidResetLink">
+            <span v-if="isLoading" class="spinner"></span>
+            <span>{{ isLoading ? 'Đang cập nhật...' : 'Lưu mật khẩu mới' }}</span>
+          </button>
+        </form>
+
+        <p class="auth-switch">
+          Muốn quay lại bước trước?
+          <RouterLink to="/forgot-password">Quên mật khẩu</RouterLink>
+        </p>
+      </div>
+    </section>
+  </div>
+</template>
+
 <script setup>
 import AppLogo from '@/components/AppLogo.vue'
 import { onBeforeUnmount, reactive, ref, watch } from 'vue'
@@ -130,134 +258,6 @@ const handleResetPassword = async () => {
   }
 }
 </script>
-
-<template>
-  <div class="auth-page auth-page--reset">
-    <section class="auth-showcase">
-      <div class="showcase-inner">
-        <RouterLink to="/" class="showcase-brand">
-          <AppLogo size="lg" tone="light" title="AI Recruitment" subtitle="Career Intelligence Platform" />
-        </RouterLink>
-
-        <div class="showcase-copy">
-          <h1>Thiết lập mật khẩu mới an toàn.</h1>
-          <p>
-            Xác nhận đúng email, token và mật khẩu mới để tiếp tục quay lại hệ thống với vai trò hiện tại của bạn.
-          </p>
-        </div>
-
-        <div class="showcase-feature-list">
-          <div class="feature-item">
-            <span class="material-symbols-outlined">key</span>
-            <span>Mật khẩu mới sẽ thay thế hoàn toàn mật khẩu cũ</span>
-          </div>
-          <div class="feature-item">
-            <span class="material-symbols-outlined">lock_reset</span>
-            <span>Sau khi hoàn tất, hệ thống sẽ đưa bạn về màn đăng nhập</span>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section class="auth-panel">
-      <div class="auth-card">
-        <div v-if="errorMessage || successMessage" class="auth-alert-wrap">
-          <div v-if="errorMessage" class="auth-alert auth-alert--error">
-            <span class="material-symbols-outlined">error</span>
-            <span>{{ errorMessage }}</span>
-          </div>
-          <div v-if="successMessage" class="auth-alert auth-alert--success">
-            <span class="material-symbols-outlined">check_circle</span>
-            <span>{{ successMessage }}</span>
-          </div>
-        </div>
-
-        <div class="auth-head">
-          <h2>Đặt lại mật khẩu</h2>
-          <p>Điền đầy đủ thông tin xác thực bên dưới để cập nhật mật khẩu mới cho tài khoản của bạn.</p>
-        </div>
-
-        <div v-if="!hasValidResetLink" class="auth-alert auth-alert--error">
-          <span class="material-symbols-outlined">error</span>
-          <span>Liên kết đặt lại mật khẩu không hợp lệ. Vui lòng quay lại bước quên mật khẩu để nhận email mới.</span>
-        </div>
-
-        <form class="auth-form" @submit.prevent="handleResetPassword">
-          <div class="field-group">
-            <label for="email">Email tài khoản</label>
-            <div class="input-shell" :class="{ 'input-shell--error': resetErrors.email }">
-              <span class="material-symbols-outlined">mail</span>
-              <input
-                id="email"
-                v-model="resetForm.email"
-                type="email"
-                placeholder="your@email.com"
-                :disabled="isLoading || hasValidResetLink"
-              >
-            </div>
-            <span v-if="resetErrors.email" class="field-error">{{ resetErrors.email }}</span>
-          </div>
-
-          <div class="field-group">
-            <label for="password">Mật khẩu mới</label>
-            <div class="input-shell" :class="{ 'input-shell--error': resetErrors.password }">
-              <span class="material-symbols-outlined">lock</span>
-              <input
-                id="password"
-                v-model="resetForm.password"
-                :type="showPassword ? 'text' : 'password'"
-                placeholder="••••••••"
-                :disabled="isLoading"
-              >
-              <button
-                type="button"
-                class="toggle-visibility"
-                :aria-label="showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'"
-                @click="showPassword = !showPassword"
-              >
-                <span class="material-symbols-outlined">{{ showPassword ? 'visibility_off' : 'visibility' }}</span>
-              </button>
-            </div>
-            <span v-if="resetErrors.password" class="field-error">{{ resetErrors.password }}</span>
-          </div>
-
-          <div class="field-group">
-            <label for="confirmPassword">Xác nhận mật khẩu mới</label>
-            <div class="input-shell" :class="{ 'input-shell--error': resetErrors.confirmPassword }">
-              <span class="material-symbols-outlined">verified_user</span>
-              <input
-                id="confirmPassword"
-                v-model="resetForm.confirmPassword"
-                :type="showConfirmPassword ? 'text' : 'password'"
-                placeholder="Nhập lại mật khẩu mới"
-                :disabled="isLoading"
-              >
-              <button
-                type="button"
-                class="toggle-visibility"
-                :aria-label="showConfirmPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'"
-                @click="showConfirmPassword = !showConfirmPassword"
-              >
-                <span class="material-symbols-outlined">{{ showConfirmPassword ? 'visibility_off' : 'visibility' }}</span>
-              </button>
-            </div>
-            <span v-if="resetErrors.confirmPassword" class="field-error">{{ resetErrors.confirmPassword }}</span>
-          </div>
-
-          <button type="submit" class="submit-button" :disabled="isLoading || !hasValidResetLink">
-            <span v-if="isLoading" class="spinner"></span>
-            <span>{{ isLoading ? 'Đang cập nhật...' : 'Lưu mật khẩu mới' }}</span>
-          </button>
-        </form>
-
-        <p class="auth-switch">
-          Muốn quay lại bước trước?
-          <RouterLink to="/forgot-password">Quên mật khẩu</RouterLink>
-        </p>
-      </div>
-    </section>
-  </div>
-</template>
 
 <style scoped>
 .auth-page {

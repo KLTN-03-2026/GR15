@@ -11,6 +11,8 @@ use App\Models\TinTuyenDung;
 use App\Models\UngTuyen;
 use App\Services\Ai\AiClientService;
 use App\Services\Billing\FeatureAccessService;
+use App\Support\ExperienceValue;
+use App\Support\SkillAliasMatcher;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -355,7 +357,7 @@ class NhaTuyenDungShortlistController extends Controller
             'salary_to' => $tin->muc_luong_den,
             'salary_unit' => $tin->don_vi_luong,
             'requirements' => $this->extractNames($tin->parsing?->parsed_requirements_json ?? []),
-            'required_skills' => $this->uniqueValues([...$manualSkills, ...$parsedSkills]),
+            'required_skills' => $this->canonicalSkillValues([...$manualSkills, ...$parsedSkills]),
             'industries' => $industries,
             'experience_years' => $this->extractYears($tin->kinh_nghiem_yeu_cau),
             'education' => $tin->trinh_do_yeu_cau,
@@ -384,8 +386,8 @@ class NhaTuyenDungShortlistController extends Controller
             : $this->textOverlapScore($jobProfile['search_text'], $candidateText);
 
         $experienceScore = $this->experienceScore(
-            (int) ($profile->kinh_nghiem_nam ?? 0),
-            (int) ($jobProfile['experience_years'] ?? 0),
+            (float) ($profile->kinh_nghiem_nam ?? 0),
+            (float) ($jobProfile['experience_years'] ?? 0),
         );
         $educationScore = $this->educationScore($profile->trinh_do, $jobProfile['education']);
         $industryScore = $this->industryScore($profile, $jobProfile);
@@ -431,7 +433,7 @@ class NhaTuyenDungShortlistController extends Controller
             ? $profile->nguoiDung->kyNangs->pluck('ten_ky_nang')->all()
             : [];
 
-        return $this->uniqueValues([
+        return $this->canonicalSkillValues([
             ...$userSkills,
             ...$this->extractNames($profile->ky_nang_json ?? []),
             ...$this->extractNames($profile->parsing?->parsed_skills_json ?? []),
@@ -444,20 +446,19 @@ class NhaTuyenDungShortlistController extends Controller
     private function matchSkills(array $requiredSkills, array $candidateSkills): array
     {
         $candidateMap = collect($candidateSkills)
-            ->mapWithKeys(fn ($skill) => [$this->normalizeText($skill) => $skill])
+            ->mapWithKeys(fn ($skill) => [SkillAliasMatcher::canonicalKey($skill) => $skill])
+            ->filter(fn ($skill, $key) => $key !== '')
             ->all();
 
         return collect($requiredSkills)
             ->filter(function ($requiredSkill) use ($candidateMap) {
-                $required = $this->normalizeText($requiredSkill);
+                $required = SkillAliasMatcher::canonicalKey($requiredSkill);
                 if (!$required) {
                     return false;
                 }
 
                 foreach ($candidateMap as $candidateNormalized => $candidateSkill) {
-                    if ($candidateNormalized === $required
-                        || str_contains($candidateNormalized, $required)
-                        || str_contains($required, $candidateNormalized)) {
+                    if ($candidateNormalized === $required) {
                         return true;
                     }
                 }
@@ -482,7 +483,7 @@ class NhaTuyenDungShortlistController extends Controller
         return round(min(100, ($matched / max(1, $jobWords->count())) * 100), 1);
     }
 
-    private function experienceScore(int $candidateYears, int $requiredYears): float
+    private function experienceScore(float $candidateYears, float $requiredYears): float
     {
         if ($requiredYears <= 0) {
             return $candidateYears > 0 ? 85.0 : 65.0;
@@ -613,16 +614,21 @@ class NhaTuyenDungShortlistController extends Controller
         ];
     }
 
-    private function extractYears(?string $value): int
+    private function extractYears(?string $value): float
     {
         if (!$value) {
-            return 0;
+            return 0.0;
+        }
+
+        $normalized = ExperienceValue::normalize($value);
+        if (is_numeric($normalized)) {
+            return (float) $normalized;
         }
 
         preg_match_all('/\d+/', $value, $matches);
         $numbers = array_map('intval', $matches[0] ?? []);
 
-        return $numbers ? min($numbers) : 0;
+        return $numbers ? (float) min($numbers) : 0.0;
     }
 
     private function extractNames(array $items): array
@@ -665,6 +671,16 @@ class NhaTuyenDungShortlistController extends Controller
             ->map(fn ($value) => trim((string) $value))
             ->filter()
             ->unique(fn ($value) => $this->normalizeText($value))
+            ->values()
+            ->all();
+    }
+
+    private function canonicalSkillValues(array $values): array
+    {
+        return collect($values)
+            ->map(fn ($value) => SkillAliasMatcher::displayName((string) $value))
+            ->filter()
+            ->unique(fn ($value) => SkillAliasMatcher::canonicalKey($value))
             ->values()
             ->all();
     }
@@ -718,7 +734,7 @@ class NhaTuyenDungShortlistController extends Controller
         }
 
         if ($profile->kinh_nghiem_nam) {
-            $parts[] = "Ứng viên có {$profile->kinh_nghiem_nam} năm kinh nghiệm.";
+            $parts[] = "Ứng viên có {$this->formatExperienceDuration((float) $profile->kinh_nghiem_nam)} kinh nghiệm.";
         } elseif ($experienceScore < 70) {
             $parts[] = 'Chưa thấy thông tin kinh nghiệm rõ ràng trong hồ sơ.';
         }
@@ -746,58 +762,83 @@ class NhaTuyenDungShortlistController extends Controller
 
         $aiAttemptCount = 0;
         $aiSuccessCount = 0;
-        $mappedItems = $items
-            ->values()
-            ->map(function (array $item, int $index) use ($tin, $jobProfile, &$aiAttemptCount, &$aiSuccessCount) {
+        $indexedItems = $items->values();
+        $jdProfile = $this->buildAiJdProfile($tin, $jobProfile);
+        $parallelRequests = [];
+
+        foreach ($indexedItems->take(5) as $index => $item) {
+            $aiAttemptCount++;
+            $parallelRequests[$index] = [
+                'ho_so_id' => (int) ($item['ho_so']['id'] ?? 0),
+                'tin_tuyen_dung_id' => (int) $tin->id,
+                'cv_profile' => $this->buildAiCvProfile($item),
+                'jd_profile' => $jdProfile,
+            ];
+        }
+
+        try {
+            $aiResponses = $this->aiClientService->matchCvJdParallel($parallelRequests);
+        } catch (RuntimeException $exception) {
+            $aiResponses = [];
+            foreach ($parallelRequests as $request) {
+                $this->aiClientService->recordFallback(
+                    'employer_shortlist_ai_explanation',
+                    $exception->getMessage(),
+                    [
+                        'ho_so_id' => (int) $request['ho_so_id'],
+                        'tin_tuyen_dung_id' => (int) $request['tin_tuyen_dung_id'],
+                    ],
+                    ['scope' => 'shortlist_parallel_explanation']
+                );
+            }
+        }
+
+        $mappedItems = $indexedItems
+            ->map(function (array $item, int $index) use ($tin, $jobProfile, $aiResponses, &$aiSuccessCount) {
                 if ($index >= 5) {
                     return $item;
                 }
 
-                $aiAttemptCount++;
-
-                try {
-                    $response = $this->aiClientService->matchCvJd(
-                        (int) $item['ho_so']['id'],
-                        (int) $tin->id,
-                        $this->buildAiCvProfile($item),
-                        $this->buildAiJdProfile($tin, $jobProfile),
-                    );
-                    $data = $response['data'] ?? $response;
-                    $aiExplanation = $this->extractAiExplanation($data);
-
-                    if ($aiExplanation) {
-                        $item['ai_explanation'] = (string) $aiExplanation;
-                        $item['explanation'] = (string) $aiExplanation;
-                    }
-                    $item['structured_explanation'] = $this->extractStructuredExplanation($data, $item);
-
-                    $aiScore = $this->extractAiScore($data);
-                    if ($aiScore !== null) {
-                        $item['rule_score'] = $item['score'];
-                        $item['ai_score'] = $aiScore;
-                        $item['score'] = round(($item['score'] * 0.7) + ($aiScore * 0.3), 1);
-                        $item['recommendation'] = $this->recommendationLabel($item['score']);
-                        $item['score_breakdown']['ai_match'] = $aiScore;
-                    } else {
-                        $item['ai_score'] = null;
-                    }
-
-                    $item['ai_model_version'] = $data['model_version'] ?? ($response['model_version'] ?? 'ai_service');
-                    $item['confidence'] = $this->confidenceInsightFromMappedProfile($item, $jobProfile, true);
-                    $aiSuccessCount++;
-                } catch (RuntimeException $exception) {
+                $response = $aiResponses[$index] ?? null;
+                if (!is_array($response) || ($response['success'] ?? true) === false) {
+                    $error = is_array($response) ? ($response['error'] ?? 'AI service chưa phản hồi.') : 'AI service chưa phản hồi.';
                     $this->aiClientService->recordFallback(
                         'employer_shortlist_ai_explanation',
-                        $exception->getMessage(),
+                        (string) $error,
                         [
-                            'ho_so_id' => (int) $item['ho_so']['id'],
+                            'ho_so_id' => (int) ($item['ho_so']['id'] ?? 0),
                             'tin_tuyen_dung_id' => (int) $tin->id,
                         ],
                         ['scope' => 'shortlist_item_explanation']
                     );
-                    $item['ai_error'] = $exception->getMessage();
+                    $item['ai_error'] = (string) $error;
                     $item['confidence'] = $this->confidenceInsightFromMappedProfile($item, $jobProfile, false);
+                    return $item;
                 }
+
+                $data = $response['data'] ?? $response;
+                $aiExplanation = $this->extractAiExplanation($data);
+
+                if ($aiExplanation) {
+                    $item['ai_explanation'] = (string) $aiExplanation;
+                    $item['explanation'] = (string) $aiExplanation;
+                }
+                $item['structured_explanation'] = $this->extractStructuredExplanation($data, $item);
+
+                $aiScore = $this->extractAiScore($data);
+                if ($aiScore !== null) {
+                    $item['rule_score'] = $item['score'];
+                    $item['ai_score'] = $aiScore;
+                    $item['score'] = round(($item['score'] * 0.7) + ($aiScore * 0.3), 1);
+                    $item['recommendation'] = $this->recommendationLabel($item['score']);
+                    $item['score_breakdown']['ai_match'] = $aiScore;
+                } else {
+                    $item['ai_score'] = null;
+                }
+
+                $item['ai_model_version'] = $data['model_version'] ?? ($response['model_version'] ?? 'ai_service');
+                $item['confidence'] = $this->confidenceInsightFromMappedProfile($item, $jobProfile, true);
+                $aiSuccessCount++;
 
                 return $item;
             });
@@ -819,10 +860,13 @@ class NhaTuyenDungShortlistController extends Controller
             'trinh_do' => $profile['trinh_do'] ?? null,
             'kinh_nghiem_nam' => $profile['kinh_nghiem_nam'] ?? null,
             'mo_ta_ban_than' => $profile['mo_ta_ban_than'] ?? null,
+            'raw_text' => $profile['raw_text'] ?? null,
             'nguon_ho_so' => $profile['nguon_ho_so'] ?? null,
             'matched_skills' => $item['matched_skills'] ?? [],
             'missing_skills' => $item['missing_skills'] ?? [],
-            'parsed_skills' => $item['matched_skills'] ?? [],
+            'parsed_skills' => $profile['parsed_skills_json'] ?? ($item['matched_skills'] ?? []),
+            'parsed_experience' => $profile['parsed_experience_json'] ?? [],
+            'parsed_education' => $profile['parsed_education_json'] ?? [],
             'score_breakdown' => $item['score_breakdown'] ?? [],
             'ky_nang_json' => $profile['ky_nang_json'] ?? [],
             'kinh_nghiem_json' => $profile['kinh_nghiem_json'] ?? [],
@@ -906,7 +950,7 @@ class NhaTuyenDungShortlistController extends Controller
         }
 
         if ($profile->kinh_nghiem_nam) {
-            $strengths[] = "Có {$profile->kinh_nghiem_nam} năm kinh nghiệm được khai báo trong hồ sơ.";
+            $strengths[] = "Có {$this->formatExperienceDuration((float) $profile->kinh_nghiem_nam)} kinh nghiệm được khai báo trong hồ sơ.";
         }
 
         if ($missingSkills) {
@@ -1092,6 +1136,7 @@ class NhaTuyenDungShortlistController extends Controller
         return [
             'tieu_de' => $tin->tieu_de,
             'mo_ta_cong_viec' => $tin->mo_ta_cong_viec,
+            'raw_text' => $tin->parsing?->raw_text ?? $tin->mo_ta_cong_viec,
             'kinh_nghiem_yeu_cau' => $tin->kinh_nghiem_yeu_cau,
             'trinh_do_yeu_cau' => $tin->trinh_do_yeu_cau,
             'dia_diem_lam_viec' => $tin->dia_diem_lam_viec,
@@ -1101,6 +1146,8 @@ class NhaTuyenDungShortlistController extends Controller
             'don_vi_luong' => $tin->don_vi_luong,
             'parsed_salary_json' => $tin->parsing?->parsed_salary_json ?? [],
             'parsed_location_json' => $tin->parsing?->parsed_location_json ?? [],
+            'parsed_skills' => $tin->parsing?->parsed_skills_json ?? [],
+            'parsed_requirements' => $tin->parsing?->parsed_requirements_json ?? [],
             'required_skills' => $jobProfile['required_skills'],
             'requirements' => $jobProfile['requirements'],
             'industries' => $jobProfile['industries'],
@@ -1124,10 +1171,31 @@ class NhaTuyenDungShortlistController extends Controller
             'source' => $item['source_insights']['label'] ?? null,
             'confidence' => $item['confidence'] ?? null,
             'structured_explanation' => $item['structured_explanation'] ?? null,
-            'strongest_area' => $this->breakdownInsight($item['score_breakdown'] ?? [], true),
-            'weakest_area' => $this->breakdownInsight($item['score_breakdown'] ?? [], false),
+            'strongest_area' => $this->comparisonInsight($item, true),
+            'weakest_area' => $this->comparisonInsight($item, false),
         ])->values()->all(),
         ];
+    }
+
+    private function comparisonInsight(array $item, bool $highest): string
+    {
+        $structured = $item['structured_explanation'] ?? [];
+        $key = $highest ? 'strengths' : 'weaknesses';
+        $items = $structured[$key] ?? [];
+
+        if (is_array($items)) {
+            $text = collect($items)
+                ->map(fn ($value) => is_array($value) ? ($value['text'] ?? $value['value'] ?? null) : $value)
+                ->filter()
+                ->map(fn ($value) => trim((string) $value))
+                ->first();
+
+            if ($text) {
+                return $text;
+            }
+        }
+
+        return $this->breakdownInsight($item['score_breakdown'] ?? [], $highest);
     }
 
     private function breakdownInsight(array $breakdown, bool $highest): string
@@ -1192,6 +1260,22 @@ class NhaTuyenDungShortlistController extends Controller
         return $meanings[$key][$highest] ?? ($highest ? 'đây là điểm mạnh nổi bật' : 'đây là điểm cần cải thiện');
     }
 
+    private function formatExperienceDuration(float $years): string
+    {
+        if ($years <= 0) {
+            return '0 năm';
+        }
+
+        if ($years < 1) {
+            $months = max(1, (int) round($years * 12));
+            return "{$months} tháng";
+        }
+
+        $formatted = rtrim(rtrim(number_format($years, 2, '.', ''), '0'), '.');
+
+        return "{$formatted} năm";
+    }
+
     private function mapCandidate(?NguoiDung $user): ?array
     {
         if (!$user) {
@@ -1235,6 +1319,10 @@ class NhaTuyenDungShortlistController extends Controller
             'hoc_van_json' => $profile->hoc_van_json,
             'du_an_json' => $profile->du_an_json,
             'chung_chi_json' => $profile->chung_chi_json,
+            'raw_text' => $profile->parsing?->raw_text,
+            'parsed_skills_json' => $profile->parsing?->parsed_skills_json ?? [],
+            'parsed_experience_json' => $profile->parsing?->parsed_experience_json ?? [],
+            'parsed_education_json' => $profile->parsing?->parsed_education_json ?? [],
             'file_cv' => $profile->file_cv,
             'file_cv_url' => $profile->file_cv
                 ? route('nha-tuyen-dung.ho-sos.cv', ['id' => $profile->id])

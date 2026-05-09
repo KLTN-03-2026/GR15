@@ -1,240 +1,3 @@
-<script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { RouterLink, useRoute, useRouter } from 'vue-router'
-import { jobService, savedJobService } from '@/services/api'
-import { useNotify } from '@/composables/useNotify'
-import { getAuthToken, getStoredCandidate } from '@/utils/authStorage'
-import { VIETNAM_PROVINCES_34 } from '@/constants/vietnamProvinces'
-
-const route = useRoute()
-const router = useRouter()
-const notify = useNotify()
-
-const filters = reactive({
-  search: route.query.search || '',
-  nganh_nghe_id: route.query.nganh_nghe_id || '',
-  dia_diem: route.query.dia_diem || '',
-  per_page: Number(route.query.per_page || 9),
-})
-
-const jobs = ref([])
-const industries = ref([])
-const savedJobIds = ref(new Set())
-const loading = ref(false)
-const industriesLoading = ref(false)
-const togglingJobId = ref(null)
-const pagination = reactive({
-  current_page: 1,
-  last_page: 1,
-  per_page: 9,
-  total: 0,
-  from: 0,
-  to: 0,
-})
-
-const hasActiveFilters = computed(() =>
-  Boolean(filters.search || filters.nganh_nghe_id || filters.dia_diem)
-)
-
-const showAllIndustries = ref(false)
-const pageSizeOptions = [6, 9, 12, 15]
-
-const visibleIndustries = computed(() =>
-  showAllIndustries.value ? industries.value : industries.value.slice(0, 5)
-)
-
-const selectedIndustryName = computed(() => {
-  if (!filters.nganh_nghe_id) return 'Tất cả ngành nghề'
-  return industries.value.find((industry) => String(industry.id) === String(filters.nganh_nghe_id))?.ten_nganh || 'Ngành nghề đã chọn'
-})
-
-const summaryText = computed(() => {
-  if (!pagination.total) return 'Chưa tìm thấy tin tuyển dụng phù hợp.'
-  return `Hiển thị ${pagination.from}-${pagination.to} trên tổng ${pagination.total} tin tuyển dụng đang hoạt động.`
-})
-
-const hasAuthToken = computed(() => Boolean(getAuthToken()))
-const currentUser = computed(() => getStoredCandidate())
-const isCandidate = computed(() => hasAuthToken.value && currentUser.value?.vai_tro === 0)
-
-const formatCurrency = (value) => {
-  if (value === null || value === undefined || value === '') return 'Thỏa thuận'
-  return new Intl.NumberFormat('vi-VN').format(Number(value)) + ' đ'
-}
-
-const formatSalary = (job) => {
-  if (job.muc_luong_tu && job.muc_luong_den) {
-    return `${formatCurrency(job.muc_luong_tu)} - ${formatCurrency(job.muc_luong_den)}`
-  }
-  if (job.muc_luong_tu) return formatCurrency(job.muc_luong_tu)
-  return 'Thỏa thuận'
-}
-
-const formatRelativeDate = (value) => {
-  if (!value) return 'Mới đăng'
-  const createdAt = new Date(value)
-  const now = new Date()
-  const diffMs = now.getTime() - createdAt.getTime()
-  const diffHours = Math.max(1, Math.floor(diffMs / (1000 * 60 * 60)))
-
-  if (diffHours < 24) return `${diffHours} giờ trước`
-
-  const diffDays = Math.floor(diffHours / 24)
-  if (diffDays < 30) return `${diffDays} ngày trước`
-
-  return createdAt.toLocaleDateString('vi-VN')
-}
-
-const getAcceptedCount = (job) => Number(job?.so_luong_da_nhan || 0)
-const getRemainingSlots = (job) => Number(job?.so_luong_con_lai || 0)
-const isQuotaFull = (job) => Boolean(job?.da_tuyen_du) || (Number(job?.so_luong_tuyen || 0) > 0 && getRemainingSlots(job) <= 0)
-
-const buildQuery = (page = 1, extra = {}) => {
-  const query = {}
-
-  if (filters.search) query.search = filters.search
-  if (filters.nganh_nghe_id) query.nganh_nghe_id = filters.nganh_nghe_id
-  if (filters.dia_diem) query.dia_diem = filters.dia_diem
-  if (filters.per_page !== 9) query.per_page = filters.per_page
-  if (page > 1) query.page = page
-
-  return {
-    ...query,
-    ...extra,
-  }
-}
-
-const syncQuery = (page = 1, extra = {}) => {
-  router.replace({ query: buildQuery(page, extra) })
-}
-
-const fetchIndustries = async () => {
-  industriesLoading.value = true
-  try {
-    const response = await jobService.getIndustries({ per_page: 0 })
-    industries.value = Array.isArray(response?.data) ? response.data : response?.data?.data || []
-  } catch (error) {
-    notify.apiError(error, 'Không tải được danh sách ngành nghề.')
-  } finally {
-    industriesLoading.value = false
-  }
-}
-
-const fetchJobs = async (page = Number(route.query.page || 1)) => {
-  loading.value = true
-  try {
-    const response = await jobService.getJobs({
-      search: filters.search,
-      nganh_nghe_id: filters.nganh_nghe_id,
-      dia_diem: filters.dia_diem,
-      per_page: filters.per_page,
-      page,
-    })
-
-    const payload = response?.data || {}
-    jobs.value = payload.data || []
-    pagination.current_page = payload.current_page || 1
-    pagination.last_page = payload.last_page || 1
-    pagination.per_page = payload.per_page || filters.per_page
-    pagination.total = payload.total || 0
-    pagination.from = payload.from || 0
-    pagination.to = payload.to || 0
-    if (isCandidate.value) {
-      await syncSavedState()
-    }
-  } catch (error) {
-    jobs.value = []
-    pagination.current_page = 1
-    pagination.last_page = 1
-    pagination.total = 0
-    pagination.from = 0
-    pagination.to = 0
-    notify.apiError(error, 'Không tải được danh sách việc làm.')
-  } finally {
-    loading.value = false
-  }
-}
-
-const syncSavedState = async () => {
-  try {
-    const response = await savedJobService.getSavedJobs({ per_page: 100 })
-    const items = response?.data?.data || []
-    savedJobIds.value = new Set(items.map((item) => Number(item.id)))
-  } catch {
-    savedJobIds.value = new Set()
-  }
-}
-
-const applyFilters = async () => {
-  syncQuery(1)
-  await fetchJobs(1)
-}
-
-const resetFilters = async () => {
-  filters.search = ''
-  filters.nganh_nghe_id = ''
-  filters.dia_diem = ''
-  filters.per_page = 9
-  syncQuery(1)
-  await fetchJobs(1)
-}
-
-const changePage = async (page) => {
-  if (page < 1 || page > pagination.last_page || page === pagination.current_page) return
-  syncQuery(page)
-  await fetchJobs(page)
-}
-
-const selectIndustry = (industryId) => {
-  const nextValue = String(industryId)
-  filters.nganh_nghe_id = String(filters.nganh_nghe_id) === nextValue ? '' : nextValue
-}
-
-const isSaved = (jobId) => savedJobIds.value.has(Number(jobId))
-
-const toggleSavedJob = async (jobId) => {
-  if (!isCandidate.value) {
-    notify.warning('Vui lòng đăng nhập bằng tài khoản ứng viên để lưu tin.')
-    return
-  }
-
-  if (togglingJobId.value) return
-  togglingJobId.value = jobId
-
-  try {
-    const response = await savedJobService.toggleSavedJob(jobId)
-    const savedState = Boolean(response?.data?.trang_thai_luu)
-    const nextSet = new Set(savedJobIds.value)
-    if (savedState) {
-      nextSet.add(Number(jobId))
-      notify.success('Đã lưu tin tuyển dụng.')
-    } else {
-      nextSet.delete(Number(jobId))
-      notify.info('Đã bỏ lưu tin tuyển dụng.')
-    }
-    savedJobIds.value = nextSet
-  } catch (error) {
-    notify.apiError(error, 'Không thể cập nhật trạng thái lưu tin.')
-  } finally {
-    togglingJobId.value = null
-  }
-}
-
-onMounted(async () => {
-  await Promise.all([fetchIndustries(), fetchJobs(Number(route.query.page || 1))])
-})
-
-watch(
-  () => route.query,
-  (query) => {
-    filters.search = query.search || ''
-    filters.nganh_nghe_id = query.nganh_nghe_id || ''
-    filters.dia_diem = query.dia_diem || ''
-    filters.per_page = Number(query.per_page || 9)
-  }
-)
-</script>
-
 <template>
   <div class="max-w-7xl mx-auto px-4 py-8">
     <div class="rounded-[28px] border border-slate-200 bg-gradient-to-r from-slate-900 via-blue-900 to-blue-600 px-6 py-8 text-white shadow-xl shadow-blue-200/50 md:px-8">
@@ -579,3 +342,240 @@ watch(
     </div>
   </div>
 </template>
+
+<script setup>
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
+import { jobService, savedJobService } from '@/services/api'
+import { useNotify } from '@/composables/useNotify'
+import { getAuthToken, getStoredCandidate } from '@/utils/authStorage'
+import { VIETNAM_PROVINCES_34 } from '@/constants/vietnamProvinces'
+
+const route = useRoute()
+const router = useRouter()
+const notify = useNotify()
+
+const filters = reactive({
+  search: route.query.search || '',
+  nganh_nghe_id: route.query.nganh_nghe_id || '',
+  dia_diem: route.query.dia_diem || '',
+  per_page: Number(route.query.per_page || 9),
+})
+
+const jobs = ref([])
+const industries = ref([])
+const savedJobIds = ref(new Set())
+const loading = ref(false)
+const industriesLoading = ref(false)
+const togglingJobId = ref(null)
+const pagination = reactive({
+  current_page: 1,
+  last_page: 1,
+  per_page: 9,
+  total: 0,
+  from: 0,
+  to: 0,
+})
+
+const hasActiveFilters = computed(() =>
+  Boolean(filters.search || filters.nganh_nghe_id || filters.dia_diem)
+)
+
+const showAllIndustries = ref(false)
+const pageSizeOptions = [6, 9, 12, 15]
+
+const visibleIndustries = computed(() =>
+  showAllIndustries.value ? industries.value : industries.value.slice(0, 5)
+)
+
+const selectedIndustryName = computed(() => {
+  if (!filters.nganh_nghe_id) return 'Tất cả ngành nghề'
+  return industries.value.find((industry) => String(industry.id) === String(filters.nganh_nghe_id))?.ten_nganh || 'Ngành nghề đã chọn'
+})
+
+const summaryText = computed(() => {
+  if (!pagination.total) return 'Chưa tìm thấy tin tuyển dụng phù hợp.'
+  return `Hiển thị ${pagination.from}-${pagination.to} trên tổng ${pagination.total} tin tuyển dụng đang hoạt động.`
+})
+
+const hasAuthToken = computed(() => Boolean(getAuthToken()))
+const currentUser = computed(() => getStoredCandidate())
+const isCandidate = computed(() => hasAuthToken.value && currentUser.value?.vai_tro === 0)
+
+const formatCurrency = (value) => {
+  if (value === null || value === undefined || value === '') return 'Thỏa thuận'
+  return new Intl.NumberFormat('vi-VN').format(Number(value)) + ' đ'
+}
+
+const formatSalary = (job) => {
+  if (job.muc_luong_tu && job.muc_luong_den) {
+    return `${formatCurrency(job.muc_luong_tu)} - ${formatCurrency(job.muc_luong_den)}`
+  }
+  if (job.muc_luong_tu) return formatCurrency(job.muc_luong_tu)
+  return 'Thỏa thuận'
+}
+
+const formatRelativeDate = (value) => {
+  if (!value) return 'Mới đăng'
+  const createdAt = new Date(value)
+  const now = new Date()
+  const diffMs = now.getTime() - createdAt.getTime()
+  const diffHours = Math.max(1, Math.floor(diffMs / (1000 * 60 * 60)))
+
+  if (diffHours < 24) return `${diffHours} giờ trước`
+
+  const diffDays = Math.floor(diffHours / 24)
+  if (diffDays < 30) return `${diffDays} ngày trước`
+
+  return createdAt.toLocaleDateString('vi-VN')
+}
+
+const getAcceptedCount = (job) => Number(job?.so_luong_da_nhan || 0)
+const getRemainingSlots = (job) => Number(job?.so_luong_con_lai || 0)
+const isQuotaFull = (job) => Boolean(job?.da_tuyen_du) || (Number(job?.so_luong_tuyen || 0) > 0 && getRemainingSlots(job) <= 0)
+
+const buildQuery = (page = 1, extra = {}) => {
+  const query = {}
+
+  if (filters.search) query.search = filters.search
+  if (filters.nganh_nghe_id) query.nganh_nghe_id = filters.nganh_nghe_id
+  if (filters.dia_diem) query.dia_diem = filters.dia_diem
+  if (filters.per_page !== 9) query.per_page = filters.per_page
+  if (page > 1) query.page = page
+
+  return {
+    ...query,
+    ...extra,
+  }
+}
+
+const syncQuery = (page = 1, extra = {}) => {
+  router.replace({ query: buildQuery(page, extra) })
+}
+
+const fetchIndustries = async () => {
+  industriesLoading.value = true
+  try {
+    const response = await jobService.getIndustries({ per_page: 0 })
+    industries.value = Array.isArray(response?.data) ? response.data : response?.data?.data || []
+  } catch (error) {
+    notify.apiError(error, 'Không tải được danh sách ngành nghề.')
+  } finally {
+    industriesLoading.value = false
+  }
+}
+
+const fetchJobs = async (page = Number(route.query.page || 1)) => {
+  loading.value = true
+  try {
+    const response = await jobService.getJobs({
+      search: filters.search,
+      nganh_nghe_id: filters.nganh_nghe_id,
+      dia_diem: filters.dia_diem,
+      per_page: filters.per_page,
+      page,
+    })
+
+    const payload = response?.data || {}
+    jobs.value = payload.data || []
+    pagination.current_page = payload.current_page || 1
+    pagination.last_page = payload.last_page || 1
+    pagination.per_page = payload.per_page || filters.per_page
+    pagination.total = payload.total || 0
+    pagination.from = payload.from || 0
+    pagination.to = payload.to || 0
+    if (isCandidate.value) {
+      await syncSavedState()
+    }
+  } catch (error) {
+    jobs.value = []
+    pagination.current_page = 1
+    pagination.last_page = 1
+    pagination.total = 0
+    pagination.from = 0
+    pagination.to = 0
+    notify.apiError(error, 'Không tải được danh sách việc làm.')
+  } finally {
+    loading.value = false
+  }
+}
+
+const syncSavedState = async () => {
+  try {
+    const response = await savedJobService.getSavedJobs({ per_page: 100 })
+    const items = response?.data?.data || []
+    savedJobIds.value = new Set(items.map((item) => Number(item.id)))
+  } catch {
+    savedJobIds.value = new Set()
+  }
+}
+
+const applyFilters = async () => {
+  syncQuery(1)
+  await fetchJobs(1)
+}
+
+const resetFilters = async () => {
+  filters.search = ''
+  filters.nganh_nghe_id = ''
+  filters.dia_diem = ''
+  filters.per_page = 9
+  syncQuery(1)
+  await fetchJobs(1)
+}
+
+const changePage = async (page) => {
+  if (page < 1 || page > pagination.last_page || page === pagination.current_page) return
+  syncQuery(page)
+  await fetchJobs(page)
+}
+
+const selectIndustry = (industryId) => {
+  const nextValue = String(industryId)
+  filters.nganh_nghe_id = String(filters.nganh_nghe_id) === nextValue ? '' : nextValue
+}
+
+const isSaved = (jobId) => savedJobIds.value.has(Number(jobId))
+
+const toggleSavedJob = async (jobId) => {
+  if (!isCandidate.value) {
+    notify.warning('Vui lòng đăng nhập bằng tài khoản ứng viên để lưu tin.')
+    return
+  }
+
+  if (togglingJobId.value) return
+  togglingJobId.value = jobId
+
+  try {
+    const response = await savedJobService.toggleSavedJob(jobId)
+    const savedState = Boolean(response?.data?.trang_thai_luu)
+    const nextSet = new Set(savedJobIds.value)
+    if (savedState) {
+      nextSet.add(Number(jobId))
+      notify.success('Đã lưu tin tuyển dụng.')
+    } else {
+      nextSet.delete(Number(jobId))
+      notify.info('Đã bỏ lưu tin tuyển dụng.')
+    }
+    savedJobIds.value = nextSet
+  } catch (error) {
+    notify.apiError(error, 'Không thể cập nhật trạng thái lưu tin.')
+  } finally {
+    togglingJobId.value = null
+  }
+}
+
+onMounted(async () => {
+  await Promise.all([fetchIndustries(), fetchJobs(Number(route.query.page || 1))])
+})
+
+watch(
+  () => route.query,
+  (query) => {
+    filters.search = query.search || ''
+    filters.nganh_nghe_id = query.nganh_nghe_id || ''
+    filters.dia_diem = query.dia_diem || ''
+    filters.per_page = Number(query.per_page || 9)
+  }
+)
+</script>

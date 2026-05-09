@@ -1,3 +1,203 @@
+<template>
+  <div class="auth-page auth-page--register">
+    <section class="auth-showcase">
+      <div class="showcase-inner">
+        <RouterLink to="/" class="showcase-brand">
+          <span class="brand-mark">
+            <span class="material-symbols-outlined">rocket_launch</span>
+          </span>
+          <span>SmartJob AI</span>
+        </RouterLink>
+
+        <div class="showcase-copy">
+          <h1>{{ pageCopy.showcaseTitle }}</h1>
+          <p>{{ pageCopy.showcaseDescription }}</p>
+        </div>
+
+        <div class="showcase-stats">
+          <div class="stat-card">
+            <strong>10k+</strong>
+            <span>Việc làm mới</span>
+          </div>
+          <div class="stat-card">
+            <strong>500+</strong>
+            <span>Doanh nghiệp</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="auth-panel">
+      <div class="auth-shell">
+        <div v-if="errorMessage || successMessage" class="auth-alert-wrap">
+          <div v-if="errorMessage" class="auth-alert auth-alert--error">
+            <span class="material-symbols-outlined">error</span>
+            <span>{{ errorMessage }}</span>
+          </div>
+          <div v-if="successMessage" class="auth-alert auth-alert--success">
+            <span class="material-symbols-outlined">check_circle</span>
+            <span>{{ successMessage }}</span>
+          </div>
+        </div>
+
+        <div class="auth-head">
+          <h2>{{ pageCopy.headTitle }}</h2>
+          <p>{{ pageCopy.headDescription }}</p>
+        </div>
+
+        <div class="auth-card">
+          <div class="role-switch" role="tablist" aria-label="Chọn vai trò">
+            <button
+              type="button"
+              class="role-button"
+              :class="{ active: accountType === 'candidate' }"
+              @click="accountType = 'candidate'"
+            >
+              Tôi muốn tìm việc
+            </button>
+            <button
+              type="button"
+              class="role-button"
+              :class="{ active: accountType === 'employer' }"
+              @click="accountType = 'employer'"
+            >
+              Tôi muốn tuyển dụng
+            </button>
+          </div>
+
+          <form class="auth-form" novalidate @submit.prevent="handleRegister">
+            <div v-if="isEmployer" class="field-group">
+              <label for="companyName">Tên công ty</label>
+              <div class="input-shell" :class="{ 'input-shell--error': registerErrors.companyName }">
+                <span class="material-symbols-outlined">business</span>
+                <input
+                  id="companyName"
+                  v-model="registerForm.companyName"
+                  type="text"
+                  placeholder="Nhập tên công ty"
+                  :disabled="isLoading"
+                >
+              </div>
+              <span v-if="registerErrors.companyName" class="field-error">{{ registerErrors.companyName }}</span>
+            </div>
+
+            <div class="field-group">
+              <label for="fullName">{{ pageCopy.fullNameLabel }}</label>
+              <div class="input-shell" :class="{ 'input-shell--error': isEmployer ? registerErrors.contactPerson : registerErrors.fullName }">
+                <span class="material-symbols-outlined">person</span>
+                <input
+                  v-if="isEmployer"
+                  id="fullName"
+                  v-model="registerForm.contactPerson"
+                  type="text"
+                  :placeholder="pageCopy.fullNamePlaceholder"
+                  :disabled="isLoading"
+                >
+                <input
+                  v-else
+                  id="fullName"
+                  v-model="registerForm.fullName"
+                  type="text"
+                  :placeholder="pageCopy.fullNamePlaceholder"
+                  :disabled="isLoading"
+                >
+              </div>
+              <span v-if="isEmployer && registerErrors.contactPerson" class="field-error">{{ registerErrors.contactPerson }}</span>
+              <span v-else-if="!isEmployer && registerErrors.fullName" class="field-error">{{ registerErrors.fullName }}</span>
+            </div>
+
+            <div class="field-group">
+              <label for="email">Email</label>
+              <div class="input-shell" :class="{ 'input-shell--error': registerErrors.email }">
+                <span class="material-symbols-outlined">mail</span>
+                <input
+                  id="email"
+                  v-model="registerForm.email"
+                  type="email"
+                  placeholder="example@email.com"
+                  :disabled="isLoading"
+                >
+              </div>
+              <span v-if="registerErrors.email" class="field-error">{{ registerErrors.email }}</span>
+            </div>
+
+            <div class="field-group">
+              <label for="phone">Số điện thoại</label>
+              <div class="input-shell" :class="{ 'input-shell--error': registerErrors.phone }">
+                <span class="material-symbols-outlined">call</span>
+                <input
+                  id="phone"
+                  v-model="registerForm.phone"
+                  type="tel"
+                  placeholder="Nhập số điện thoại"
+                  :disabled="isLoading"
+                >
+              </div>
+              <span v-if="registerErrors.phone" class="field-error">{{ registerErrors.phone }}</span>
+            </div>
+
+            <div class="field-group">
+              <label for="password">Mật khẩu</label>
+              <div class="input-shell" :class="{ 'input-shell--error': registerErrors.password }">
+                <span class="material-symbols-outlined">lock</span>
+                <input
+                  id="password"
+                  v-model="registerForm.password"
+                  :type="showPassword ? 'text' : 'password'"
+                  placeholder="••••••••"
+                  :disabled="isLoading"
+                >
+                <button
+                  type="button"
+                  class="toggle-visibility"
+                  :aria-label="showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'"
+                  @click="showPassword = !showPassword"
+                >
+                  <span class="material-symbols-outlined">{{ showPassword ? 'visibility_off' : 'visibility' }}</span>
+                </button>
+              </div>
+              <span v-if="registerErrors.password" class="field-error">{{ registerErrors.password }}</span>
+            </div>
+
+            <div class="field-group">
+              <label for="confirmPassword">Xác nhận mật khẩu</label>
+              <div class="input-shell" :class="{ 'input-shell--error': registerErrors.confirmPassword }">
+                <span class="material-symbols-outlined">verified_user</span>
+                <input
+                  id="confirmPassword"
+                  v-model="registerForm.confirmPassword"
+                  :type="showConfirmPassword ? 'text' : 'password'"
+                  placeholder="Nhập lại mật khẩu"
+                  :disabled="isLoading"
+                >
+                <button
+                  type="button"
+                  class="toggle-visibility"
+                  :aria-label="showConfirmPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'"
+                  @click="showConfirmPassword = !showConfirmPassword"
+                >
+                  <span class="material-symbols-outlined">{{ showConfirmPassword ? 'visibility_off' : 'visibility' }}</span>
+                </button>
+              </div>
+              <span v-if="registerErrors.confirmPassword" class="field-error">{{ registerErrors.confirmPassword }}</span>
+            </div>
+
+            <button type="submit" class="submit-button" :disabled="isLoading">
+              <span v-if="isLoading" class="spinner"></span>
+              <span>{{ isLoading ? 'Đang đăng ký...' : pageCopy.submitLabel }}</span>
+            </button>
+          </form>
+        </div>
+
+        <p class="auth-switch">
+          {{ pageCopy.loginHint }}
+          <RouterLink to="/login">Đăng nhập ngay</RouterLink>
+        </p>
+      </div>
+    </section>
+  </div>
+</template>
+
 <script setup>
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -198,206 +398,6 @@ const handleRegister = async () => {
   }
 }
 </script>
-
-<template>
-  <div class="auth-page auth-page--register">
-    <section class="auth-showcase">
-      <div class="showcase-inner">
-        <RouterLink to="/" class="showcase-brand">
-          <span class="brand-mark">
-            <span class="material-symbols-outlined">rocket_launch</span>
-          </span>
-          <span>SmartJob AI</span>
-        </RouterLink>
-
-        <div class="showcase-copy">
-          <h1>{{ pageCopy.showcaseTitle }}</h1>
-          <p>{{ pageCopy.showcaseDescription }}</p>
-        </div>
-
-        <div class="showcase-stats">
-          <div class="stat-card">
-            <strong>10k+</strong>
-            <span>Việc làm mới</span>
-          </div>
-          <div class="stat-card">
-            <strong>500+</strong>
-            <span>Doanh nghiệp</span>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section class="auth-panel">
-      <div class="auth-shell">
-        <div v-if="errorMessage || successMessage" class="auth-alert-wrap">
-          <div v-if="errorMessage" class="auth-alert auth-alert--error">
-            <span class="material-symbols-outlined">error</span>
-            <span>{{ errorMessage }}</span>
-          </div>
-          <div v-if="successMessage" class="auth-alert auth-alert--success">
-            <span class="material-symbols-outlined">check_circle</span>
-            <span>{{ successMessage }}</span>
-          </div>
-        </div>
-
-        <div class="auth-head">
-          <h2>{{ pageCopy.headTitle }}</h2>
-          <p>{{ pageCopy.headDescription }}</p>
-        </div>
-
-        <div class="auth-card">
-          <div class="role-switch" role="tablist" aria-label="Chọn vai trò">
-            <button
-              type="button"
-              class="role-button"
-              :class="{ active: accountType === 'candidate' }"
-              @click="accountType = 'candidate'"
-            >
-              Tôi muốn tìm việc
-            </button>
-            <button
-              type="button"
-              class="role-button"
-              :class="{ active: accountType === 'employer' }"
-              @click="accountType = 'employer'"
-            >
-              Tôi muốn tuyển dụng
-            </button>
-          </div>
-
-          <form class="auth-form" novalidate @submit.prevent="handleRegister">
-            <div v-if="isEmployer" class="field-group">
-              <label for="companyName">Tên công ty</label>
-              <div class="input-shell" :class="{ 'input-shell--error': registerErrors.companyName }">
-                <span class="material-symbols-outlined">business</span>
-                <input
-                  id="companyName"
-                  v-model="registerForm.companyName"
-                  type="text"
-                  placeholder="Nhập tên công ty"
-                  :disabled="isLoading"
-                >
-              </div>
-              <span v-if="registerErrors.companyName" class="field-error">{{ registerErrors.companyName }}</span>
-            </div>
-
-            <div class="field-group">
-              <label for="fullName">{{ pageCopy.fullNameLabel }}</label>
-              <div class="input-shell" :class="{ 'input-shell--error': isEmployer ? registerErrors.contactPerson : registerErrors.fullName }">
-                <span class="material-symbols-outlined">person</span>
-                <input
-                  v-if="isEmployer"
-                  id="fullName"
-                  v-model="registerForm.contactPerson"
-                  type="text"
-                  :placeholder="pageCopy.fullNamePlaceholder"
-                  :disabled="isLoading"
-                >
-                <input
-                  v-else
-                  id="fullName"
-                  v-model="registerForm.fullName"
-                  type="text"
-                  :placeholder="pageCopy.fullNamePlaceholder"
-                  :disabled="isLoading"
-                >
-              </div>
-              <span v-if="isEmployer && registerErrors.contactPerson" class="field-error">{{ registerErrors.contactPerson }}</span>
-              <span v-else-if="!isEmployer && registerErrors.fullName" class="field-error">{{ registerErrors.fullName }}</span>
-            </div>
-
-            <div class="field-group">
-              <label for="email">Email</label>
-              <div class="input-shell" :class="{ 'input-shell--error': registerErrors.email }">
-                <span class="material-symbols-outlined">mail</span>
-                <input
-                  id="email"
-                  v-model="registerForm.email"
-                  type="email"
-                  placeholder="example@email.com"
-                  :disabled="isLoading"
-                >
-              </div>
-              <span v-if="registerErrors.email" class="field-error">{{ registerErrors.email }}</span>
-            </div>
-
-            <div class="field-group">
-              <label for="phone">Số điện thoại</label>
-              <div class="input-shell" :class="{ 'input-shell--error': registerErrors.phone }">
-                <span class="material-symbols-outlined">call</span>
-                <input
-                  id="phone"
-                  v-model="registerForm.phone"
-                  type="tel"
-                  placeholder="Nhập số điện thoại"
-                  :disabled="isLoading"
-                >
-              </div>
-              <span v-if="registerErrors.phone" class="field-error">{{ registerErrors.phone }}</span>
-            </div>
-
-            <div class="field-group">
-              <label for="password">Mật khẩu</label>
-              <div class="input-shell" :class="{ 'input-shell--error': registerErrors.password }">
-                <span class="material-symbols-outlined">lock</span>
-                <input
-                  id="password"
-                  v-model="registerForm.password"
-                  :type="showPassword ? 'text' : 'password'"
-                  placeholder="••••••••"
-                  :disabled="isLoading"
-                >
-                <button
-                  type="button"
-                  class="toggle-visibility"
-                  :aria-label="showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'"
-                  @click="showPassword = !showPassword"
-                >
-                  <span class="material-symbols-outlined">{{ showPassword ? 'visibility_off' : 'visibility' }}</span>
-                </button>
-              </div>
-              <span v-if="registerErrors.password" class="field-error">{{ registerErrors.password }}</span>
-            </div>
-
-            <div class="field-group">
-              <label for="confirmPassword">Xác nhận mật khẩu</label>
-              <div class="input-shell" :class="{ 'input-shell--error': registerErrors.confirmPassword }">
-                <span class="material-symbols-outlined">verified_user</span>
-                <input
-                  id="confirmPassword"
-                  v-model="registerForm.confirmPassword"
-                  :type="showConfirmPassword ? 'text' : 'password'"
-                  placeholder="Nhập lại mật khẩu"
-                  :disabled="isLoading"
-                >
-                <button
-                  type="button"
-                  class="toggle-visibility"
-                  :aria-label="showConfirmPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'"
-                  @click="showConfirmPassword = !showConfirmPassword"
-                >
-                  <span class="material-symbols-outlined">{{ showConfirmPassword ? 'visibility_off' : 'visibility' }}</span>
-                </button>
-              </div>
-              <span v-if="registerErrors.confirmPassword" class="field-error">{{ registerErrors.confirmPassword }}</span>
-            </div>
-
-            <button type="submit" class="submit-button" :disabled="isLoading">
-              <span v-if="isLoading" class="spinner"></span>
-              <span>{{ isLoading ? 'Đang đăng ký...' : pageCopy.submitLabel }}</span>
-            </button>
-          </form>
-        </div>
-
-        <p class="auth-switch">
-          {{ pageCopy.loginHint }}
-          <RouterLink to="/login">Đăng nhập ngay</RouterLink>
-        </p>
-      </div>
-    </section>
-  </div>
-</template>
 
 <style scoped>
 .auth-page {

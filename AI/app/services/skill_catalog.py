@@ -28,6 +28,28 @@ def _load_skill_catalog() -> list[dict]:
 SKILL_CATALOG = _load_skill_catalog()
 
 
+def _build_skill_alias_lookup() -> dict[str, dict]:
+    exact_names: dict[str, dict] = {}
+    aliases: dict[str, dict] = {}
+
+    for item in SKILL_CATALOG:
+        canonical = {
+            "skill_name": item["skill_name"],
+            "category": item.get("category"),
+            "normalized": normalize_search_text(item["skill_name"]).strip(),
+        }
+        exact_names[canonical["normalized"]] = canonical
+
+    for item in SKILL_CATALOG:
+        canonical = exact_names[normalize_search_text(item["skill_name"]).strip()]
+        for alias in item.get("aliases", []):
+            alias_key = normalize_search_text(alias).strip()
+            if alias_key and alias_key not in aliases:
+                aliases[alias_key] = canonical
+
+    return {**aliases, **exact_names}
+
+
 DEFAULT_SECTION_WEIGHTS = {
     "header": 0.05,
     "skills": 0.35,
@@ -45,6 +67,25 @@ def normalize_search_text(text: str) -> str:
     normalized = unicodedata.normalize("NFD", text)
     without_diacritics = "".join(char for char in normalized if unicodedata.category(char) != "Mn")
     return without_diacritics.lower()
+
+
+SKILL_ALIAS_LOOKUP = _build_skill_alias_lookup()
+
+
+def canonicalize_skill_name(value: str) -> str:
+    normalized = normalize_search_text(value).strip()
+    if not normalized:
+        return ""
+
+    return SKILL_ALIAS_LOOKUP.get(normalized, {"normalized": normalized})["normalized"]
+
+
+def canonical_skill_display_name(value: str) -> str:
+    normalized = normalize_search_text(value).strip()
+    if not normalized:
+        return ""
+
+    return SKILL_ALIAS_LOOKUP.get(normalized, {"skill_name": value})["skill_name"]
 
 
 def extract_skills_from_text(

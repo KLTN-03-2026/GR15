@@ -51,6 +51,7 @@ class CvBuilderWritingController extends Controller
         try {
             $aiResponse = $aiClient->generateCvBuilderWriting($profile, $section, $options);
             $data = $this->normalizeAiResponse($aiResponse, $section);
+            $provider = $data['provider'] ?: $provider;
 
             if ($data['suggestions'] === [] && $data['skill_suggestions'] === []) {
                 throw new RuntimeException('AI service không trả về gợi ý hợp lệ.');
@@ -142,6 +143,7 @@ class CvBuilderWritingController extends Controller
             'skill_suggestions' => $section === 'skills'
                 ? $this->normalizeSkillSuggestions($skillSuggestions)
                 : [],
+            'provider' => $payload['meta']['provider'] ?? null,
         ];
     }
 

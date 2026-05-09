@@ -1,3 +1,137 @@
+<template>
+  <div class="space-y-8">
+    <div class="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
+      <article
+        v-for="card in kpiCards"
+        :key="card.label"
+        class="rounded-[18px] border border-slate-200 bg-white p-7 shadow-sm dark:border-slate-800 dark:bg-slate-900"
+      >
+        <div class="flex items-start justify-between gap-4">
+          <div class="flex size-16 items-center justify-center rounded-2xl" :class="card.iconTone">
+            <span class="material-symbols-outlined text-4xl">{{ card.icon }}</span>
+          </div>
+          <span class="inline-flex items-center gap-1 text-lg font-black" :class="card.badgeTone">
+            {{ card.badge }}
+            <span class="material-symbols-outlined text-[18px]">trending_up</span>
+          </span>
+        </div>
+        <p class="mt-7 text-xl font-semibold text-slate-500 dark:text-slate-400">{{ card.label }}</p>
+        <h2 class="mt-2 text-4xl font-black tracking-tight text-slate-950 dark:text-white">
+          {{ loading ? '...' : card.value }}
+        </h2>
+        <p class="mt-3 text-sm font-medium text-slate-500 dark:text-slate-400">{{ card.helper }}</p>
+      </article>
+    </div>
+
+    <div class="grid gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(360px,0.95fr)]">
+      <section class="rounded-[18px] border border-slate-200 bg-white p-7 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h2 class="text-2xl font-black text-slate-950 dark:text-white">Tăng trưởng người dùng</h2>
+            <p class="mt-2 text-lg text-slate-500 dark:text-slate-400">Thống kê 6 tháng gần nhất từ dữ liệu đăng ký.</p>
+          </div>
+          <span class="rounded-2xl bg-slate-50 px-5 py-3 text-base font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+            {{ new Date().getFullYear() }}
+          </span>
+        </div>
+
+        <div class="mt-8 flex h-[340px] items-end gap-4 overflow-x-auto pb-2">
+          <div v-for="bar in chartBars" :key="bar.key" class="flex h-full min-w-20 flex-1 flex-col items-center justify-end gap-3">
+            <p class="text-sm font-black text-slate-950 dark:text-white">{{ formatNumber(bar.value) }}</p>
+            <div class="flex h-[260px] w-full items-end rounded-2xl bg-slate-50 px-3 py-3 dark:bg-slate-950">
+              <div
+                class="w-full rounded-xl bg-[#f45112] shadow-[0_18px_34px_rgba(244,81,18,0.18)] transition-all"
+                :style="{ height: `${bar.height}%` }"
+              ></div>
+            </div>
+            <p class="text-sm font-bold text-slate-500 dark:text-slate-400">{{ bar.label }}</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="rounded-[18px] border border-slate-200 bg-white p-7 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <h2 class="text-2xl font-black text-slate-950 dark:text-white">Hoạt động gần đây</h2>
+        <div class="mt-8 space-y-7">
+          <article v-for="activity in recentActivities" :key="activity.id" class="flex gap-5">
+            <span class="mt-2 size-3 shrink-0 rounded-full" :class="activity.dot"></span>
+            <div>
+              <h3 class="text-lg font-black text-slate-950 dark:text-white">{{ activity.title }}</h3>
+              <p class="mt-1 text-base text-slate-500 dark:text-slate-400">{{ activity.description }}</p>
+            </div>
+          </article>
+          <p v-if="!recentActivities.length && !loading" class="rounded-2xl bg-slate-50 p-5 text-sm text-slate-500 dark:bg-slate-950 dark:text-slate-400">
+            Chưa có hoạt động gần đây phù hợp với quyền hiện tại.
+          </p>
+        </div>
+        <RouterLink
+          v-if="canViewBilling || canViewUsers"
+          :to="canViewBilling ? '/admin/billing' : '/admin/users'"
+          class="mt-10 inline-flex w-full justify-center text-lg font-black text-[#f45112] hover:underline"
+        >
+          Xem tất cả hoạt động
+        </RouterLink>
+      </section>
+    </div>
+
+    <section v-if="canViewUsers" class="overflow-hidden rounded-[18px] border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div class="flex items-center justify-between gap-4 p-7">
+        <div>
+          <h2 class="text-2xl font-black text-slate-950 dark:text-white">Danh sách người dùng mới</h2>
+          <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">Các tài khoản được tạo gần đây nhất trong hệ thống.</p>
+        </div>
+        <RouterLink to="/admin/users" class="text-base font-semibold text-slate-500 transition hover:text-[#2463eb] dark:text-slate-400">
+          Xem toàn bộ
+        </RouterLink>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-800">
+          <thead class="bg-slate-50 text-left text-xs font-black uppercase tracking-[0.18em] text-slate-500 dark:bg-slate-950 dark:text-slate-400">
+            <tr>
+              <th class="px-7 py-4">Người dùng</th>
+              <th class="px-7 py-4">Vai trò</th>
+              <th class="px-7 py-4">Ngày đăng ký</th>
+              <th class="px-7 py-4">Trạng thái</th>
+              <th class="px-7 py-4 text-right">Hành động</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+            <tr v-for="user in recentUsers.slice(0, 6)" :key="user.id" class="hover:bg-slate-50 dark:hover:bg-slate-950/60">
+              <td class="px-7 py-5">
+                <p class="font-black text-slate-950 dark:text-white">{{ user.ho_ten || 'Người dùng chưa cập nhật' }}</p>
+                <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{ user.email }}</p>
+              </td>
+              <td class="px-7 py-5 text-slate-600 dark:text-slate-300">{{ roleLabel(user.vai_tro) }}</td>
+              <td class="px-7 py-5 text-slate-600 dark:text-slate-300">{{ formatDate(user.created_at) }}</td>
+              <td class="px-7 py-5">
+                <span
+                  class="inline-flex rounded-full px-3 py-1 text-xs font-bold"
+                  :class="Number(user.trang_thai) === 1 ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300' : 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300'"
+                >
+                  {{ statusLabel(user.trang_thai) }}
+                </span>
+              </td>
+              <td class="px-7 py-5 text-right">
+                <RouterLink to="/admin/users" class="font-bold text-[#2463eb] hover:underline">Xem</RouterLink>
+              </td>
+            </tr>
+            <tr v-if="!recentUsers.length && !loading">
+              <td colspan="5" class="px-7 py-10 text-center text-slate-500 dark:text-slate-400">Chưa có người dùng mới để hiển thị.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section
+      v-if="!kpiCards.length"
+      class="rounded-xl border border-dashed border-slate-200 bg-white p-8 text-center text-slate-500 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400"
+    >
+      Tài khoản admin này chưa được cấp quyền xem dữ liệu dashboard. Vui lòng liên hệ Super Admin để được cấp quyền module phù hợp.
+    </section>
+  </div>
+</template>
+
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
@@ -246,137 +380,3 @@ const fetchDashboard = async () => {
 
 onMounted(fetchDashboard)
 </script>
-
-<template>
-  <div class="space-y-8">
-    <div class="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
-      <article
-        v-for="card in kpiCards"
-        :key="card.label"
-        class="rounded-[18px] border border-slate-200 bg-white p-7 shadow-sm dark:border-slate-800 dark:bg-slate-900"
-      >
-        <div class="flex items-start justify-between gap-4">
-          <div class="flex size-16 items-center justify-center rounded-2xl" :class="card.iconTone">
-            <span class="material-symbols-outlined text-4xl">{{ card.icon }}</span>
-          </div>
-          <span class="inline-flex items-center gap-1 text-lg font-black" :class="card.badgeTone">
-            {{ card.badge }}
-            <span class="material-symbols-outlined text-[18px]">trending_up</span>
-          </span>
-        </div>
-        <p class="mt-7 text-xl font-semibold text-slate-500 dark:text-slate-400">{{ card.label }}</p>
-        <h2 class="mt-2 text-4xl font-black tracking-tight text-slate-950 dark:text-white">
-          {{ loading ? '...' : card.value }}
-        </h2>
-        <p class="mt-3 text-sm font-medium text-slate-500 dark:text-slate-400">{{ card.helper }}</p>
-      </article>
-    </div>
-
-    <div class="grid gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(360px,0.95fr)]">
-      <section class="rounded-[18px] border border-slate-200 bg-white p-7 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <h2 class="text-2xl font-black text-slate-950 dark:text-white">Tăng trưởng người dùng</h2>
-            <p class="mt-2 text-lg text-slate-500 dark:text-slate-400">Thống kê 6 tháng gần nhất từ dữ liệu đăng ký.</p>
-          </div>
-          <span class="rounded-2xl bg-slate-50 px-5 py-3 text-base font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
-            {{ new Date().getFullYear() }}
-          </span>
-        </div>
-
-        <div class="mt-8 flex h-[340px] items-end gap-4 overflow-x-auto pb-2">
-          <div v-for="bar in chartBars" :key="bar.key" class="flex h-full min-w-20 flex-1 flex-col items-center justify-end gap-3">
-            <p class="text-sm font-black text-slate-950 dark:text-white">{{ formatNumber(bar.value) }}</p>
-            <div class="flex h-[260px] w-full items-end rounded-2xl bg-slate-50 px-3 py-3 dark:bg-slate-950">
-              <div
-                class="w-full rounded-xl bg-[#f45112] shadow-[0_18px_34px_rgba(244,81,18,0.18)] transition-all"
-                :style="{ height: `${bar.height}%` }"
-              ></div>
-            </div>
-            <p class="text-sm font-bold text-slate-500 dark:text-slate-400">{{ bar.label }}</p>
-          </div>
-        </div>
-      </section>
-
-      <section class="rounded-[18px] border border-slate-200 bg-white p-7 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <h2 class="text-2xl font-black text-slate-950 dark:text-white">Hoạt động gần đây</h2>
-        <div class="mt-8 space-y-7">
-          <article v-for="activity in recentActivities" :key="activity.id" class="flex gap-5">
-            <span class="mt-2 size-3 shrink-0 rounded-full" :class="activity.dot"></span>
-            <div>
-              <h3 class="text-lg font-black text-slate-950 dark:text-white">{{ activity.title }}</h3>
-              <p class="mt-1 text-base text-slate-500 dark:text-slate-400">{{ activity.description }}</p>
-            </div>
-          </article>
-          <p v-if="!recentActivities.length && !loading" class="rounded-2xl bg-slate-50 p-5 text-sm text-slate-500 dark:bg-slate-950 dark:text-slate-400">
-            Chưa có hoạt động gần đây phù hợp với quyền hiện tại.
-          </p>
-        </div>
-        <RouterLink
-          v-if="canViewBilling || canViewUsers"
-          :to="canViewBilling ? '/admin/billing' : '/admin/users'"
-          class="mt-10 inline-flex w-full justify-center text-lg font-black text-[#f45112] hover:underline"
-        >
-          Xem tất cả hoạt động
-        </RouterLink>
-      </section>
-    </div>
-
-    <section v-if="canViewUsers" class="overflow-hidden rounded-[18px] border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-      <div class="flex items-center justify-between gap-4 p-7">
-        <div>
-          <h2 class="text-2xl font-black text-slate-950 dark:text-white">Danh sách người dùng mới</h2>
-          <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">Các tài khoản được tạo gần đây nhất trong hệ thống.</p>
-        </div>
-        <RouterLink to="/admin/users" class="text-base font-semibold text-slate-500 transition hover:text-[#2463eb] dark:text-slate-400">
-          Xem toàn bộ
-        </RouterLink>
-      </div>
-
-      <div class="overflow-x-auto">
-        <table class="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-800">
-          <thead class="bg-slate-50 text-left text-xs font-black uppercase tracking-[0.18em] text-slate-500 dark:bg-slate-950 dark:text-slate-400">
-            <tr>
-              <th class="px-7 py-4">Người dùng</th>
-              <th class="px-7 py-4">Vai trò</th>
-              <th class="px-7 py-4">Ngày đăng ký</th>
-              <th class="px-7 py-4">Trạng thái</th>
-              <th class="px-7 py-4 text-right">Hành động</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
-            <tr v-for="user in recentUsers.slice(0, 6)" :key="user.id" class="hover:bg-slate-50 dark:hover:bg-slate-950/60">
-              <td class="px-7 py-5">
-                <p class="font-black text-slate-950 dark:text-white">{{ user.ho_ten || 'Người dùng chưa cập nhật' }}</p>
-                <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{ user.email }}</p>
-              </td>
-              <td class="px-7 py-5 text-slate-600 dark:text-slate-300">{{ roleLabel(user.vai_tro) }}</td>
-              <td class="px-7 py-5 text-slate-600 dark:text-slate-300">{{ formatDate(user.created_at) }}</td>
-              <td class="px-7 py-5">
-                <span
-                  class="inline-flex rounded-full px-3 py-1 text-xs font-bold"
-                  :class="Number(user.trang_thai) === 1 ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300' : 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300'"
-                >
-                  {{ statusLabel(user.trang_thai) }}
-                </span>
-              </td>
-              <td class="px-7 py-5 text-right">
-                <RouterLink to="/admin/users" class="font-bold text-[#2463eb] hover:underline">Xem</RouterLink>
-              </td>
-            </tr>
-            <tr v-if="!recentUsers.length && !loading">
-              <td colspan="5" class="px-7 py-10 text-center text-slate-500 dark:text-slate-400">Chưa có người dùng mới để hiển thị.</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    <section
-      v-if="!kpiCards.length"
-      class="rounded-xl border border-dashed border-slate-200 bg-white p-8 text-center text-slate-500 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400"
-    >
-      Tài khoản admin này chưa được cấp quyền xem dữ liệu dashboard. Vui lòng liên hệ Super Admin để được cấp quyền module phù hợp.
-    </section>
-  </div>
-</template>

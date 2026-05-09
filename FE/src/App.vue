@@ -1,3 +1,9 @@
+<template>
+  <component :is="layoutComponent">
+    <RouterView />
+  </component>
+</template>
+
 <script setup>
 import { computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -83,11 +89,5 @@ onUnmounted(() => {
   }
 })
 </script>
-
-<template>
-  <component :is="layoutComponent">
-    <RouterView />
-  </component>
-</template>
 
 <style scoped></style>

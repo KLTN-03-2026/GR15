@@ -1,3 +1,78 @@
+<template>
+  <div class="myp-wrapper">
+    <button
+      ref="triggerRef"
+      class="myp-trigger"
+      :class="{ 'myp-trigger--active': isOpen, 'myp-trigger--has-value': displayValue }"
+      type="button"
+      @click="togglePicker"
+    >
+      <span class="myp-trigger__icon material-symbols-outlined">calendar_month</span>
+      <span class="myp-trigger__text" :class="{ 'myp-trigger__text--placeholder': !displayValue }">
+        {{ displayValue || placeholder }}
+      </span>
+      <span v-if="displayValue" class="myp-trigger__clear" @click.stop="clearValue">
+        <span class="material-symbols-outlined" style="font-size: 16px">close</span>
+      </span>
+      <span v-else class="myp-trigger__chevron material-symbols-outlined">expand_more</span>
+    </button>
+
+    <Transition name="myp-dropdown">
+      <div v-if="isOpen" ref="pickerRef" class="myp-dropdown">
+        <div class="myp-dropdown__header">
+          <button
+            class="myp-dropdown__nav-btn"
+            type="button"
+            :disabled="currentDisplayYear <= minYear"
+            @click="prevYear"
+          >
+            <span class="material-symbols-outlined" style="font-size: 20px">chevron_left</span>
+          </button>
+          <div class="myp-dropdown__year-display">
+            <span class="myp-dropdown__year-label">{{ currentDisplayYear }}</span>
+          </div>
+          <button
+            class="myp-dropdown__nav-btn"
+            type="button"
+            :disabled="currentDisplayYear >= maxYear"
+            @click="nextYear"
+          >
+            <span class="material-symbols-outlined" style="font-size: 20px">chevron_right</span>
+          </button>
+        </div>
+
+        <div class="myp-dropdown__grid">
+          <button
+            v-for="month in months"
+            :key="month.value"
+            class="myp-dropdown__month"
+            :class="{
+              'myp-dropdown__month--selected': isSelectedMonth(month.value),
+              'myp-dropdown__month--current': isCurrentMonth(month.value) && !isSelectedMonth(month.value),
+            }"
+            type="button"
+            @click="selectMonth(month.value)"
+          >
+            {{ month.label }}
+          </button>
+        </div>
+
+        <div v-if="allowPresent" class="myp-dropdown__footer">
+          <button
+            class="myp-dropdown__present-btn"
+            :class="{ 'myp-dropdown__present-btn--active': isPresent }"
+            type="button"
+            @click="selectPresent"
+          >
+            <span class="material-symbols-outlined" style="font-size: 16px">work_history</span>
+            {{ presentLabel }}
+          </button>
+        </div>
+      </div>
+    </Transition>
+  </div>
+</template>
+
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
@@ -159,81 +234,6 @@ onBeforeUnmount(() => {
   document.removeEventListener('mousedown', handleClickOutside)
 })
 </script>
-
-<template>
-  <div class="myp-wrapper">
-    <button
-      ref="triggerRef"
-      class="myp-trigger"
-      :class="{ 'myp-trigger--active': isOpen, 'myp-trigger--has-value': displayValue }"
-      type="button"
-      @click="togglePicker"
-    >
-      <span class="myp-trigger__icon material-symbols-outlined">calendar_month</span>
-      <span class="myp-trigger__text" :class="{ 'myp-trigger__text--placeholder': !displayValue }">
-        {{ displayValue || placeholder }}
-      </span>
-      <span v-if="displayValue" class="myp-trigger__clear" @click.stop="clearValue">
-        <span class="material-symbols-outlined" style="font-size: 16px">close</span>
-      </span>
-      <span v-else class="myp-trigger__chevron material-symbols-outlined">expand_more</span>
-    </button>
-
-    <Transition name="myp-dropdown">
-      <div v-if="isOpen" ref="pickerRef" class="myp-dropdown">
-        <div class="myp-dropdown__header">
-          <button
-            class="myp-dropdown__nav-btn"
-            type="button"
-            :disabled="currentDisplayYear <= minYear"
-            @click="prevYear"
-          >
-            <span class="material-symbols-outlined" style="font-size: 20px">chevron_left</span>
-          </button>
-          <div class="myp-dropdown__year-display">
-            <span class="myp-dropdown__year-label">{{ currentDisplayYear }}</span>
-          </div>
-          <button
-            class="myp-dropdown__nav-btn"
-            type="button"
-            :disabled="currentDisplayYear >= maxYear"
-            @click="nextYear"
-          >
-            <span class="material-symbols-outlined" style="font-size: 20px">chevron_right</span>
-          </button>
-        </div>
-
-        <div class="myp-dropdown__grid">
-          <button
-            v-for="month in months"
-            :key="month.value"
-            class="myp-dropdown__month"
-            :class="{
-              'myp-dropdown__month--selected': isSelectedMonth(month.value),
-              'myp-dropdown__month--current': isCurrentMonth(month.value) && !isSelectedMonth(month.value),
-            }"
-            type="button"
-            @click="selectMonth(month.value)"
-          >
-            {{ month.label }}
-          </button>
-        </div>
-
-        <div v-if="allowPresent" class="myp-dropdown__footer">
-          <button
-            class="myp-dropdown__present-btn"
-            :class="{ 'myp-dropdown__present-btn--active': isPresent }"
-            type="button"
-            @click="selectPresent"
-          >
-            <span class="material-symbols-outlined" style="font-size: 16px">work_history</span>
-            {{ presentLabel }}
-          </button>
-        </div>
-      </div>
-    </Transition>
-  </div>
-</template>
 
 <style scoped>
 .myp-wrapper {

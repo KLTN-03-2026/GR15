@@ -50,11 +50,11 @@ class NhaTuyenDungHoSoController extends Controller
 
         // Lọc theo khoảng kinh nghiệm
         if ($request->filled('kinh_nghiem_tu')) {
-            $query->where('kinh_nghiem_nam', '>=', (int) $request->kinh_nghiem_tu);
+            $query->where('kinh_nghiem_nam', '>=', (float) $request->kinh_nghiem_tu);
         }
 
         if ($request->filled('kinh_nghiem_den')) {
-            $query->where('kinh_nghiem_nam', '<=', (int) $request->kinh_nghiem_den);
+            $query->where('kinh_nghiem_nam', '<=', (float) $request->kinh_nghiem_den);
         }
 
         // Tìm kiếm theo tiêu đề, mục tiêu, mô tả

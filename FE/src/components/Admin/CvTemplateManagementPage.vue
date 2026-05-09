@@ -1,178 +1,3 @@
-<script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
-import { adminCvTemplateService } from '@/services/api'
-import { useNotify } from '@/composables/useNotify'
-
-const notify = useNotify()
-
-const loading = ref(false)
-const saving = ref(false)
-const deletingId = ref(null)
-const templates = ref([])
-const pagination = ref(null)
-const modalOpen = ref(false)
-const editingId = ref(null)
-const templateToDelete = ref(null)
-
-const filters = reactive({
-  search: '',
-  page: 1,
-  per_page: 20,
-})
-
-const form = reactive({
-  ma_template: '',
-  ten_template: '',
-  mo_ta: '',
-  bo_cuc: 'executive_navy',
-  badges_text: '',
-  thu_tu_hien_thi: 0,
-  trang_thai: 1,
-})
-
-const layoutOptions = [
-  { value: 'executive_navy', label: 'Executive Navy' },
-  { value: 'topcv_maroon', label: 'Sidebar Maroon' },
-  { value: 'ats_serif', label: 'ATS Serif' },
-]
-
-const isEditing = computed(() => editingId.value !== null)
-
-const resetForm = () => {
-  form.ma_template = ''
-  form.ten_template = ''
-  form.mo_ta = ''
-  form.bo_cuc = 'executive_navy'
-  form.badges_text = ''
-  form.thu_tu_hien_thi = 0
-  form.trang_thai = 1
-  editingId.value = null
-}
-
-const badgesFromText = (value) =>
-  String(value || '')
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean)
-
-const fetchTemplates = async () => {
-  loading.value = true
-  try {
-    const response = await adminCvTemplateService.getTemplates(filters)
-    const payload = response?.data || {}
-    templates.value = payload.data || []
-    pagination.value = payload
-  } catch (error) {
-    templates.value = []
-    pagination.value = null
-    notify.apiError(error, 'Không tải được danh sách template CV.')
-  } finally {
-    loading.value = false
-  }
-}
-
-const openCreateModal = () => {
-  resetForm()
-  modalOpen.value = true
-}
-
-const openEditModal = (template) => {
-  editingId.value = template.id
-  form.ma_template = template.ma_template || ''
-  form.ten_template = template.ten_template || ''
-  form.mo_ta = template.mo_ta || ''
-  form.bo_cuc = template.bo_cuc || 'executive_navy'
-  form.badges_text = Array.isArray(template.badges) ? template.badges.join(', ') : ''
-  form.thu_tu_hien_thi = Number(template.thu_tu_hien_thi || 0)
-  form.trang_thai = Number(template.trang_thai ?? 1)
-  modalOpen.value = true
-}
-
-const closeModal = () => {
-  if (saving.value) return
-  modalOpen.value = false
-  resetForm()
-}
-
-const submitForm = async () => {
-  saving.value = true
-  try {
-    const payload = {
-      ma_template: form.ma_template.trim(),
-      ten_template: form.ten_template.trim(),
-      mo_ta: form.mo_ta.trim(),
-      bo_cuc: form.bo_cuc,
-      badges: badgesFromText(form.badges_text),
-      thu_tu_hien_thi: Number(form.thu_tu_hien_thi || 0),
-      trang_thai: Number(form.trang_thai ?? 1),
-    }
-
-    if (editingId.value) {
-      await adminCvTemplateService.updateTemplate(editingId.value, payload)
-      notify.success('Đã cập nhật template CV.')
-    } else {
-      await adminCvTemplateService.createTemplate(payload)
-      notify.success('Đã tạo template CV mới.')
-    }
-
-    closeModal()
-    await fetchTemplates()
-  } catch (error) {
-    notify.apiError(error, 'Không thể lưu template CV.')
-  } finally {
-    saving.value = false
-  }
-}
-
-const toggleStatus = async (template) => {
-  try {
-    await adminCvTemplateService.toggleTemplateStatus(template.id)
-    notify.success('Đã đổi trạng thái template CV.')
-    await fetchTemplates()
-  } catch (error) {
-    notify.apiError(error, 'Không thể đổi trạng thái template CV.')
-  }
-}
-
-const openDeleteModal = (template) => {
-  templateToDelete.value = template
-}
-
-const closeDeleteModal = () => {
-  if (deletingId.value) return
-  templateToDelete.value = null
-}
-
-const deleteTemplate = async () => {
-  if (!templateToDelete.value || deletingId.value) return
-
-  deletingId.value = templateToDelete.value.id
-  try {
-    await adminCvTemplateService.deleteTemplate(templateToDelete.value.id)
-    notify.success('Đã xóa template CV.')
-    templateToDelete.value = null
-    await fetchTemplates()
-  } catch (error) {
-    notify.apiError(error, 'Không thể xóa template CV.')
-  } finally {
-    deletingId.value = null
-  }
-}
-
-const goToPage = async (page) => {
-  if (!page || page === filters.page) return
-  filters.page = page
-  await fetchTemplates()
-}
-
-const applyFilters = async () => {
-  filters.page = 1
-  await fetchTemplates()
-}
-
-onMounted(fetchTemplates)
-</script>
-
 <template>
   <div class="space-y-6">
     <div class="flex flex-wrap items-end justify-between gap-4">
@@ -367,3 +192,178 @@ onMounted(fetchTemplates)
     </div>
   </div>
 </template>
+
+<script setup>
+import { computed, onMounted, reactive, ref } from 'vue'
+import { adminCvTemplateService } from '@/services/api'
+import { useNotify } from '@/composables/useNotify'
+
+const notify = useNotify()
+
+const loading = ref(false)
+const saving = ref(false)
+const deletingId = ref(null)
+const templates = ref([])
+const pagination = ref(null)
+const modalOpen = ref(false)
+const editingId = ref(null)
+const templateToDelete = ref(null)
+
+const filters = reactive({
+  search: '',
+  page: 1,
+  per_page: 20,
+})
+
+const form = reactive({
+  ma_template: '',
+  ten_template: '',
+  mo_ta: '',
+  bo_cuc: 'executive_navy',
+  badges_text: '',
+  thu_tu_hien_thi: 0,
+  trang_thai: 1,
+})
+
+const layoutOptions = [
+  { value: 'executive_navy', label: 'Executive Navy' },
+  { value: 'topcv_maroon', label: 'Sidebar Maroon' },
+  { value: 'ats_serif', label: 'ATS Serif' },
+]
+
+const isEditing = computed(() => editingId.value !== null)
+
+const resetForm = () => {
+  form.ma_template = ''
+  form.ten_template = ''
+  form.mo_ta = ''
+  form.bo_cuc = 'executive_navy'
+  form.badges_text = ''
+  form.thu_tu_hien_thi = 0
+  form.trang_thai = 1
+  editingId.value = null
+}
+
+const badgesFromText = (value) =>
+  String(value || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+
+const fetchTemplates = async () => {
+  loading.value = true
+  try {
+    const response = await adminCvTemplateService.getTemplates(filters)
+    const payload = response?.data || {}
+    templates.value = payload.data || []
+    pagination.value = payload
+  } catch (error) {
+    templates.value = []
+    pagination.value = null
+    notify.apiError(error, 'Không tải được danh sách template CV.')
+  } finally {
+    loading.value = false
+  }
+}
+
+const openCreateModal = () => {
+  resetForm()
+  modalOpen.value = true
+}
+
+const openEditModal = (template) => {
+  editingId.value = template.id
+  form.ma_template = template.ma_template || ''
+  form.ten_template = template.ten_template || ''
+  form.mo_ta = template.mo_ta || ''
+  form.bo_cuc = template.bo_cuc || 'executive_navy'
+  form.badges_text = Array.isArray(template.badges) ? template.badges.join(', ') : ''
+  form.thu_tu_hien_thi = Number(template.thu_tu_hien_thi || 0)
+  form.trang_thai = Number(template.trang_thai ?? 1)
+  modalOpen.value = true
+}
+
+const closeModal = () => {
+  if (saving.value) return
+  modalOpen.value = false
+  resetForm()
+}
+
+const submitForm = async () => {
+  saving.value = true
+  try {
+    const payload = {
+      ma_template: form.ma_template.trim(),
+      ten_template: form.ten_template.trim(),
+      mo_ta: form.mo_ta.trim(),
+      bo_cuc: form.bo_cuc,
+      badges: badgesFromText(form.badges_text),
+      thu_tu_hien_thi: Number(form.thu_tu_hien_thi || 0),
+      trang_thai: Number(form.trang_thai ?? 1),
+    }
+
+    if (editingId.value) {
+      await adminCvTemplateService.updateTemplate(editingId.value, payload)
+      notify.success('Đã cập nhật template CV.')
+    } else {
+      await adminCvTemplateService.createTemplate(payload)
+      notify.success('Đã tạo template CV mới.')
+    }
+
+    closeModal()
+    await fetchTemplates()
+  } catch (error) {
+    notify.apiError(error, 'Không thể lưu template CV.')
+  } finally {
+    saving.value = false
+  }
+}
+
+const toggleStatus = async (template) => {
+  try {
+    await adminCvTemplateService.toggleTemplateStatus(template.id)
+    notify.success('Đã đổi trạng thái template CV.')
+    await fetchTemplates()
+  } catch (error) {
+    notify.apiError(error, 'Không thể đổi trạng thái template CV.')
+  }
+}
+
+const openDeleteModal = (template) => {
+  templateToDelete.value = template
+}
+
+const closeDeleteModal = () => {
+  if (deletingId.value) return
+  templateToDelete.value = null
+}
+
+const deleteTemplate = async () => {
+  if (!templateToDelete.value || deletingId.value) return
+
+  deletingId.value = templateToDelete.value.id
+  try {
+    await adminCvTemplateService.deleteTemplate(templateToDelete.value.id)
+    notify.success('Đã xóa template CV.')
+    templateToDelete.value = null
+    await fetchTemplates()
+  } catch (error) {
+    notify.apiError(error, 'Không thể xóa template CV.')
+  } finally {
+    deletingId.value = null
+  }
+}
+
+const goToPage = async (page) => {
+  if (!page || page === filters.page) return
+  filters.page = page
+  await fetchTemplates()
+}
+
+const applyFilters = async () => {
+  filters.page = 1
+  await fetchTemplates()
+}
+
+onMounted(fetchTemplates)
+</script>

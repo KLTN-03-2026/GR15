@@ -1,3 +1,104 @@
+<template>
+  <div class="mx-auto max-w-5xl space-y-6">
+    <section class="overflow-hidden rounded-[30px] border px-8 py-8 shadow-[0_28px_90px_rgba(15,23,42,0.12)]" :class="statusTone">
+      <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-[0.38em] opacity-80">Payment Result</p>
+          <h1 class="mt-3 text-4xl font-black tracking-tight">{{ heroTitle }}</h1>
+          <p class="mt-4 max-w-3xl text-base leading-8 opacity-90">
+            {{ heroDescription }}
+          </p>
+          <p v-if="shouldAutoRedirectToWallet" class="mt-3 text-sm font-semibold opacity-80">
+            Tự động quay về Ví AI sau {{ redirectCountdown }} giây.
+          </p>
+        </div>
+
+        <div class="rounded-[24px] border border-current/15 bg-white/55 p-5 backdrop-blur">
+          <p class="text-sm font-semibold opacity-80">Trạng thái</p>
+          <p class="mt-3 text-2xl font-black">{{ statusLabel }}</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_320px]">
+      <article class="rounded-[28px] border border-slate-200 bg-white p-6 shadow-[0_22px_60px_rgba(148,163,184,0.12)]">
+        <div v-if="loading" class="rounded-2xl border border-dashed border-slate-200 px-6 py-12 text-center text-slate-500">
+          Đang tải kết quả thanh toán...
+        </div>
+
+        <div v-else-if="payment" class="space-y-5">
+          <div class="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p class="text-sm font-semibold uppercase tracking-[0.22em] text-slate-400">Mã giao dịch</p>
+              <p class="mt-2 text-2xl font-black text-slate-900">{{ payment.ma_giao_dich_noi_bo }}</p>
+            </div>
+            <span class="rounded-full border px-4 py-2 text-sm font-bold" :class="statusTone">
+              {{ statusLabel }}
+            </span>
+          </div>
+
+          <div class="grid gap-4 sm:grid-cols-2">
+            <div class="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4">
+              <p class="text-sm font-medium text-slate-500">Số tiền</p>
+              <p class="mt-2 text-3xl font-black text-slate-900">{{ formatCurrency(payment.so_tien) }}</p>
+            </div>
+            <div class="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4">
+              <p class="text-sm font-medium text-slate-500">Thời điểm cập nhật</p>
+              <p class="mt-2 text-lg font-bold text-slate-900">{{ formatDateTime(payment.updated_at) }}</p>
+            </div>
+          </div>
+
+          <div class="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4">
+            <p class="text-sm font-medium text-slate-500">Cổng thanh toán</p>
+            <p class="mt-2 text-lg font-bold text-slate-900">{{ gatewayLabel }}</p>
+          </div>
+
+          <div class="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4">
+            <p class="text-sm font-semibold uppercase tracking-[0.18em] text-slate-400">Thông điệp từ cổng thanh toán</p>
+            <p class="mt-2 text-base leading-7 text-slate-700">
+              {{ gatewayMessage || 'Không có thông điệp bổ sung từ cổng thanh toán.' }}
+            </p>
+          </div>
+
+          <div class="flex flex-wrap gap-3">
+            <button
+              type="button"
+              class="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-5 py-3 text-sm font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70"
+              :disabled="checking"
+              @click="refreshPayment"
+            >
+              <span class="material-symbols-outlined">{{ checking ? 'hourglass_top' : 'refresh' }}</span>
+              <span>{{ checking ? 'Đang kiểm tra...' : 'Kiểm tra lại trạng thái' }}</span>
+            </button>
+
+            <RouterLink
+              to="/wallet"
+              class="inline-flex items-center justify-center rounded-2xl border border-slate-200 px-5 py-3 text-sm font-bold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+            >
+              Quay lại Ví AI
+            </RouterLink>
+          </div>
+        </div>
+
+        <div v-else class="rounded-2xl border border-dashed border-rose-200 bg-rose-50 px-6 py-12 text-center text-rose-700">
+          Không tìm thấy giao dịch thanh toán.
+        </div>
+      </article>
+
+      <aside class="space-y-4">
+        <div class="rounded-[28px] border border-slate-200 bg-white p-6 shadow-[0_22px_60px_rgba(148,163,184,0.12)]">
+          <p class="text-sm font-semibold uppercase tracking-[0.18em] text-slate-400">Lưu ý</p>
+          <ul class="mt-4 space-y-3 text-sm leading-7 text-slate-600">
+            <li>1. Redirect thành công từ cổng thanh toán chưa đồng nghĩa backend đã cộng ví xong.</li>
+            <li>2. Hệ thống ưu tiên IPN để chốt kết quả cuối cùng và ghi số dư ví.</li>
+            <li>3. Nếu đang chạy local, IPN từ cổng thanh toán có thể không gọi được về `127.0.0.1`.</li>
+          </ul>
+        </div>
+      </aside>
+    </section>
+  </div>
+</template>
+
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
@@ -194,104 +295,3 @@ onBeforeUnmount(() => {
   clearRedirectTimer()
 })
 </script>
-
-<template>
-  <div class="mx-auto max-w-5xl space-y-6">
-    <section class="overflow-hidden rounded-[30px] border px-8 py-8 shadow-[0_28px_90px_rgba(15,23,42,0.12)]" :class="statusTone">
-      <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <p class="text-xs font-semibold uppercase tracking-[0.38em] opacity-80">Payment Result</p>
-          <h1 class="mt-3 text-4xl font-black tracking-tight">{{ heroTitle }}</h1>
-          <p class="mt-4 max-w-3xl text-base leading-8 opacity-90">
-            {{ heroDescription }}
-          </p>
-          <p v-if="shouldAutoRedirectToWallet" class="mt-3 text-sm font-semibold opacity-80">
-            Tự động quay về Ví AI sau {{ redirectCountdown }} giây.
-          </p>
-        </div>
-
-        <div class="rounded-[24px] border border-current/15 bg-white/55 p-5 backdrop-blur">
-          <p class="text-sm font-semibold opacity-80">Trạng thái</p>
-          <p class="mt-3 text-2xl font-black">{{ statusLabel }}</p>
-        </div>
-      </div>
-    </section>
-
-    <section class="grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_320px]">
-      <article class="rounded-[28px] border border-slate-200 bg-white p-6 shadow-[0_22px_60px_rgba(148,163,184,0.12)]">
-        <div v-if="loading" class="rounded-2xl border border-dashed border-slate-200 px-6 py-12 text-center text-slate-500">
-          Đang tải kết quả thanh toán...
-        </div>
-
-        <div v-else-if="payment" class="space-y-5">
-          <div class="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <p class="text-sm font-semibold uppercase tracking-[0.22em] text-slate-400">Mã giao dịch</p>
-              <p class="mt-2 text-2xl font-black text-slate-900">{{ payment.ma_giao_dich_noi_bo }}</p>
-            </div>
-            <span class="rounded-full border px-4 py-2 text-sm font-bold" :class="statusTone">
-              {{ statusLabel }}
-            </span>
-          </div>
-
-          <div class="grid gap-4 sm:grid-cols-2">
-            <div class="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4">
-              <p class="text-sm font-medium text-slate-500">Số tiền</p>
-              <p class="mt-2 text-3xl font-black text-slate-900">{{ formatCurrency(payment.so_tien) }}</p>
-            </div>
-            <div class="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4">
-              <p class="text-sm font-medium text-slate-500">Thời điểm cập nhật</p>
-              <p class="mt-2 text-lg font-bold text-slate-900">{{ formatDateTime(payment.updated_at) }}</p>
-            </div>
-          </div>
-
-          <div class="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4">
-            <p class="text-sm font-medium text-slate-500">Cổng thanh toán</p>
-            <p class="mt-2 text-lg font-bold text-slate-900">{{ gatewayLabel }}</p>
-          </div>
-
-          <div class="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4">
-            <p class="text-sm font-semibold uppercase tracking-[0.18em] text-slate-400">Thông điệp từ cổng thanh toán</p>
-            <p class="mt-2 text-base leading-7 text-slate-700">
-              {{ gatewayMessage || 'Không có thông điệp bổ sung từ cổng thanh toán.' }}
-            </p>
-          </div>
-
-          <div class="flex flex-wrap gap-3">
-            <button
-              type="button"
-              class="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-5 py-3 text-sm font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70"
-              :disabled="checking"
-              @click="refreshPayment"
-            >
-              <span class="material-symbols-outlined">{{ checking ? 'hourglass_top' : 'refresh' }}</span>
-              <span>{{ checking ? 'Đang kiểm tra...' : 'Kiểm tra lại trạng thái' }}</span>
-            </button>
-
-            <RouterLink
-              to="/wallet"
-              class="inline-flex items-center justify-center rounded-2xl border border-slate-200 px-5 py-3 text-sm font-bold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
-            >
-              Quay lại Ví AI
-            </RouterLink>
-          </div>
-        </div>
-
-        <div v-else class="rounded-2xl border border-dashed border-rose-200 bg-rose-50 px-6 py-12 text-center text-rose-700">
-          Không tìm thấy giao dịch thanh toán.
-        </div>
-      </article>
-
-      <aside class="space-y-4">
-        <div class="rounded-[28px] border border-slate-200 bg-white p-6 shadow-[0_22px_60px_rgba(148,163,184,0.12)]">
-          <p class="text-sm font-semibold uppercase tracking-[0.18em] text-slate-400">Lưu ý</p>
-          <ul class="mt-4 space-y-3 text-sm leading-7 text-slate-600">
-            <li>1. Redirect thành công từ cổng thanh toán chưa đồng nghĩa backend đã cộng ví xong.</li>
-            <li>2. Hệ thống ưu tiên IPN để chốt kết quả cuối cùng và ghi số dư ví.</li>
-            <li>3. Nếu đang chạy local, IPN từ cổng thanh toán có thể không gọi được về `127.0.0.1`.</li>
-          </ul>
-        </div>
-      </aside>
-    </section>
-  </div>
-</template>

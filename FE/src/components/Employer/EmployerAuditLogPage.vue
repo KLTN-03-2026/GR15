@@ -1,8 +1,3 @@
-<script setup>
-import AuditLogTablePage from '@/components/Audit/AuditLogTablePage.vue'
-import { employerAuditLogService } from '@/services/api'
-</script>
-
 <template>
   <AuditLogTablePage
     title="Nhật ký công ty"
@@ -10,3 +5,8 @@ import { employerAuditLogService } from '@/services/api'
     :fetch-logs="employerAuditLogService.getLogs"
   />
 </template>
+
+<script setup>
+import AuditLogTablePage from '@/components/Audit/AuditLogTablePage.vue'
+import { employerAuditLogService } from '@/services/api'
+</script>

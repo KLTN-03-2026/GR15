@@ -1,3 +1,11 @@
+<template>
+  <div class="-m-6 min-h-[calc(100vh-5rem)] bg-[#f8f4f1] text-slate-950">
+    <RouterView v-slot="{ Component }">
+      <component :is="Component" @refresh-overview="fetchOverview" />
+    </RouterView>
+  </div>
+</template>
+
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink, RouterView } from 'vue-router'
@@ -115,11 +123,3 @@ onMounted(async () => {
   await Promise.all([fetchOverview(), fetchBilling()])
 })
 </script>
-
-<template>
-  <div class="-m-6 min-h-[calc(100vh-5rem)] bg-[#f8f4f1] text-slate-950">
-    <RouterView v-slot="{ Component }">
-      <component :is="Component" @refresh-overview="fetchOverview" />
-    </RouterView>
-  </div>
-</template>

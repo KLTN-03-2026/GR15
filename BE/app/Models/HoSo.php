@@ -49,7 +49,7 @@ class HoSo extends Model
      */
     protected $casts = [
         'nguoi_dung_id' => 'integer',
-        'kinh_nghiem_nam' => 'integer',
+        'kinh_nghiem_nam' => 'float',
         'trang_thai' => 'integer',
         'ky_nang_json' => 'array',
         'kinh_nghiem_json' => 'array',

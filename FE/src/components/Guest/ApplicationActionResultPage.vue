@@ -1,3 +1,60 @@
+<template>
+  <main class="min-h-[calc(100vh-96px)] bg-slate-50 px-4 py-12 dark:bg-slate-950">
+    <section class="mx-auto max-w-2xl rounded-2xl border border-slate-200 bg-white p-6 shadow-sm shadow-slate-950/5 dark:border-slate-800 dark:bg-slate-900 sm:p-8">
+      <div class="flex flex-col gap-5 sm:flex-row sm:items-start">
+        <div class="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl" :class="copy.tone">
+          <span class="material-symbols-outlined text-[30px]">{{ copy.icon }}</span>
+        </div>
+
+        <div class="min-w-0 flex-1">
+          <p class="text-xs font-black uppercase tracking-[0.2em] text-[#2463eb]">
+            Kết quả phản hồi email
+          </p>
+          <h1 class="mt-2 text-2xl font-black tracking-tight text-slate-900 dark:text-white">
+            {{ copy.title }}
+          </h1>
+          <p class="mt-3 text-sm leading-6 text-slate-500 dark:text-slate-300">
+            {{ copy.message }}
+          </p>
+
+          <div
+            v-if="applicationId"
+            class="mt-5 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300"
+          >
+            Mã đơn ứng tuyển: <span class="font-bold text-slate-900 dark:text-white">#{{ applicationId }}</span>
+          </div>
+
+          <div class="mt-6 flex flex-col gap-3 sm:flex-row">
+            <RouterLink
+              v-if="isAuthenticated"
+              :to="targetPath"
+              class="inline-flex items-center justify-center gap-2 rounded-xl bg-[#2463eb] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#1d4ed8]"
+            >
+              <span class="material-symbols-outlined text-[18px]">assignment</span>
+              Xem đơn ứng tuyển
+            </RouterLink>
+            <RouterLink
+              v-else
+              :to="{ path: '/login', query: { redirect: targetPath } }"
+              class="inline-flex items-center justify-center gap-2 rounded-xl bg-[#2463eb] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#1d4ed8]"
+            >
+              <span class="material-symbols-outlined text-[18px]">login</span>
+              Đăng nhập để xem đơn
+            </RouterLink>
+            <RouterLink
+              to="/"
+              class="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-5 py-3 text-sm font-bold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+            >
+              <span class="material-symbols-outlined text-[18px]">home</span>
+              Về trang chủ
+            </RouterLink>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</template>
+
 <script setup>
 import { computed } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
@@ -79,60 +136,3 @@ const copy = computed(() => {
   }
 })
 </script>
-
-<template>
-  <main class="min-h-[calc(100vh-96px)] bg-slate-50 px-4 py-12 dark:bg-slate-950">
-    <section class="mx-auto max-w-2xl rounded-2xl border border-slate-200 bg-white p-6 shadow-sm shadow-slate-950/5 dark:border-slate-800 dark:bg-slate-900 sm:p-8">
-      <div class="flex flex-col gap-5 sm:flex-row sm:items-start">
-        <div class="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl" :class="copy.tone">
-          <span class="material-symbols-outlined text-[30px]">{{ copy.icon }}</span>
-        </div>
-
-        <div class="min-w-0 flex-1">
-          <p class="text-xs font-black uppercase tracking-[0.2em] text-[#2463eb]">
-            Kết quả phản hồi email
-          </p>
-          <h1 class="mt-2 text-2xl font-black tracking-tight text-slate-900 dark:text-white">
-            {{ copy.title }}
-          </h1>
-          <p class="mt-3 text-sm leading-6 text-slate-500 dark:text-slate-300">
-            {{ copy.message }}
-          </p>
-
-          <div
-            v-if="applicationId"
-            class="mt-5 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300"
-          >
-            Mã đơn ứng tuyển: <span class="font-bold text-slate-900 dark:text-white">#{{ applicationId }}</span>
-          </div>
-
-          <div class="mt-6 flex flex-col gap-3 sm:flex-row">
-            <RouterLink
-              v-if="isAuthenticated"
-              :to="targetPath"
-              class="inline-flex items-center justify-center gap-2 rounded-xl bg-[#2463eb] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#1d4ed8]"
-            >
-              <span class="material-symbols-outlined text-[18px]">assignment</span>
-              Xem đơn ứng tuyển
-            </RouterLink>
-            <RouterLink
-              v-else
-              :to="{ path: '/login', query: { redirect: targetPath } }"
-              class="inline-flex items-center justify-center gap-2 rounded-xl bg-[#2463eb] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#1d4ed8]"
-            >
-              <span class="material-symbols-outlined text-[18px]">login</span>
-              Đăng nhập để xem đơn
-            </RouterLink>
-            <RouterLink
-              to="/"
-              class="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-5 py-3 text-sm font-bold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
-            >
-              <span class="material-symbols-outlined text-[18px]">home</span>
-              Về trang chủ
-            </RouterLink>
-          </div>
-        </div>
-      </div>
-    </section>
-  </main>
-</template>

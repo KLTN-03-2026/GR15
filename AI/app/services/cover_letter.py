@@ -4,6 +4,7 @@ from app.core.config import settings
 from app.core.logger import get_logger
 from app.providers import (
     CoverLetterContext,
+    GeminiCoverLetterProvider,
     OllamaCoverLetterProvider,
     OpenAICoverLetterProvider,
     TemplateCoverLetterProvider,
@@ -29,7 +30,7 @@ def generate_cover_letter(
         "Generate cover letter ho_so_id=%s tin_tuyen_dung_id=%s model=%s",
         ho_so_id,
         tin_tuyen_dung_id,
-        settings.local_llm_model,
+        settings.gemini_model if _resolve_provider_name() == "gemini" else settings.local_llm_model,
     )
 
     try:
@@ -142,6 +143,8 @@ def _resolve_provider():
         return OllamaCoverLetterProvider()
     if provider_name == "openai":
         return OpenAICoverLetterProvider()
+    if provider_name == "gemini":
+        return GeminiCoverLetterProvider()
     if provider_name in {"template", "rule", "rules"}:
         return TemplateCoverLetterProvider()
 

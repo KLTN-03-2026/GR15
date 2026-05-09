@@ -1,3 +1,83 @@
+<template>
+  <div class="auth-page auth-page--forgot">
+    <section class="auth-showcase">
+      <div class="showcase-inner">
+        <RouterLink to="/" class="showcase-brand">
+          <span class="brand-mark">
+            <span class="material-symbols-outlined">rocket_launch</span>
+          </span>
+          <span>SmartJob AI</span>
+        </RouterLink>
+
+        <div class="showcase-copy">
+          <h1>Lấy lại quyền truy cập thật nhanh.</h1>
+          <p>
+            Nhập email tài khoản để tiếp tục bước đặt lại mật khẩu trong cùng trải nghiệm đăng nhập quen thuộc.
+          </p>
+        </div>
+
+        <div class="showcase-feature-list">
+          <div class="feature-item">
+            <span class="material-symbols-outlined">shield_lock</span>
+            <span>Xác minh đúng tài khoản trước khi đổi mật khẩu</span>
+          </div>
+          <div class="feature-item">
+            <span class="material-symbols-outlined">bolt</span>
+            <span>Luồng test nhanh trên localhost, không cần rời khỏi hệ thống</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="auth-panel">
+      <div class="auth-card">
+        <div v-if="errorMessage || successMessage" class="auth-alert-wrap">
+          <div v-if="errorMessage" class="auth-alert auth-alert--error">
+            <span class="material-symbols-outlined">error</span>
+            <span>{{ errorMessage }}</span>
+          </div>
+          <div v-if="successMessage" class="auth-alert auth-alert--success">
+            <span class="material-symbols-outlined">check_circle</span>
+            <span>{{ successMessage }}</span>
+          </div>
+        </div>
+
+        <div class="auth-head">
+          <h2>Quên mật khẩu</h2>
+          <p>Nhập email bạn đã dùng để đăng ký. Hệ thống sẽ gửi một liên kết đặt lại mật khẩu tới hộp thư của bạn.</p>
+        </div>
+
+        <form class="auth-form" @submit.prevent="handleForgotPassword">
+          <div class="field-group">
+            <label for="email">Email tài khoản</label>
+            <div class="input-shell" :class="{ 'input-shell--error': forgotErrors.email }">
+              <span class="material-symbols-outlined">mail</span>
+              <input
+                id="email"
+                v-model="forgotForm.email"
+                type="email"
+                placeholder="your@email.com"
+                :disabled="isLoading"
+              >
+            </div>
+            <span v-if="forgotErrors.email" class="field-error">{{ forgotErrors.email }}</span>
+          </div>
+
+          <button type="submit" class="submit-button" :disabled="isLoading">
+            <span v-if="isLoading" class="spinner"></span>
+            <span>{{ isLoading ? 'Đang gửi email...' : 'Gửi liên kết đặt lại mật khẩu' }}</span>
+          </button>
+        </form>
+
+        <p class="auth-switch">
+          Đã nhớ mật khẩu?
+          <RouterLink to="/login">Quay lại đăng nhập</RouterLink>
+        </p>
+      </div>
+    </section>
+  </div>
+</template>
+
 <script setup>
 import { onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { authService } from '@/services/api'
@@ -79,86 +159,6 @@ const handleForgotPassword = async () => {
   }
 }
 </script>
-
-<template>
-  <div class="auth-page auth-page--forgot">
-    <section class="auth-showcase">
-      <div class="showcase-inner">
-        <RouterLink to="/" class="showcase-brand">
-          <span class="brand-mark">
-            <span class="material-symbols-outlined">rocket_launch</span>
-          </span>
-          <span>SmartJob AI</span>
-        </RouterLink>
-
-        <div class="showcase-copy">
-          <h1>Lấy lại quyền truy cập thật nhanh.</h1>
-          <p>
-            Nhập email tài khoản để tiếp tục bước đặt lại mật khẩu trong cùng trải nghiệm đăng nhập quen thuộc.
-          </p>
-        </div>
-
-        <div class="showcase-feature-list">
-          <div class="feature-item">
-            <span class="material-symbols-outlined">shield_lock</span>
-            <span>Xác minh đúng tài khoản trước khi đổi mật khẩu</span>
-          </div>
-          <div class="feature-item">
-            <span class="material-symbols-outlined">bolt</span>
-            <span>Luồng test nhanh trên localhost, không cần rời khỏi hệ thống</span>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section class="auth-panel">
-      <div class="auth-card">
-        <div v-if="errorMessage || successMessage" class="auth-alert-wrap">
-          <div v-if="errorMessage" class="auth-alert auth-alert--error">
-            <span class="material-symbols-outlined">error</span>
-            <span>{{ errorMessage }}</span>
-          </div>
-          <div v-if="successMessage" class="auth-alert auth-alert--success">
-            <span class="material-symbols-outlined">check_circle</span>
-            <span>{{ successMessage }}</span>
-          </div>
-        </div>
-
-        <div class="auth-head">
-          <h2>Quên mật khẩu</h2>
-          <p>Nhập email bạn đã dùng để đăng ký. Hệ thống sẽ gửi một liên kết đặt lại mật khẩu tới hộp thư của bạn.</p>
-        </div>
-
-        <form class="auth-form" @submit.prevent="handleForgotPassword">
-          <div class="field-group">
-            <label for="email">Email tài khoản</label>
-            <div class="input-shell" :class="{ 'input-shell--error': forgotErrors.email }">
-              <span class="material-symbols-outlined">mail</span>
-              <input
-                id="email"
-                v-model="forgotForm.email"
-                type="email"
-                placeholder="your@email.com"
-                :disabled="isLoading"
-              >
-            </div>
-            <span v-if="forgotErrors.email" class="field-error">{{ forgotErrors.email }}</span>
-          </div>
-
-          <button type="submit" class="submit-button" :disabled="isLoading">
-            <span v-if="isLoading" class="spinner"></span>
-            <span>{{ isLoading ? 'Đang gửi email...' : 'Gửi liên kết đặt lại mật khẩu' }}</span>
-          </button>
-        </form>
-
-        <p class="auth-switch">
-          Đã nhớ mật khẩu?
-          <RouterLink to="/login">Quay lại đăng nhập</RouterLink>
-        </p>
-      </div>
-    </section>
-  </div>
-</template>
 
 <style scoped>
 .auth-page {

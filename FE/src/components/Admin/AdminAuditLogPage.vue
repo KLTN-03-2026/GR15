@@ -1,8 +1,3 @@
-<script setup>
-import AuditLogTablePage from '@/components/Audit/AuditLogTablePage.vue'
-import { adminAuditLogService } from '@/services/api'
-</script>
-
 <template>
   <AuditLogTablePage
     admin-mode
@@ -11,3 +6,8 @@ import { adminAuditLogService } from '@/services/api'
     :fetch-logs="adminAuditLogService.getLogs"
   />
 </template>
+
+<script setup>
+import AuditLogTablePage from '@/components/Audit/AuditLogTablePage.vue'
+import { adminAuditLogService } from '@/services/api'
+</script>

@@ -1,217 +1,3 @@
-<script setup>
-import { computed, onMounted, ref, watch } from 'vue'
-import { adminAiUsageService } from '@/services/api'
-import { useNotify } from '@/composables/useNotify'
-
-const notify = useNotify()
-
-const loading = ref(false)
-const logsLoading = ref(false)
-const overview = ref(null)
-const features = ref([])
-const logs = ref([])
-const pagination = ref({
-  current_page: 1,
-  last_page: 1,
-  per_page: 20,
-  total: 0,
-})
-
-const filters = ref({
-  days: 30,
-  feature: '',
-  status: '',
-  used_fallback: '',
-  from: '',
-  to: '',
-  request_ref_type: '',
-  request_ref_id: '',
-  page: 1,
-  per_page: 20,
-})
-
-const featureLabels = {
-  cv_parse: 'Parse CV',
-  cv_parse_raw_text: 'Parse CV text',
-  jd_parse: 'Parse JD',
-  cv_jd_matching: 'Matching CV-JD',
-  cover_letter: 'Cover letter',
-  career_report: 'Career report',
-  career_chat: 'Career Chat',
-  career_chat_stream: 'Career Chat Stream',
-  mock_interview_question: 'Mock Interview Question',
-  mock_interview_answer_evaluation: 'Mock Answer Evaluation',
-  mock_interview_report: 'Mock Interview Report',
-  interview_copilot_generate: 'Interview Copilot',
-  interview_copilot_evaluate: 'Interview Evaluation',
-  employer_shortlist_ai_explanation: 'AI Shortlist',
-}
-
-const statusMeta = {
-  success: {
-    label: 'Thành công',
-    classes: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300',
-    dot: 'bg-emerald-500',
-  },
-  error: {
-    label: 'Lỗi',
-    classes: 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300',
-    dot: 'bg-rose-500',
-  },
-  fallback: {
-    label: 'Fallback',
-    classes: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300',
-    dot: 'bg-amber-500',
-  },
-}
-
-const featureLabel = (feature) => featureLabels[feature] || feature || 'Không rõ'
-const summary = computed(() => overview.value?.summary || {})
-const dailyTrend = computed(() => overview.value?.daily_trend || [])
-const featureStats = computed(() => overview.value?.feature_stats || [])
-const slowestRequests = computed(() => overview.value?.slowest_requests || [])
-const recentIssues = computed(() => overview.value?.recent_issues || [])
-
-const trendMax = computed(() => Math.max(...dailyTrend.value.map((item) => Number(item.total || 0)), 1))
-const issueCount = computed(() => Number(summary.value.error_count || 0) + Number(summary.value.fallback_count || 0))
-
-const statCards = computed(() => [
-  {
-    label: 'Tổng request AI',
-    value: formatNumber(summary.value.total_requests || 0),
-    helper: `${summary.value.success_rate || 0}% thành công`,
-    icon: 'smart_toy',
-    tone: 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300',
-  },
-  {
-    label: 'Độ trễ trung bình',
-    value: formatDuration(summary.value.avg_duration_ms),
-    helper: 'Tính trên request có duration',
-    icon: 'speed',
-    tone: 'bg-cyan-50 text-cyan-700 dark:bg-cyan-500/10 dark:text-cyan-300',
-  },
-  {
-    label: 'Lỗi AI service',
-    value: formatNumber(summary.value.error_count || 0),
-    helper: `${summary.value.error_rate || 0}% trong kỳ`,
-    icon: 'error',
-    tone: 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300',
-  },
-  {
-    label: 'Fallback đã dùng',
-    value: formatNumber(summary.value.fallback_count || 0),
-    helper: `${summary.value.fallback_rate || 0}% trong kỳ`,
-    icon: 'alt_route',
-    tone: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300',
-  },
-])
-
-function formatNumber(value) {
-  return new Intl.NumberFormat('vi-VN').format(Number(value || 0))
-}
-
-function formatDuration(value) {
-  if (value === null || value === undefined || value === '') return '0 ms'
-  const duration = Number(value || 0)
-  if (duration >= 1000) return `${(duration / 1000).toFixed(1)}s`
-  return `${Math.round(duration)} ms`
-}
-
-function formatDateTime(value) {
-  if (!value) return 'Chưa có'
-  return new Intl.DateTimeFormat('vi-VN', {
-    dateStyle: 'short',
-    timeStyle: 'short',
-  }).format(new Date(value))
-}
-
-function logStatusMeta(log) {
-  if (log?.used_fallback) return statusMeta.fallback
-  return statusMeta[log?.status] || statusMeta.success
-}
-
-function barHeight(item) {
-  return `${Math.max(8, Math.round((Number(item.total || 0) / trendMax.value) * 100))}%`
-}
-
-function resetFilters() {
-  filters.value = {
-    days: 30,
-    feature: '',
-    status: '',
-    used_fallback: '',
-    from: '',
-    to: '',
-    request_ref_type: '',
-    request_ref_id: '',
-    page: 1,
-    per_page: 20,
-  }
-}
-
-async function refreshAll() {
-  await Promise.all([fetchOverview(), fetchLogs(1)])
-}
-
-async function clearFilters() {
-  resetFilters()
-  await refreshAll()
-}
-
-async function fetchOverview() {
-  loading.value = true
-  try {
-    const response = await adminAiUsageService.getOverview({ days: filters.value.days })
-    overview.value = response?.data || null
-  } catch (error) {
-    notify.apiError(error, 'Không tải được dashboard AI usage.')
-  } finally {
-    loading.value = false
-  }
-}
-
-async function fetchFeatures() {
-  try {
-    const response = await adminAiUsageService.getFeatures()
-    features.value = response?.data || []
-  } catch (error) {
-    notify.apiError(error, 'Không tải được danh sách tính năng AI.')
-  }
-}
-
-async function fetchLogs(page = filters.value.page) {
-  logsLoading.value = true
-  filters.value.page = page
-
-  try {
-    const response = await adminAiUsageService.getLogs(filters.value)
-    const payload = response?.data || {}
-    logs.value = payload.data || []
-    pagination.value = {
-      current_page: payload.current_page || 1,
-      last_page: payload.last_page || 1,
-      per_page: payload.per_page || filters.value.per_page,
-      total: payload.total || 0,
-    }
-  } catch (error) {
-    notify.apiError(error, 'Không tải được lịch sử AI usage.')
-  } finally {
-    logsLoading.value = false
-  }
-}
-
-watch(
-  () => filters.value.days,
-  () => {
-    fetchOverview()
-  }
-)
-
-onMounted(async () => {
-  await Promise.all([fetchOverview(), fetchFeatures(), fetchLogs(1)])
-})
-</script>
-
 <template>
   <div class="space-y-6">
     <section class="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 xl:flex-row xl:items-end xl:justify-between">
@@ -453,3 +239,217 @@ onMounted(async () => {
 
   </div>
 </template>
+
+<script setup>
+import { computed, onMounted, ref, watch } from 'vue'
+import { adminAiUsageService } from '@/services/api'
+import { useNotify } from '@/composables/useNotify'
+
+const notify = useNotify()
+
+const loading = ref(false)
+const logsLoading = ref(false)
+const overview = ref(null)
+const features = ref([])
+const logs = ref([])
+const pagination = ref({
+  current_page: 1,
+  last_page: 1,
+  per_page: 20,
+  total: 0,
+})
+
+const filters = ref({
+  days: 30,
+  feature: '',
+  status: '',
+  used_fallback: '',
+  from: '',
+  to: '',
+  request_ref_type: '',
+  request_ref_id: '',
+  page: 1,
+  per_page: 20,
+})
+
+const featureLabels = {
+  cv_parse: 'Parse CV',
+  cv_parse_raw_text: 'Parse CV text',
+  jd_parse: 'Parse JD',
+  cv_jd_matching: 'Matching CV-JD',
+  cover_letter: 'Cover letter',
+  career_report: 'Career report',
+  career_chat: 'Career Chat',
+  career_chat_stream: 'Career Chat Stream',
+  mock_interview_question: 'Mock Interview Question',
+  mock_interview_answer_evaluation: 'Mock Answer Evaluation',
+  mock_interview_report: 'Mock Interview Report',
+  interview_copilot_generate: 'Interview Copilot',
+  interview_copilot_evaluate: 'Interview Evaluation',
+  employer_shortlist_ai_explanation: 'AI Shortlist',
+}
+
+const statusMeta = {
+  success: {
+    label: 'Thành công',
+    classes: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300',
+    dot: 'bg-emerald-500',
+  },
+  error: {
+    label: 'Lỗi',
+    classes: 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300',
+    dot: 'bg-rose-500',
+  },
+  fallback: {
+    label: 'Fallback',
+    classes: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300',
+    dot: 'bg-amber-500',
+  },
+}
+
+const featureLabel = (feature) => featureLabels[feature] || feature || 'Không rõ'
+const summary = computed(() => overview.value?.summary || {})
+const dailyTrend = computed(() => overview.value?.daily_trend || [])
+const featureStats = computed(() => overview.value?.feature_stats || [])
+const slowestRequests = computed(() => overview.value?.slowest_requests || [])
+const recentIssues = computed(() => overview.value?.recent_issues || [])
+
+const trendMax = computed(() => Math.max(...dailyTrend.value.map((item) => Number(item.total || 0)), 1))
+const issueCount = computed(() => Number(summary.value.error_count || 0) + Number(summary.value.fallback_count || 0))
+
+const statCards = computed(() => [
+  {
+    label: 'Tổng request AI',
+    value: formatNumber(summary.value.total_requests || 0),
+    helper: `${summary.value.success_rate || 0}% thành công`,
+    icon: 'smart_toy',
+    tone: 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300',
+  },
+  {
+    label: 'Độ trễ trung bình',
+    value: formatDuration(summary.value.avg_duration_ms),
+    helper: 'Tính trên request có duration',
+    icon: 'speed',
+    tone: 'bg-cyan-50 text-cyan-700 dark:bg-cyan-500/10 dark:text-cyan-300',
+  },
+  {
+    label: 'Lỗi AI service',
+    value: formatNumber(summary.value.error_count || 0),
+    helper: `${summary.value.error_rate || 0}% trong kỳ`,
+    icon: 'error',
+    tone: 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300',
+  },
+  {
+    label: 'Fallback đã dùng',
+    value: formatNumber(summary.value.fallback_count || 0),
+    helper: `${summary.value.fallback_rate || 0}% trong kỳ`,
+    icon: 'alt_route',
+    tone: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300',
+  },
+])
+
+function formatNumber(value) {
+  return new Intl.NumberFormat('vi-VN').format(Number(value || 0))
+}
+
+function formatDuration(value) {
+  if (value === null || value === undefined || value === '') return '0 ms'
+  const duration = Number(value || 0)
+  if (duration >= 1000) return `${(duration / 1000).toFixed(1)}s`
+  return `${Math.round(duration)} ms`
+}
+
+function formatDateTime(value) {
+  if (!value) return 'Chưa có'
+  return new Intl.DateTimeFormat('vi-VN', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  }).format(new Date(value))
+}
+
+function logStatusMeta(log) {
+  if (log?.used_fallback) return statusMeta.fallback
+  return statusMeta[log?.status] || statusMeta.success
+}
+
+function barHeight(item) {
+  return `${Math.max(8, Math.round((Number(item.total || 0) / trendMax.value) * 100))}%`
+}
+
+function resetFilters() {
+  filters.value = {
+    days: 30,
+    feature: '',
+    status: '',
+    used_fallback: '',
+    from: '',
+    to: '',
+    request_ref_type: '',
+    request_ref_id: '',
+    page: 1,
+    per_page: 20,
+  }
+}
+
+async function refreshAll() {
+  await Promise.all([fetchOverview(), fetchLogs(1)])
+}
+
+async function clearFilters() {
+  resetFilters()
+  await refreshAll()
+}
+
+async function fetchOverview() {
+  loading.value = true
+  try {
+    const response = await adminAiUsageService.getOverview({ days: filters.value.days })
+    overview.value = response?.data || null
+  } catch (error) {
+    notify.apiError(error, 'Không tải được dashboard AI usage.')
+  } finally {
+    loading.value = false
+  }
+}
+
+async function fetchFeatures() {
+  try {
+    const response = await adminAiUsageService.getFeatures()
+    features.value = response?.data || []
+  } catch (error) {
+    notify.apiError(error, 'Không tải được danh sách tính năng AI.')
+  }
+}
+
+async function fetchLogs(page = filters.value.page) {
+  logsLoading.value = true
+  filters.value.page = page
+
+  try {
+    const response = await adminAiUsageService.getLogs(filters.value)
+    const payload = response?.data || {}
+    logs.value = payload.data || []
+    pagination.value = {
+      current_page: payload.current_page || 1,
+      last_page: payload.last_page || 1,
+      per_page: payload.per_page || filters.value.per_page,
+      total: payload.total || 0,
+    }
+  } catch (error) {
+    notify.apiError(error, 'Không tải được lịch sử AI usage.')
+  } finally {
+    logsLoading.value = false
+  }
+}
+
+watch(
+  () => filters.value.days,
+  () => {
+    fetchOverview()
+  }
+)
+
+onMounted(async () => {
+  await Promise.all([fetchOverview(), fetchFeatures(), fetchLogs(1)])
+})
+</script>

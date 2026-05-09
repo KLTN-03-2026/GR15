@@ -1,3 +1,123 @@
+<template>
+  <div v-if="error" class="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900 dark:bg-red-900/20 dark:text-red-300">
+    {{ error }}
+  </div>
+
+  <div class="mb-8 flex flex-col gap-1">
+    <p class="text-xs font-bold uppercase tracking-[0.24em] text-[#2463eb]">Báo cáo chuyên sâu</p>
+    <h1 class="text-2xl font-bold">Báo cáo & phân tích hệ thống</h1>
+    <p class="text-slate-500 dark:text-slate-400">
+      Tập trung vào hiệu quả ứng tuyển, AI Matching, hành vi lưu tin và báo cáo AI career thay vì lặp lại KPI tổng quan.
+    </p>
+  </div>
+
+  <div class="mb-8 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+    <div
+      v-for="card in analysisCards"
+      :key="card.label"
+      class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-800"
+    >
+      <div class="flex items-center justify-between">
+        <span class="text-sm font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">{{ card.label }}</span>
+        <span class="material-symbols-outlined" :class="card.tone">{{ card.icon }}</span>
+      </div>
+      <p class="mt-3 text-3xl font-bold">{{ loading ? '...' : card.value }}</p>
+      <p class="mt-2 min-h-[40px] text-sm leading-5 text-slate-500 dark:text-slate-400">{{ card.helper }}</p>
+      <div class="mt-4 h-1 w-full rounded-full bg-slate-100 dark:bg-slate-700">
+        <div class="h-full rounded-full" :class="card.bar" :style="{ width: `${card.progress}%` }"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+    <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-800">
+      <div class="mb-5 flex items-center justify-between">
+        <h3 class="flex items-center gap-2 font-bold">
+          <span class="material-symbols-outlined text-[#2463eb]">bar_chart</span>
+          Phân rã trạng thái ứng tuyển
+        </h3>
+      </div>
+      <div class="space-y-4">
+        <div v-for="item in applicationBars" :key="item.label" class="space-y-2">
+          <div class="flex items-center justify-between text-sm">
+            <span class="font-medium">{{ item.label }}</span>
+            <span class="text-slate-500">{{ item.value }}</span>
+          </div>
+          <div class="h-2 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-700">
+            <div class="h-full rounded-full" :class="item.color" :style="{ width: item.width }"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-800">
+      <div class="mb-5 flex items-center justify-between">
+        <h3 class="flex items-center gap-2 font-bold">
+          <span class="material-symbols-outlined text-[#2463eb]">stars</span>
+          Hiệu suất AI Matching
+        </h3>
+      </div>
+      <div class="space-y-4">
+        <div v-for="item in topMatchingModels" :key="item.model_version" class="rounded-lg border border-slate-100 p-4 dark:border-slate-700">
+          <div class="flex items-center justify-between">
+            <p class="font-semibold">{{ item.model_version || 'Unknown model' }}</p>
+            <span class="rounded bg-[#2463eb]/10 px-2 py-1 text-xs font-bold text-[#2463eb]">{{ item.total_matches }} lượt</span>
+          </div>
+          <div class="mt-3 grid grid-cols-3 gap-3 text-sm text-slate-500">
+            <div>
+              <div class="text-xs uppercase">TB</div>
+              <div class="font-semibold text-slate-900 dark:text-slate-100">{{ formatDecimal(item.average_score) }}</div>
+            </div>
+            <div>
+              <div class="text-xs uppercase">Max</div>
+              <div class="font-semibold text-slate-900 dark:text-slate-100">{{ formatDecimal(item.max_score) }}</div>
+            </div>
+            <div>
+              <div class="text-xs uppercase">Min</div>
+              <div class="font-semibold text-slate-900 dark:text-slate-100">{{ formatDecimal(item.min_score) }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-800">
+      <div class="mb-5 flex items-center justify-between">
+        <h3 class="flex items-center gap-2 font-bold">
+          <span class="material-symbols-outlined text-[#2463eb]">auto_awesome</span>
+          Nghề AI gợi ý nhiều nhất
+        </h3>
+      </div>
+      <div class="space-y-3">
+        <div v-for="item in topCareerSuggestions" :key="item.nghe_de_xuat" class="flex items-center justify-between rounded-lg border border-slate-100 px-4 py-3 dark:border-slate-700">
+          <div>
+            <p class="font-medium">{{ item.nghe_de_xuat || 'Chưa xác định' }}</p>
+            <p class="text-xs text-slate-500">Độ phù hợp TB: {{ formatDecimal(item.average_confidence) }}</p>
+          </div>
+          <span class="rounded bg-emerald-500/10 px-2 py-1 text-xs font-bold text-emerald-500">{{ item.total_suggestions }}</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-800">
+      <div class="mb-5 flex items-center justify-between">
+        <h3 class="flex items-center gap-2 font-bold">
+          <span class="material-symbols-outlined text-[#2463eb]">bookmark</span>
+          Tin tuyển dụng được lưu nhiều
+        </h3>
+      </div>
+      <div class="space-y-3">
+        <div v-for="job in topSavedJobs" :key="job.id" class="rounded-lg border border-slate-100 p-4 dark:border-slate-700">
+          <p class="font-semibold">{{ job.tieu_de }}</p>
+          <p class="mt-1 text-sm text-slate-500">{{ job.cong_ty?.ten_cong_ty || 'N/A' }}</p>
+          <div class="mt-2 text-xs font-bold text-[#2463eb]">{{ job.nguoi_dung_luus_count }} lượt lưu</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</template>
+
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import {
@@ -142,123 +262,3 @@ onMounted(() => {
   loadStats()
 })
 </script>
-
-<template>
-  <div v-if="error" class="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900 dark:bg-red-900/20 dark:text-red-300">
-    {{ error }}
-  </div>
-
-  <div class="mb-8 flex flex-col gap-1">
-    <p class="text-xs font-bold uppercase tracking-[0.24em] text-[#2463eb]">Báo cáo chuyên sâu</p>
-    <h1 class="text-2xl font-bold">Báo cáo & phân tích hệ thống</h1>
-    <p class="text-slate-500 dark:text-slate-400">
-      Tập trung vào hiệu quả ứng tuyển, AI Matching, hành vi lưu tin và báo cáo AI career thay vì lặp lại KPI tổng quan.
-    </p>
-  </div>
-
-  <div class="mb-8 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-    <div
-      v-for="card in analysisCards"
-      :key="card.label"
-      class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-800"
-    >
-      <div class="flex items-center justify-between">
-        <span class="text-sm font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">{{ card.label }}</span>
-        <span class="material-symbols-outlined" :class="card.tone">{{ card.icon }}</span>
-      </div>
-      <p class="mt-3 text-3xl font-bold">{{ loading ? '...' : card.value }}</p>
-      <p class="mt-2 min-h-[40px] text-sm leading-5 text-slate-500 dark:text-slate-400">{{ card.helper }}</p>
-      <div class="mt-4 h-1 w-full rounded-full bg-slate-100 dark:bg-slate-700">
-        <div class="h-full rounded-full" :class="card.bar" :style="{ width: `${card.progress}%` }"></div>
-      </div>
-    </div>
-  </div>
-
-  <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
-    <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-800">
-      <div class="mb-5 flex items-center justify-between">
-        <h3 class="flex items-center gap-2 font-bold">
-          <span class="material-symbols-outlined text-[#2463eb]">bar_chart</span>
-          Phân rã trạng thái ứng tuyển
-        </h3>
-      </div>
-      <div class="space-y-4">
-        <div v-for="item in applicationBars" :key="item.label" class="space-y-2">
-          <div class="flex items-center justify-between text-sm">
-            <span class="font-medium">{{ item.label }}</span>
-            <span class="text-slate-500">{{ item.value }}</span>
-          </div>
-          <div class="h-2 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-700">
-            <div class="h-full rounded-full" :class="item.color" :style="{ width: item.width }"></div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-800">
-      <div class="mb-5 flex items-center justify-between">
-        <h3 class="flex items-center gap-2 font-bold">
-          <span class="material-symbols-outlined text-[#2463eb]">stars</span>
-          Hiệu suất AI Matching
-        </h3>
-      </div>
-      <div class="space-y-4">
-        <div v-for="item in topMatchingModels" :key="item.model_version" class="rounded-lg border border-slate-100 p-4 dark:border-slate-700">
-          <div class="flex items-center justify-between">
-            <p class="font-semibold">{{ item.model_version || 'Unknown model' }}</p>
-            <span class="rounded bg-[#2463eb]/10 px-2 py-1 text-xs font-bold text-[#2463eb]">{{ item.total_matches }} lượt</span>
-          </div>
-          <div class="mt-3 grid grid-cols-3 gap-3 text-sm text-slate-500">
-            <div>
-              <div class="text-xs uppercase">TB</div>
-              <div class="font-semibold text-slate-900 dark:text-slate-100">{{ formatDecimal(item.average_score) }}</div>
-            </div>
-            <div>
-              <div class="text-xs uppercase">Max</div>
-              <div class="font-semibold text-slate-900 dark:text-slate-100">{{ formatDecimal(item.max_score) }}</div>
-            </div>
-            <div>
-              <div class="text-xs uppercase">Min</div>
-              <div class="font-semibold text-slate-900 dark:text-slate-100">{{ formatDecimal(item.min_score) }}</div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-800">
-      <div class="mb-5 flex items-center justify-between">
-        <h3 class="flex items-center gap-2 font-bold">
-          <span class="material-symbols-outlined text-[#2463eb]">auto_awesome</span>
-          Nghề AI gợi ý nhiều nhất
-        </h3>
-      </div>
-      <div class="space-y-3">
-        <div v-for="item in topCareerSuggestions" :key="item.nghe_de_xuat" class="flex items-center justify-between rounded-lg border border-slate-100 px-4 py-3 dark:border-slate-700">
-          <div>
-            <p class="font-medium">{{ item.nghe_de_xuat || 'Chưa xác định' }}</p>
-            <p class="text-xs text-slate-500">Độ phù hợp TB: {{ formatDecimal(item.average_confidence) }}</p>
-          </div>
-          <span class="rounded bg-emerald-500/10 px-2 py-1 text-xs font-bold text-emerald-500">{{ item.total_suggestions }}</span>
-        </div>
-      </div>
-    </div>
-
-    <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-800">
-      <div class="mb-5 flex items-center justify-between">
-        <h3 class="flex items-center gap-2 font-bold">
-          <span class="material-symbols-outlined text-[#2463eb]">bookmark</span>
-          Tin tuyển dụng được lưu nhiều
-        </h3>
-      </div>
-      <div class="space-y-3">
-        <div v-for="job in topSavedJobs" :key="job.id" class="rounded-lg border border-slate-100 p-4 dark:border-slate-700">
-          <p class="font-semibold">{{ job.tieu_de }}</p>
-          <p class="mt-1 text-sm text-slate-500">{{ job.cong_ty?.ten_cong_ty || 'N/A' }}</p>
-          <div class="mt-2 text-xs font-bold text-[#2463eb]">{{ job.nguoi_dung_luus_count }} lượt lưu</div>
-        </div>
-      </div>
-    </div>
-
-  </div>
-</template>

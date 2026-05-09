@@ -1,3 +1,147 @@
+<template>
+  <div class="auth-page auth-page--login">
+    <section class="auth-showcase">
+      <div class="showcase-inner">
+        <RouterLink to="/" class="showcase-brand">
+          <span class="brand-mark">
+            <span class="material-symbols-outlined">rocket_launch</span>
+          </span>
+          <span>SmartJob AI</span>
+        </RouterLink>
+
+        <div class="showcase-copy">
+          <h1>Nâng tầm sự nghiệp của bạn</h1>
+          <p>
+            Khám phá cơ hội nghề nghiệp tốt nhất được cá nhân hóa bởi trí tuệ nhân tạo hàng đầu.
+          </p>
+        </div>
+
+        <div class="showcase-feature-list">
+          <div class="feature-item">
+            <span class="material-symbols-outlined">verified</span>
+            <span>Phân tích CV chuyên sâu bằng AI</span>
+          </div>
+          <div class="feature-item">
+            <span class="material-symbols-outlined">auto_awesome</span>
+            <span>Gợi ý việc làm phù hợp theo hồ sơ</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="auth-panel">
+      <div class="auth-card">
+        <div v-if="errorMessage || successMessage" class="auth-alert-wrap">
+          <div v-if="errorMessage" class="auth-alert auth-alert--error">
+            <span class="material-symbols-outlined">error</span>
+            <span>{{ errorMessage }}</span>
+          </div>
+          <div v-if="successMessage" class="auth-alert auth-alert--success">
+            <span class="material-symbols-outlined">check_circle</span>
+            <span>{{ successMessage }}</span>
+          </div>
+          <button
+            v-if="verificationPendingEmail && errorMessage.includes('xác thực email')"
+            type="button"
+            class="mt-3 inline-flex items-center justify-center rounded-xl border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
+            :disabled="resendLoading"
+            @click="handleResendVerification"
+          >
+            {{ resendLoading ? 'Đang gửi lại...' : 'Gửi lại email xác thực' }}
+          </button>
+        </div>
+
+        <div class="auth-head">
+          <h2>Đăng nhập - SmartJob AI</h2>
+          <p>Chào mừng quay trở lại với tương lai nghề nghiệp của bạn.</p>
+        </div>
+
+        <form class="auth-form" autocomplete="on" @submit.prevent="handleLogin">
+          <div class="field-group">
+            <label for="email">Email</label>
+            <div class="input-shell" :class="{ 'input-shell--error': loginErrors.email }">
+              <span class="material-symbols-outlined">mail</span>
+              <input
+                id="email"
+                v-model="loginForm.email"
+                type="email"
+                autocomplete="email"
+                placeholder="your@email.com"
+                :disabled="isLoading"
+              >
+            </div>
+            <span v-if="loginErrors.email" class="field-error">{{ loginErrors.email }}</span>
+          </div>
+
+          <div class="field-group">
+            <label for="password">Mật khẩu</label>
+            <div class="input-shell" :class="{ 'input-shell--error': loginErrors.password }">
+              <span class="material-symbols-outlined">lock</span>
+              <input
+                id="password"
+                v-model="loginForm.password"
+                :type="showPassword ? 'text' : 'password'"
+                autocomplete="current-password"
+                placeholder="••••••••"
+                :disabled="isLoading"
+              >
+              <button
+                type="button"
+                class="toggle-visibility"
+                :aria-label="showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'"
+                @click="showPassword = !showPassword"
+              >
+                <span class="material-symbols-outlined">{{ showPassword ? 'visibility_off' : 'visibility' }}</span>
+              </button>
+            </div>
+            <span v-if="loginErrors.password" class="field-error">{{ loginErrors.password }}</span>
+          </div>
+
+          <div class="form-meta">
+            <label class="remember-row">
+              <input v-model="loginForm.rememberMe" type="checkbox">
+              <span>Ghi nhớ đăng nhập</span>
+            </label>
+            <RouterLink to="/forgot-password" class="meta-link">Quên mật khẩu?</RouterLink>
+          </div>
+
+          <button type="submit" class="submit-button" :disabled="isLoading">
+            <span v-if="isLoading" class="spinner"></span>
+            <span>{{ isLoading ? 'Đang đăng nhập...' : 'Đăng nhập hệ thống' }}</span>
+          </button>
+        </form>
+
+        <div class="divider">
+          <span>Hoặc tiếp tục với</span>
+        </div>
+
+        <div class="social-grid">
+          <button type="button" class="social-button" :disabled="googleLoading" @click="handleGoogleLogin">
+            <svg class="social-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path fill="#EA4335" d="M12 10.2v3.9h5.4c-.2 1.3-1.6 3.8-5.4 3.8-3.2 0-5.9-2.7-5.9-6s2.7-6 5.9-6c1.8 0 3 .8 3.7 1.5l2.5-2.4C16.7 3.6 14.6 2.7 12 2.7 6.9 2.7 2.8 6.8 2.8 12s4.1 9.3 9.2 9.3c5.3 0 8.8-3.7 8.8-8.9 0-.6-.1-1.1-.2-1.6H12Z" />
+              <path fill="#4285F4" d="M21 12c0-.6-.1-1.1-.2-1.6H12v3.9h5.4c-.3 1.4-1.1 2.6-2.4 3.4l2.9 2.2c1.7-1.6 2.6-4 2.6-6.9Z" />
+              <path fill="#FBBC05" d="M6.5 14.2c-.2-.6-.4-1.3-.4-2.2s.1-1.5.4-2.2L3.5 7.5C2.9 8.8 2.6 10.3 2.6 12s.3 3.2.9 4.5l3-2.3Z" />
+              <path fill="#34A853" d="M12 21.3c2.6 0 4.7-.9 6.3-2.5l-2.9-2.2c-.8.5-1.9.9-3.4.9-3.2 0-5.9-2.7-5.9-6 0-.8.2-1.5.4-2.2L3.5 7.5C2.9 8.8 2.6 10.3 2.6 12 2.6 17.2 6.8 21.3 12 21.3Z" />
+            </svg>
+            <span>{{ googleLoading ? 'Đang chuyển tới Google...' : 'Tiếp tục với Google' }}</span>
+          </button>
+        </div>
+
+        <p class="auth-switch">
+          Chưa có tài khoản?
+          <RouterLink to="/register">Đăng ký ngay</RouterLink>
+        </p>
+
+        <div class="auth-footer-links">
+          <RouterLink to="/">Quy định bảo mật</RouterLink>
+          <RouterLink to="/">Điều khoản sử dụng</RouterLink>
+          <RouterLink to="/">Liên hệ</RouterLink>
+        </div>
+      </div>
+    </section>
+  </div>
+</template>
+
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -160,150 +304,6 @@ onMounted(() => {
   }
 })
 </script>
-
-<template>
-  <div class="auth-page auth-page--login">
-    <section class="auth-showcase">
-      <div class="showcase-inner">
-        <RouterLink to="/" class="showcase-brand">
-          <span class="brand-mark">
-            <span class="material-symbols-outlined">rocket_launch</span>
-          </span>
-          <span>SmartJob AI</span>
-        </RouterLink>
-
-        <div class="showcase-copy">
-          <h1>Nâng tầm sự nghiệp của bạn</h1>
-          <p>
-            Khám phá cơ hội nghề nghiệp tốt nhất được cá nhân hóa bởi trí tuệ nhân tạo hàng đầu.
-          </p>
-        </div>
-
-        <div class="showcase-feature-list">
-          <div class="feature-item">
-            <span class="material-symbols-outlined">verified</span>
-            <span>Phân tích CV chuyên sâu bằng AI</span>
-          </div>
-          <div class="feature-item">
-            <span class="material-symbols-outlined">auto_awesome</span>
-            <span>Gợi ý việc làm phù hợp theo hồ sơ</span>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section class="auth-panel">
-      <div class="auth-card">
-        <div v-if="errorMessage || successMessage" class="auth-alert-wrap">
-          <div v-if="errorMessage" class="auth-alert auth-alert--error">
-            <span class="material-symbols-outlined">error</span>
-            <span>{{ errorMessage }}</span>
-          </div>
-          <div v-if="successMessage" class="auth-alert auth-alert--success">
-            <span class="material-symbols-outlined">check_circle</span>
-            <span>{{ successMessage }}</span>
-          </div>
-          <button
-            v-if="verificationPendingEmail && errorMessage.includes('xác thực email')"
-            type="button"
-            class="mt-3 inline-flex items-center justify-center rounded-xl border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
-            :disabled="resendLoading"
-            @click="handleResendVerification"
-          >
-            {{ resendLoading ? 'Đang gửi lại...' : 'Gửi lại email xác thực' }}
-          </button>
-        </div>
-
-        <div class="auth-head">
-          <h2>Đăng nhập - SmartJob AI</h2>
-          <p>Chào mừng quay trở lại với tương lai nghề nghiệp của bạn.</p>
-        </div>
-
-        <form class="auth-form" autocomplete="on" @submit.prevent="handleLogin">
-          <div class="field-group">
-            <label for="email">Email</label>
-            <div class="input-shell" :class="{ 'input-shell--error': loginErrors.email }">
-              <span class="material-symbols-outlined">mail</span>
-              <input
-                id="email"
-                v-model="loginForm.email"
-                type="email"
-                autocomplete="email"
-                placeholder="your@email.com"
-                :disabled="isLoading"
-              >
-            </div>
-            <span v-if="loginErrors.email" class="field-error">{{ loginErrors.email }}</span>
-          </div>
-
-          <div class="field-group">
-            <label for="password">Mật khẩu</label>
-            <div class="input-shell" :class="{ 'input-shell--error': loginErrors.password }">
-              <span class="material-symbols-outlined">lock</span>
-              <input
-                id="password"
-                v-model="loginForm.password"
-                :type="showPassword ? 'text' : 'password'"
-                autocomplete="current-password"
-                placeholder="••••••••"
-                :disabled="isLoading"
-              >
-              <button
-                type="button"
-                class="toggle-visibility"
-                :aria-label="showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'"
-                @click="showPassword = !showPassword"
-              >
-                <span class="material-symbols-outlined">{{ showPassword ? 'visibility_off' : 'visibility' }}</span>
-              </button>
-            </div>
-            <span v-if="loginErrors.password" class="field-error">{{ loginErrors.password }}</span>
-          </div>
-
-          <div class="form-meta">
-            <label class="remember-row">
-              <input v-model="loginForm.rememberMe" type="checkbox">
-              <span>Ghi nhớ đăng nhập</span>
-            </label>
-            <RouterLink to="/forgot-password" class="meta-link">Quên mật khẩu?</RouterLink>
-          </div>
-
-          <button type="submit" class="submit-button" :disabled="isLoading">
-            <span v-if="isLoading" class="spinner"></span>
-            <span>{{ isLoading ? 'Đang đăng nhập...' : 'Đăng nhập hệ thống' }}</span>
-          </button>
-        </form>
-
-        <div class="divider">
-          <span>Hoặc tiếp tục với</span>
-        </div>
-
-        <div class="social-grid">
-          <button type="button" class="social-button" :disabled="googleLoading" @click="handleGoogleLogin">
-            <svg class="social-icon" viewBox="0 0 24 24" aria-hidden="true">
-              <path fill="#EA4335" d="M12 10.2v3.9h5.4c-.2 1.3-1.6 3.8-5.4 3.8-3.2 0-5.9-2.7-5.9-6s2.7-6 5.9-6c1.8 0 3 .8 3.7 1.5l2.5-2.4C16.7 3.6 14.6 2.7 12 2.7 6.9 2.7 2.8 6.8 2.8 12s4.1 9.3 9.2 9.3c5.3 0 8.8-3.7 8.8-8.9 0-.6-.1-1.1-.2-1.6H12Z" />
-              <path fill="#4285F4" d="M21 12c0-.6-.1-1.1-.2-1.6H12v3.9h5.4c-.3 1.4-1.1 2.6-2.4 3.4l2.9 2.2c1.7-1.6 2.6-4 2.6-6.9Z" />
-              <path fill="#FBBC05" d="M6.5 14.2c-.2-.6-.4-1.3-.4-2.2s.1-1.5.4-2.2L3.5 7.5C2.9 8.8 2.6 10.3 2.6 12s.3 3.2.9 4.5l3-2.3Z" />
-              <path fill="#34A853" d="M12 21.3c2.6 0 4.7-.9 6.3-2.5l-2.9-2.2c-.8.5-1.9.9-3.4.9-3.2 0-5.9-2.7-5.9-6 0-.8.2-1.5.4-2.2L3.5 7.5C2.9 8.8 2.6 10.3 2.6 12 2.6 17.2 6.8 21.3 12 21.3Z" />
-            </svg>
-            <span>{{ googleLoading ? 'Đang chuyển tới Google...' : 'Tiếp tục với Google' }}</span>
-          </button>
-        </div>
-
-        <p class="auth-switch">
-          Chưa có tài khoản?
-          <RouterLink to="/register">Đăng ký ngay</RouterLink>
-        </p>
-
-        <div class="auth-footer-links">
-          <RouterLink to="/">Quy định bảo mật</RouterLink>
-          <RouterLink to="/">Điều khoản sử dụng</RouterLink>
-          <RouterLink to="/">Liên hệ</RouterLink>
-        </div>
-      </div>
-    </section>
-  </div>
-</template>
 
 <style scoped>
 .auth-page {

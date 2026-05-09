@@ -7,6 +7,7 @@ from typing import Iterator
 from app.core.config import settings
 from app.core.logger import get_logger
 from app.providers.chat_ollama_provider import OllamaChatProvider
+from app.providers.chat_gemini_provider import GeminiChatProvider
 from app.providers.chat_openai_provider import OpenAIChatProvider
 from app.services.chatbot_intent_engine import (
     DETERMINISTIC_INTENTS,
@@ -203,7 +204,7 @@ def stream_career_chat_reply(
         return
 
     final_answer = _normalize_answer(
-        "".join(chunks).strip() if provider_name in {"ollama", "openai"} else " ".join(chunks).strip()
+        "".join(chunks).strip() if provider_name in {"ollama", "openai", "gemini"} else " ".join(chunks).strip()
     )
     if _looks_like_provider_guardrail(final_answer) or _looks_off_intent(final_answer, intent=intent):
         provider_name = "template_fallback"
@@ -228,6 +229,8 @@ def _resolve_provider():
         return provider, OllamaChatProvider()
     if provider == "openai":
         return provider, OpenAIChatProvider()
+    if provider == "gemini":
+        return provider, GeminiChatProvider()
     logger.warning("Unknown CHATBOT_PROVIDER=%s, forcing ollama LLM provider.", settings.chatbot_provider)
     return "ollama", OllamaChatProvider()
 

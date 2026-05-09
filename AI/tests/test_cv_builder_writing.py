@@ -1,7 +1,13 @@
 from app.services.cv_builder_writing import generate_cv_builder_writing
 
 
-def test_generate_summary_suggestions() -> None:
+def _use_rule_based_provider(monkeypatch) -> None:
+    monkeypatch.setattr("app.services.cv_builder_writing._resolve_provider_name", lambda: "rule_based")
+
+
+def test_generate_summary_suggestions(monkeypatch) -> None:
+    _use_rule_based_provider(monkeypatch)
+
     result = generate_cv_builder_writing(
         {
             "tieu_de_ho_so": "Backend Developer",
@@ -20,7 +26,9 @@ def test_generate_summary_suggestions() -> None:
     assert "Backend Developer" in suggestions[0]
 
 
-def test_generate_skill_suggestions_omits_existing_skills() -> None:
+def test_generate_skill_suggestions_omits_existing_skills(monkeypatch) -> None:
+    _use_rule_based_provider(monkeypatch)
+
     result = generate_cv_builder_writing(
         {
             "vi_tri_ung_tuyen_muc_tieu": "Backend Developer",

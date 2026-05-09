@@ -1,148 +1,3 @@
-<script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { RouterLink } from 'vue-router'
-import { paymentService } from '@/services/api'
-import { useNotify } from '@/composables/useNotify'
-
-const notify = useNotify()
-
-const loading = ref(false)
-const refreshing = ref(false)
-const payments = ref([])
-
-const filters = reactive({
-  loai_giao_dich: '',
-  trang_thai: '',
-})
-
-const pagination = reactive({
-  current_page: 1,
-  last_page: 1,
-  per_page: 10,
-  total: 0,
-  from: 0,
-  to: 0,
-})
-
-const formatCurrency = (value) =>
-  `${new Intl.NumberFormat('vi-VN').format(Number(value || 0))} đ`
-
-const formatDateTime = (value) => {
-  if (!value) return 'Chưa cập nhật'
-
-  return new Intl.DateTimeFormat('vi-VN', {
-    dateStyle: 'short',
-    timeStyle: 'short',
-  }).format(new Date(value))
-}
-
-const getTypeLabel = (type) => {
-  if (type === 'topup_wallet') return 'Nạp ví AI'
-  if (type === 'buy_subscription') return 'Mua gói Pro'
-  return 'Thanh toán'
-}
-
-const getStatusLabel = (status) => {
-  if (status === 'success') return 'Thành công'
-  if (status === 'pending') return 'Đang chờ'
-  if (status === 'failed') return 'Thất bại'
-  if (status === 'cancelled') return 'Đã hủy'
-  return status || 'Không rõ'
-}
-
-const getStatusTone = (status) => {
-  if (status === 'success') return 'border-emerald-200 bg-emerald-50 text-emerald-700'
-  if (status === 'pending') return 'border-amber-200 bg-amber-50 text-amber-700'
-  if (status === 'failed') return 'border-rose-200 bg-rose-50 text-rose-700'
-  if (status === 'cancelled') return 'border-slate-200 bg-slate-100 text-slate-600'
-  return 'border-slate-200 bg-slate-50 text-slate-600'
-}
-
-const getGatewayLabel = (gateway) => {
-  if (gateway === 'momo') return 'MoMo'
-  if (gateway === 'vnpay') return 'VNPay'
-  if (gateway === 'wallet') return 'Ví AI'
-  return String(gateway || 'Không rõ').toUpperCase()
-}
-
-const getPaymentTitle = (payment) => {
-  if (payment?.loai_giao_dich === 'buy_subscription') {
-    return payment?.goi_dich_vu?.ten_goi
-      ? `Thanh toán ${payment.goi_dich_vu.ten_goi}`
-      : 'Thanh toán gói Pro'
-  }
-
-  return 'Nạp tiền vào ví AI'
-}
-
-const canContinuePayment = (payment) =>
-  payment?.trang_thai === 'pending' && Boolean(payment?.redirect_url) && !payment?.is_payment_link_expired
-
-const continuePayment = (payment) => {
-  if (!canContinuePayment(payment)) return
-
-  window.location.href = payment.redirect_url
-}
-
-const paymentStats = computed(() => ({
-  topups: payments.value.filter((item) => item.loai_giao_dich === 'topup_wallet').length,
-  subscriptions: payments.value.filter((item) => item.loai_giao_dich === 'buy_subscription').length,
-  pending: payments.value.filter((item) => item.trang_thai === 'pending').length,
-}))
-
-const normalizePayments = (response) => {
-  const payload = response?.data || {}
-  payments.value = payload.data || []
-  pagination.current_page = payload.current_page || 1
-  pagination.last_page = payload.last_page || 1
-  pagination.total = payload.total || 0
-  pagination.from = payload.from || 0
-  pagination.to = payload.to || 0
-}
-
-const loadPayments = async (page = pagination.current_page, silent = false) => {
-  if (silent) {
-    refreshing.value = true
-  } else {
-    loading.value = true
-  }
-
-  try {
-    const response = await paymentService.getPayments({
-      page,
-      per_page: pagination.per_page,
-      loai_giao_dich: filters.loai_giao_dich || undefined,
-      trang_thai: filters.trang_thai || undefined,
-    })
-
-    normalizePayments(response)
-  } catch (error) {
-    if (!silent) {
-      notify.apiError(error, 'Không thể tải lịch sử thanh toán.')
-    }
-  } finally {
-    loading.value = false
-    refreshing.value = false
-  }
-}
-
-const changePage = async (page) => {
-  if (page < 1 || page > pagination.last_page || page === pagination.current_page) return
-  await loadPayments(page, true)
-}
-
-watch(
-  () => [filters.loai_giao_dich, filters.trang_thai],
-  async () => {
-    await loadPayments(1)
-  },
-)
-
-onMounted(async () => {
-  await loadPayments(1)
-})
-</script>
-
 <template>
   <div class="space-y-8">
     <section class="overflow-hidden rounded-[30px] border border-sky-200 bg-gradient-to-r from-[#0d1b38] via-[#17417c] to-[#2563eb] px-8 py-8 text-white shadow-[0_28px_90px_rgba(37,99,235,0.2)]">
@@ -322,3 +177,148 @@ onMounted(async () => {
     </section>
   </div>
 </template>
+
+<script setup>
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { RouterLink } from 'vue-router'
+import { paymentService } from '@/services/api'
+import { useNotify } from '@/composables/useNotify'
+
+const notify = useNotify()
+
+const loading = ref(false)
+const refreshing = ref(false)
+const payments = ref([])
+
+const filters = reactive({
+  loai_giao_dich: '',
+  trang_thai: '',
+})
+
+const pagination = reactive({
+  current_page: 1,
+  last_page: 1,
+  per_page: 10,
+  total: 0,
+  from: 0,
+  to: 0,
+})
+
+const formatCurrency = (value) =>
+  `${new Intl.NumberFormat('vi-VN').format(Number(value || 0))} đ`
+
+const formatDateTime = (value) => {
+  if (!value) return 'Chưa cập nhật'
+
+  return new Intl.DateTimeFormat('vi-VN', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  }).format(new Date(value))
+}
+
+const getTypeLabel = (type) => {
+  if (type === 'topup_wallet') return 'Nạp ví AI'
+  if (type === 'buy_subscription') return 'Mua gói Pro'
+  return 'Thanh toán'
+}
+
+const getStatusLabel = (status) => {
+  if (status === 'success') return 'Thành công'
+  if (status === 'pending') return 'Đang chờ'
+  if (status === 'failed') return 'Thất bại'
+  if (status === 'cancelled') return 'Đã hủy'
+  return status || 'Không rõ'
+}
+
+const getStatusTone = (status) => {
+  if (status === 'success') return 'border-emerald-200 bg-emerald-50 text-emerald-700'
+  if (status === 'pending') return 'border-amber-200 bg-amber-50 text-amber-700'
+  if (status === 'failed') return 'border-rose-200 bg-rose-50 text-rose-700'
+  if (status === 'cancelled') return 'border-slate-200 bg-slate-100 text-slate-600'
+  return 'border-slate-200 bg-slate-50 text-slate-600'
+}
+
+const getGatewayLabel = (gateway) => {
+  if (gateway === 'momo') return 'MoMo'
+  if (gateway === 'vnpay') return 'VNPay'
+  if (gateway === 'wallet') return 'Ví AI'
+  return String(gateway || 'Không rõ').toUpperCase()
+}
+
+const getPaymentTitle = (payment) => {
+  if (payment?.loai_giao_dich === 'buy_subscription') {
+    return payment?.goi_dich_vu?.ten_goi
+      ? `Thanh toán ${payment.goi_dich_vu.ten_goi}`
+      : 'Thanh toán gói Pro'
+  }
+
+  return 'Nạp tiền vào ví AI'
+}
+
+const canContinuePayment = (payment) =>
+  payment?.trang_thai === 'pending' && Boolean(payment?.redirect_url) && !payment?.is_payment_link_expired
+
+const continuePayment = (payment) => {
+  if (!canContinuePayment(payment)) return
+
+  window.location.href = payment.redirect_url
+}
+
+const paymentStats = computed(() => ({
+  topups: payments.value.filter((item) => item.loai_giao_dich === 'topup_wallet').length,
+  subscriptions: payments.value.filter((item) => item.loai_giao_dich === 'buy_subscription').length,
+  pending: payments.value.filter((item) => item.trang_thai === 'pending').length,
+}))
+
+const normalizePayments = (response) => {
+  const payload = response?.data || {}
+  payments.value = payload.data || []
+  pagination.current_page = payload.current_page || 1
+  pagination.last_page = payload.last_page || 1
+  pagination.total = payload.total || 0
+  pagination.from = payload.from || 0
+  pagination.to = payload.to || 0
+}
+
+const loadPayments = async (page = pagination.current_page, silent = false) => {
+  if (silent) {
+    refreshing.value = true
+  } else {
+    loading.value = true
+  }
+
+  try {
+    const response = await paymentService.getPayments({
+      page,
+      per_page: pagination.per_page,
+      loai_giao_dich: filters.loai_giao_dich || undefined,
+      trang_thai: filters.trang_thai || undefined,
+    })
+
+    normalizePayments(response)
+  } catch (error) {
+    if (!silent) {
+      notify.apiError(error, 'Không thể tải lịch sử thanh toán.')
+    }
+  } finally {
+    loading.value = false
+    refreshing.value = false
+  }
+}
+
+const changePage = async (page) => {
+  if (page < 1 || page > pagination.last_page || page === pagination.current_page) return
+  await loadPayments(page, true)
+}
+
+watch(
+  () => [filters.loai_giao_dich, filters.trang_thai],
+  async () => {
+    await loadPayments(1)
+  },
+)
+
+onMounted(async () => {
+  await loadPayments(1)
+})
+</script>

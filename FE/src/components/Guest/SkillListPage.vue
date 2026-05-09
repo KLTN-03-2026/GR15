@@ -1,80 +1,3 @@
-<script setup>
-import { computed, onMounted, ref, watch } from 'vue'
-import { RouterLink, useRoute, useRouter } from 'vue-router'
-import { jobService } from '@/services/api'
-import { useNotify } from '@/composables/useNotify'
-
-const route = useRoute()
-const router = useRouter()
-const notify = useNotify()
-
-const loading = ref(false)
-const skills = ref([])
-const totalSkills = ref(0)
-const filters = ref({
-  search: route.query.search || '',
-  page: Number(route.query.page || 1),
-  perPage: Number(route.query.per_page || 12),
-})
-
-const extractList = (response) => {
-  const payload = response?.data
-  if (Array.isArray(payload?.data)) return payload.data
-  if (Array.isArray(payload)) return payload
-  return []
-}
-
-const totalPages = computed(() => Math.max(1, Math.ceil(totalSkills.value / filters.value.perPage)))
-
-const syncRoute = () => {
-  router.replace({
-    path: '/skills',
-    query: {
-      ...(filters.value.search ? { search: filters.value.search } : {}),
-      ...(filters.value.page > 1 ? { page: filters.value.page } : {}),
-      per_page: filters.value.perPage,
-    },
-  })
-}
-
-const loadSkills = async () => {
-  loading.value = true
-  try {
-    const response = await jobService.getSkills({
-      search: filters.value.search.trim() || undefined,
-      per_page: filters.value.perPage,
-    })
-
-    const list = extractList(response)
-    skills.value = list
-    totalSkills.value = Number(response?.data?.total || list.length || 0)
-  } catch (error) {
-    skills.value = []
-    totalSkills.value = 0
-    notify.apiError(error, 'Không thể tải danh sách kỹ năng.')
-  } finally {
-    loading.value = false
-  }
-}
-
-const applyFilters = () => {
-  filters.value.page = 1
-  syncRoute()
-  loadSkills()
-}
-
-watch(
-  () => route.query,
-  (query) => {
-    filters.value.search = query.search || ''
-    filters.value.page = Number(query.page || 1)
-    filters.value.perPage = Number(query.per_page || 12)
-  },
-)
-
-onMounted(loadSkills)
-</script>
-
 <template>
   <section class="py-14 lg:py-16">
     <div class="mx-auto max-w-7xl px-6">
@@ -179,3 +102,80 @@ onMounted(loadSkills)
     </div>
   </section>
 </template>
+
+<script setup>
+import { computed, onMounted, ref, watch } from 'vue'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
+import { jobService } from '@/services/api'
+import { useNotify } from '@/composables/useNotify'
+
+const route = useRoute()
+const router = useRouter()
+const notify = useNotify()
+
+const loading = ref(false)
+const skills = ref([])
+const totalSkills = ref(0)
+const filters = ref({
+  search: route.query.search || '',
+  page: Number(route.query.page || 1),
+  perPage: Number(route.query.per_page || 12),
+})
+
+const extractList = (response) => {
+  const payload = response?.data
+  if (Array.isArray(payload?.data)) return payload.data
+  if (Array.isArray(payload)) return payload
+  return []
+}
+
+const totalPages = computed(() => Math.max(1, Math.ceil(totalSkills.value / filters.value.perPage)))
+
+const syncRoute = () => {
+  router.replace({
+    path: '/skills',
+    query: {
+      ...(filters.value.search ? { search: filters.value.search } : {}),
+      ...(filters.value.page > 1 ? { page: filters.value.page } : {}),
+      per_page: filters.value.perPage,
+    },
+  })
+}
+
+const loadSkills = async () => {
+  loading.value = true
+  try {
+    const response = await jobService.getSkills({
+      search: filters.value.search.trim() || undefined,
+      per_page: filters.value.perPage,
+    })
+
+    const list = extractList(response)
+    skills.value = list
+    totalSkills.value = Number(response?.data?.total || list.length || 0)
+  } catch (error) {
+    skills.value = []
+    totalSkills.value = 0
+    notify.apiError(error, 'Không thể tải danh sách kỹ năng.')
+  } finally {
+    loading.value = false
+  }
+}
+
+const applyFilters = () => {
+  filters.value.page = 1
+  syncRoute()
+  loadSkills()
+}
+
+watch(
+  () => route.query,
+  (query) => {
+    filters.value.search = query.search || ''
+    filters.value.page = Number(query.page || 1)
+    filters.value.perPage = Number(query.per_page || 12)
+  },
+)
+
+onMounted(loadSkills)
+</script>

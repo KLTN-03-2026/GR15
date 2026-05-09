@@ -1,135 +1,3 @@
-<script setup>
-import { computed, onMounted, ref } from 'vue'
-import { RouterLink } from 'vue-router'
-import { applicationService, followCompanyService, matchingService, profileService, savedJobService } from '@/services/api'
-import { useNotify } from '@/composables/useNotify'
-import { getStoredCandidate } from '@/utils/authStorage'
-import { getApplicationStatusLabel } from '@/utils/applicationStatus'
-
-const notify = useNotify()
-
-const loading = ref(false)
-const profileCount = ref(0)
-const savedCount = ref(0)
-const followedCompanyCount = ref(0)
-const applicationCount = ref(0)
-const matchingAverage = ref(0)
-const topMatches = ref([])
-const latestApplications = ref([])
-
-const currentUser = computed(() => {
-  return getStoredCandidate()
-})
-
-const firstName = computed(() => {
-  const fullName = currentUser.value?.ho_ten?.trim() || 'bạn'
-  const parts = fullName.split(/\s+/)
-  return parts[parts.length - 1]
-})
-
-const stats = computed(() => [
-  {
-    label: 'Số hồ sơ hiện có',
-    value: profileCount.value,
-    icon: 'description',
-    tone: 'bg-[#2463eb]/10 text-[#2463eb]',
-    helper: profileCount.value > 0 ? 'Sẵn sàng để ứng tuyển' : 'Hãy tạo hồ sơ đầu tiên',
-  },
-  {
-    label: 'Tin đã lưu',
-    value: savedCount.value,
-    icon: 'bookmark',
-    tone: 'bg-amber-100 text-amber-600',
-    helper: savedCount.value > 0 ? 'Để dành cho các vị trí tiềm năng' : 'Chưa có tin nào được lưu',
-  },
-  {
-    label: 'Công ty đã theo dõi',
-    value: followedCompanyCount.value,
-    icon: 'apartment',
-    tone: 'bg-sky-100 text-sky-600',
-    helper: followedCompanyCount.value > 0 ? 'Theo dõi việc làm mới từ doanh nghiệp bạn quan tâm' : 'Chưa theo dõi công ty nào',
-  },
-  {
-    label: 'Số lần ứng tuyển',
-    value: applicationCount.value,
-    icon: 'assignment_turned_in',
-    tone: 'bg-green-100 text-green-600',
-    helper: applicationCount.value > 0 ? 'Theo dõi tại mục Việc đã ứng tuyển' : 'Chưa nộp hồ sơ nào',
-  },
-  {
-    label: 'Matching score TB',
-    value: `${matchingAverage.value}%`,
-    icon: 'trending_up',
-    tone: 'bg-indigo-100 text-indigo-600',
-    helper: matchingAverage.value > 0 ? 'Tính từ các job đã được AI gợi ý' : 'Cần tạo matching để có dữ liệu',
-  },
-])
-
-const recentApplicationsPreview = computed(() => latestApplications.value.slice(0, 3))
-const topMatchingPreview = computed(() => topMatches.value.slice(0, 2))
-const featuredMatch = computed(() => topMatchingPreview.value[0] || null)
-const secondaryMatches = computed(() => topMatchingPreview.value.slice(1))
-
-const scoreTone = (score) => {
-  const value = Number(score || 0)
-  if (value >= 90) return 'text-[#2463eb] bg-[#2463eb]/10'
-  if (value >= 75) return 'text-green-600 bg-green-100'
-  return 'text-amber-600 bg-amber-100'
-}
-
-const formatCurrency = (value) => {
-  if (value === null || value === undefined || value === '') return 'Thỏa thuận'
-  return new Intl.NumberFormat('vi-VN').format(Number(value)) + ' đ'
-}
-
-const formatSalary = (job) => {
-  if (!job) return 'Thỏa thuận'
-  if (job.muc_luong_tu && job.muc_luong_den) {
-    return `${formatCurrency(job.muc_luong_tu)} - ${formatCurrency(job.muc_luong_den)}`
-  }
-  if (job.muc_luong_tu) return formatCurrency(job.muc_luong_tu)
-  return 'Thỏa thuận'
-}
-
-const applicationStatusLabel = getApplicationStatusLabel
-
-const fetchDashboardData = async () => {
-  loading.value = true
-  try {
-    const [profilesRes, savedRes, followedCompaniesRes, applicationsRes, matchesRes] = await Promise.all([
-      profileService.getProfiles({ per_page: 100, sort_by: 'updated_at', sort_dir: 'desc' }),
-      savedJobService.getSavedJobs({ per_page: 100 }),
-      followCompanyService.getFollowedCompanies({ per_page: 100 }),
-      applicationService.getApplications({ per_page: 20, page: 1 }),
-      matchingService.getMatchingResults({ per_page: 20, page: 1 }),
-    ])
-
-    const profilesPayload = profilesRes?.data || {}
-    const savedPayload = savedRes?.data || {}
-    const followedCompaniesPayload = followedCompaniesRes?.data || {}
-    const applicationsPayload = applicationsRes?.data || {}
-    const matchesPayload = matchesRes?.data || {}
-
-    profileCount.value = profilesPayload.total || (profilesPayload.data || []).length || 0
-    savedCount.value = savedPayload.total || (savedPayload.data || []).length || 0
-    followedCompanyCount.value = followedCompaniesPayload.total || (followedCompaniesPayload.data || []).length || 0
-    applicationCount.value = applicationsPayload.total || (applicationsPayload.data || []).length || 0
-
-    topMatches.value = matchesPayload.data || []
-    latestApplications.value = applicationsPayload.data || []
-
-    const scores = topMatches.value.map((item) => Number(item.diem_phu_hop || 0)).filter((value) => !Number.isNaN(value))
-    matchingAverage.value = scores.length ? Math.round(scores.reduce((sum, value) => sum + value, 0) / scores.length) : 0
-  } catch (error) {
-    notify.apiError(error, 'Không tải được dữ liệu dashboard ứng viên.')
-  } finally {
-    loading.value = false
-  }
-}
-
-onMounted(fetchDashboardData)
-</script>
-
 <template>
   <div class="space-y-8 text-slate-900 dark:text-slate-100">
     <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -372,3 +240,135 @@ onMounted(fetchDashboardData)
     </div>
   </div>
 </template>
+
+<script setup>
+import { computed, onMounted, ref } from 'vue'
+import { RouterLink } from 'vue-router'
+import { applicationService, followCompanyService, matchingService, profileService, savedJobService } from '@/services/api'
+import { useNotify } from '@/composables/useNotify'
+import { getStoredCandidate } from '@/utils/authStorage'
+import { getApplicationStatusLabel } from '@/utils/applicationStatus'
+
+const notify = useNotify()
+
+const loading = ref(false)
+const profileCount = ref(0)
+const savedCount = ref(0)
+const followedCompanyCount = ref(0)
+const applicationCount = ref(0)
+const matchingAverage = ref(0)
+const topMatches = ref([])
+const latestApplications = ref([])
+
+const currentUser = computed(() => {
+  return getStoredCandidate()
+})
+
+const firstName = computed(() => {
+  const fullName = currentUser.value?.ho_ten?.trim() || 'bạn'
+  const parts = fullName.split(/\s+/)
+  return parts[parts.length - 1]
+})
+
+const stats = computed(() => [
+  {
+    label: 'Số hồ sơ hiện có',
+    value: profileCount.value,
+    icon: 'description',
+    tone: 'bg-[#2463eb]/10 text-[#2463eb]',
+    helper: profileCount.value > 0 ? 'Sẵn sàng để ứng tuyển' : 'Hãy tạo hồ sơ đầu tiên',
+  },
+  {
+    label: 'Tin đã lưu',
+    value: savedCount.value,
+    icon: 'bookmark',
+    tone: 'bg-amber-100 text-amber-600',
+    helper: savedCount.value > 0 ? 'Để dành cho các vị trí tiềm năng' : 'Chưa có tin nào được lưu',
+  },
+  {
+    label: 'Công ty đã theo dõi',
+    value: followedCompanyCount.value,
+    icon: 'apartment',
+    tone: 'bg-sky-100 text-sky-600',
+    helper: followedCompanyCount.value > 0 ? 'Theo dõi việc làm mới từ doanh nghiệp bạn quan tâm' : 'Chưa theo dõi công ty nào',
+  },
+  {
+    label: 'Số lần ứng tuyển',
+    value: applicationCount.value,
+    icon: 'assignment_turned_in',
+    tone: 'bg-green-100 text-green-600',
+    helper: applicationCount.value > 0 ? 'Theo dõi tại mục Việc đã ứng tuyển' : 'Chưa nộp hồ sơ nào',
+  },
+  {
+    label: 'Matching score TB',
+    value: `${matchingAverage.value}%`,
+    icon: 'trending_up',
+    tone: 'bg-indigo-100 text-indigo-600',
+    helper: matchingAverage.value > 0 ? 'Tính từ các job đã được AI gợi ý' : 'Cần tạo matching để có dữ liệu',
+  },
+])
+
+const recentApplicationsPreview = computed(() => latestApplications.value.slice(0, 3))
+const topMatchingPreview = computed(() => topMatches.value.slice(0, 2))
+const featuredMatch = computed(() => topMatchingPreview.value[0] || null)
+const secondaryMatches = computed(() => topMatchingPreview.value.slice(1))
+
+const scoreTone = (score) => {
+  const value = Number(score || 0)
+  if (value >= 90) return 'text-[#2463eb] bg-[#2463eb]/10'
+  if (value >= 75) return 'text-green-600 bg-green-100'
+  return 'text-amber-600 bg-amber-100'
+}
+
+const formatCurrency = (value) => {
+  if (value === null || value === undefined || value === '') return 'Thỏa thuận'
+  return new Intl.NumberFormat('vi-VN').format(Number(value)) + ' đ'
+}
+
+const formatSalary = (job) => {
+  if (!job) return 'Thỏa thuận'
+  if (job.muc_luong_tu && job.muc_luong_den) {
+    return `${formatCurrency(job.muc_luong_tu)} - ${formatCurrency(job.muc_luong_den)}`
+  }
+  if (job.muc_luong_tu) return formatCurrency(job.muc_luong_tu)
+  return 'Thỏa thuận'
+}
+
+const applicationStatusLabel = getApplicationStatusLabel
+
+const fetchDashboardData = async () => {
+  loading.value = true
+  try {
+    const [profilesRes, savedRes, followedCompaniesRes, applicationsRes, matchesRes] = await Promise.all([
+      profileService.getProfiles({ per_page: 100, sort_by: 'updated_at', sort_dir: 'desc' }),
+      savedJobService.getSavedJobs({ per_page: 100 }),
+      followCompanyService.getFollowedCompanies({ per_page: 100 }),
+      applicationService.getApplications({ per_page: 20, page: 1 }),
+      matchingService.getMatchingResults({ per_page: 20, page: 1 }),
+    ])
+
+    const profilesPayload = profilesRes?.data || {}
+    const savedPayload = savedRes?.data || {}
+    const followedCompaniesPayload = followedCompaniesRes?.data || {}
+    const applicationsPayload = applicationsRes?.data || {}
+    const matchesPayload = matchesRes?.data || {}
+
+    profileCount.value = profilesPayload.total || (profilesPayload.data || []).length || 0
+    savedCount.value = savedPayload.total || (savedPayload.data || []).length || 0
+    followedCompanyCount.value = followedCompaniesPayload.total || (followedCompaniesPayload.data || []).length || 0
+    applicationCount.value = applicationsPayload.total || (applicationsPayload.data || []).length || 0
+
+    topMatches.value = matchesPayload.data || []
+    latestApplications.value = applicationsPayload.data || []
+
+    const scores = topMatches.value.map((item) => Number(item.diem_phu_hop || 0)).filter((value) => !Number.isNaN(value))
+    matchingAverage.value = scores.length ? Math.round(scores.reduce((sum, value) => sum + value, 0) / scores.length) : 0
+  } catch (error) {
+    notify.apiError(error, 'Không tải được dữ liệu dashboard ứng viên.')
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(fetchDashboardData)
+</script>

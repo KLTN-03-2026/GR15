@@ -1,527 +1,3 @@
-<script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
-import { authService, profileService } from '@/services/api'
-import { useNotify } from '@/composables/useNotify'
-import { getStoredCandidate, updateStoredCandidate } from '@/utils/authStorage'
-import { formatDateVN } from '@/utils/dateTime'
-import { hasBuilderCv, openCvPrintPreview } from '@/utils/profileCvBuilder'
-
-const notify = useNotify()
-
-const loading = ref(false)
-const saving = ref(false)
-const deletingId = ref(null)
-const togglingId = ref(null)
-const parsingId = ref(null)
-const profiles = ref([])
-const modalOpen = ref(false)
-const editingProfileId = ref(null)
-const selectedFile = ref(null)
-const parseResultModalOpen = ref(false)
-const parseResult = ref(null)
-const applyingPersonalInfo = ref(false)
-const currentCandidate = ref(getStoredCandidate())
-const selectedPersonalFieldKeys = ref([])
-const detailModalOpen = ref(false)
-const selectedProfileDetail = ref(null)
-const profileToDelete = ref(null)
-
-const educationOptions = [
-  { value: 'Trung học', label: 'Trung học' },
-  { value: 'Trung cấp', label: 'Trung cấp' },
-  { value: 'Cao đẳng', label: 'Cao đẳng' },
-  { value: 'Đại học', label: 'Đại học' },
-  { value: 'Thạc sĩ', label: 'Thạc sĩ' },
-  { value: 'Tiến sĩ', label: 'Tiến sĩ' },
-  { value: 'Khác', label: 'Khác' },
-]
-
-const form = reactive({
-  tieu_de_ho_so: '',
-  muc_tieu_nghe_nghiep: '',
-  trinh_do: '',
-  kinh_nghiem_nam: '',
-  mo_ta_ban_than: '',
-  trang_thai: 1,
-})
-
-const totalProfiles = computed(() => profiles.value.length)
-const publicProfiles = computed(() => profiles.value.filter((item) => Number(item.trang_thai) === 1).length)
-const withFiles = computed(() => profiles.value.filter((item) => item.file_cv).length)
-const parsedProfiles = computed(() =>
-  profiles.value.filter((item) => Number(item?.parsing?.parse_status) === 1).length
-)
-
-const formatDate = (value) => {
-  return formatDateVN(value)
-}
-
-const statusMeta = (value) => {
-  if (Number(value) === 1) {
-    return {
-      label: 'Công khai',
-      classes: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-      dot: 'bg-green-500',
-      action: 'Ẩn',
-      actionIcon: 'visibility_off',
-      actionClass: 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800',
-    }
-  }
-
-  return {
-    label: 'Đã ẩn',
-    classes: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400',
-    dot: 'bg-slate-400',
-    action: 'Hiện',
-    actionIcon: 'visibility',
-    actionClass: 'text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20',
-  }
-}
-
-const degreeLabel = (value) => {
-  return educationOptions.find((option) => option.value === value || option.label === value)?.label || value || 'Chưa cập nhật'
-}
-
-const parseStatusMeta = (profile) => {
-  const parsing = profile?.parsing
-
-  if (!profile?.file_cv && !hasBuilderCv(profile)) {
-    return {
-      label: 'Chưa có dữ liệu CV',
-      classes: 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400',
-      icon: 'upload_file',
-    }
-  }
-
-  if (!parsing) {
-    return {
-      label: 'Chưa parse',
-      classes: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
-      icon: 'psychology_alt',
-    }
-  }
-
-  if (Number(parsing.parse_status) === 1) {
-    return {
-      label: 'Đã parse',
-      classes: 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300',
-      icon: 'check_circle',
-    }
-  }
-
-  if (Number(parsing.parse_status) === 2) {
-    return {
-      label: 'Parse lỗi',
-      classes: 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300',
-      icon: 'error',
-    }
-  }
-
-  return {
-    label: 'Đang parse',
-    classes: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
-    icon: 'hourglass_top',
-  }
-}
-
-const hasUploadedCv = (profile) => Boolean(profile?.file_cv_url || profile?.file_cv)
-const canOpenAnyCv = (profile) => hasUploadedCv(profile) || hasBuilderCv(profile)
-const primaryCvActionLabel = (profile) => {
-  if (hasUploadedCv(profile)) return 'Xem file CV'
-  if (hasBuilderCv(profile)) return 'Xem CV hệ thống'
-  return 'Xem CV'
-}
-
-const formatDisplayText = (value) => {
-  const text = String(value || '')
-    .replace(/[_-]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-
-  if (!text) return ''
-
-  return text.charAt(0).toUpperCase() + text.slice(1)
-}
-
-const normalizedSkillItems = (value) => {
-  if (!Array.isArray(value)) return []
-
-  return value
-    .map((item) => {
-      if (typeof item === 'string') return formatDisplayText(item)
-      if (!item || typeof item !== 'object') return ''
-      return formatDisplayText(item.skill_name || item.name || item.skill || item.keyword || '')
-    })
-    .filter(Boolean)
-    .filter((item, index, array) => array.indexOf(item) === index)
-}
-
-const normalizedSectionItems = (value) => {
-  if (!Array.isArray(value)) return []
-
-  return value
-    .map((item) => {
-      if (typeof item === 'string') return formatDisplayText(item)
-      if (!item || typeof item !== 'object') return ''
-
-      const ignoredKeys = ['confidence', 'score', 'type', 'label', 'raw_text']
-      const parts = Object.entries(item)
-        .filter(([key, raw]) => !ignoredKeys.includes(key) && raw !== null && raw !== undefined && String(raw).trim() !== '')
-        .map(([, raw]) => formatDisplayText(raw))
-        .filter(Boolean)
-
-      return parts.join(' • ')
-    })
-    .filter(Boolean)
-    .filter((item, index, array) => array.indexOf(item) === index)
-}
-
-const parsedSkills = computed(() => normalizedSkillItems(parseResult.value?.parsed_skills_json).slice(0, 12))
-const parsedEducation = computed(() => normalizedSectionItems(parseResult.value?.parsed_education_json).slice(0, 8))
-const parsedExperience = computed(() => normalizedSectionItems(parseResult.value?.parsed_experience_json).slice(0, 8))
-const parseQualityWarnings = computed(() => Array.isArray(parseResult.value?.quality_warnings_json) ? parseResult.value.quality_warnings_json : [])
-const parseSuggestedActions = computed(() => Array.isArray(parseResult.value?.suggested_actions) ? parseResult.value.suggested_actions : [])
-const parseLayoutAnalysis = computed(() => parseResult.value?.layout_analysis_json || {})
-const normalizedParsedPhone = computed(() => {
-  const raw = String(parseResult.value?.parsed_phone || '').replace(/\D/g, '')
-  if (/^0\d{9}$/.test(raw)) return raw
-  if (/^84\d{9}$/.test(raw)) return `0${raw.slice(2)}`
-  return ''
-})
-const candidateSnapshot = computed(() => currentCandidate.value || {})
-const availablePersonalFields = computed(() => {
-  const fields = []
-
-  if (String(parseResult.value?.parsed_name || '').trim()) {
-    fields.push({
-      key: 'ho_ten',
-      label: 'Họ và tên',
-      currentValue: candidateSnapshot.value?.ho_ten || 'Chưa cập nhật',
-      parsedValue: String(parseResult.value.parsed_name).trim(),
-    })
-  }
-
-  if (String(parseResult.value?.parsed_email || '').trim()) {
-    fields.push({
-      key: 'email',
-      label: 'Email',
-      currentValue: candidateSnapshot.value?.email || 'Chưa cập nhật',
-      parsedValue: String(parseResult.value.parsed_email).trim(),
-    })
-  }
-
-  if (normalizedParsedPhone.value) {
-    fields.push({
-      key: 'so_dien_thoai',
-      label: 'Số điện thoại',
-      currentValue: candidateSnapshot.value?.so_dien_thoai || 'Chưa cập nhật',
-      parsedValue: normalizedParsedPhone.value,
-    })
-  }
-
-  return fields
-})
-
-const resetForm = () => {
-  form.tieu_de_ho_so = ''
-  form.muc_tieu_nghe_nghiep = ''
-  form.trinh_do = ''
-  form.kinh_nghiem_nam = ''
-  form.mo_ta_ban_than = ''
-  form.trang_thai = 1
-  selectedFile.value = null
-  editingProfileId.value = null
-}
-
-const fillForm = (profile) => {
-  form.tieu_de_ho_so = profile?.tieu_de_ho_so || ''
-  form.muc_tieu_nghe_nghiep = profile?.muc_tieu_nghe_nghiep || ''
-  form.trinh_do = profile?.trinh_do || ''
-  form.kinh_nghiem_nam = profile?.kinh_nghiem_nam ?? ''
-  form.mo_ta_ban_than = profile?.mo_ta_ban_than || ''
-  form.trang_thai = Number(profile?.trang_thai ?? 1)
-  selectedFile.value = null
-}
-
-const fetchProfiles = async () => {
-  loading.value = true
-  try {
-    const response = await profileService.getProfiles({
-      per_page: 100,
-      sort_by: 'updated_at',
-      sort_dir: 'desc',
-    })
-    const payload = response?.data || {}
-    profiles.value = payload.data || []
-  } catch (error) {
-    profiles.value = []
-    notify.apiError(error, 'Không tải được danh sách hồ sơ/CV.')
-  } finally {
-    loading.value = false
-  }
-}
-
-const openCreateModal = () => {
-  resetForm()
-  modalOpen.value = true
-}
-
-const openEditModal = (profile) => {
-  editingProfileId.value = profile.id
-  fillForm(profile)
-  modalOpen.value = true
-}
-
-const openDetailModal = (profile) => {
-  selectedProfileDetail.value = profile
-  detailModalOpen.value = true
-}
-
-const openBuilderProfileCv = (profile) => {
-  const opened = openCvPrintPreview({
-    profile,
-    owner: currentCandidate.value,
-  })
-
-  if (!opened) {
-    notify.warning('Trình duyệt đang chặn cửa sổ xem CV. Hãy cho phép popup và thử lại.')
-  }
-}
-
-const openUploadedProfileCv = async (profile) => {
-  if (!profile?.id) {
-    notify.warning('Không xác định được hồ sơ cần mở file CV.')
-    return
-  }
-
-  try {
-    const { blob } = await profileService.viewProfileCv(profile.id)
-    const objectUrl = URL.createObjectURL(blob)
-    window.open(objectUrl, '_blank', 'noopener')
-    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000)
-  } catch (error) {
-    notify.apiError(error, 'Không mở được file CV đã tải lên.')
-  }
-}
-
-const openPrimaryProfileCv = async (profile) => {
-  if (hasUploadedCv(profile)) {
-    await openUploadedProfileCv(profile)
-    return
-  }
-
-  if (hasBuilderCv(profile)) {
-    openBuilderProfileCv(profile)
-    return
-  }
-
-  notify.info('Hồ sơ này chưa có file CV hoặc dữ liệu CV tạo trên hệ thống để xem.')
-}
-
-const closeDetailModal = () => {
-  detailModalOpen.value = false
-  selectedProfileDetail.value = null
-}
-
-const closeModal = () => {
-  if (saving.value) return
-  modalOpen.value = false
-  resetForm()
-}
-
-const handleFileChange = (event) => {
-  const file = event.target.files?.[0]
-  if (!file) return
-  selectedFile.value = file
-}
-
-const buildFormData = () => {
-  const payload = new FormData()
-  payload.append('tieu_de_ho_so', form.tieu_de_ho_so)
-  payload.append('muc_tieu_nghe_nghiep', form.muc_tieu_nghe_nghiep || '')
-  payload.append('trinh_do', form.trinh_do || '')
-  payload.append('kinh_nghiem_nam', String(form.kinh_nghiem_nam || 0))
-  payload.append('mo_ta_ban_than', form.mo_ta_ban_than || '')
-  payload.append('trang_thai', String(form.trang_thai))
-  if (selectedFile.value) {
-    payload.append('file_cv', selectedFile.value)
-  }
-  return payload
-}
-
-const submitProfile = async () => {
-  saving.value = true
-  try {
-    const payload = buildFormData()
-    if (editingProfileId.value) {
-      await profileService.updateProfile(editingProfileId.value, payload)
-      notify.success('Cập nhật hồ sơ thành công.')
-    } else {
-      await profileService.createProfile(payload)
-      notify.success('Tạo hồ sơ mới thành công.')
-    }
-    modalOpen.value = false
-    resetForm()
-    await fetchProfiles()
-  } catch (error) {
-    notify.apiError(error, 'Không thể lưu hồ sơ/CV.')
-  } finally {
-    saving.value = false
-  }
-}
-
-const toggleProfileStatus = async (profile) => {
-  if (togglingId.value) return
-  togglingId.value = profile.id
-  try {
-    await profileService.toggleProfileStatus(profile.id)
-    notify.success(`Đã ${Number(profile.trang_thai) === 1 ? 'ẩn' : 'công khai'} hồ sơ.`)
-    await fetchProfiles()
-  } catch (error) {
-    notify.apiError(error, 'Không thể cập nhật trạng thái hồ sơ.')
-  } finally {
-    togglingId.value = null
-  }
-}
-
-const openDeleteProfileModal = (profile) => {
-  if (deletingId.value) return
-  profileToDelete.value = profile
-}
-
-const closeDeleteProfileModal = () => {
-  if (deletingId.value) return
-  profileToDelete.value = null
-}
-
-const deleteProfile = async () => {
-  if (!profileToDelete.value || deletingId.value) return
-
-  deletingId.value = profileToDelete.value.id
-  try {
-    await profileService.deleteProfile(profileToDelete.value.id)
-    notify.success('Đã xóa hồ sơ thành công.')
-    profileToDelete.value = null
-    await fetchProfiles()
-  } catch (error) {
-    notify.apiError(error, 'Không thể xóa hồ sơ.')
-  } finally {
-    deletingId.value = null
-  }
-}
-
-const openParseResultModal = (result) => {
-  currentCandidate.value = getStoredCandidate()
-  parseResult.value = result
-  selectedPersonalFieldKeys.value = [
-    String(result?.parsed_name || '').trim() ? 'ho_ten' : null,
-    String(result?.parsed_email || '').trim() ? 'email' : null,
-    (() => {
-      const raw = String(result?.parsed_phone || '').replace(/\D/g, '')
-      return /^0\d{9}$/.test(raw) || /^84\d{9}$/.test(raw) ? 'so_dien_thoai' : null
-    })(),
-  ].filter(Boolean)
-  parseResultModalOpen.value = true
-}
-
-const closeParseResultModal = () => {
-  if (parsingId.value || applyingPersonalInfo.value) return
-  parseResultModalOpen.value = false
-  parseResult.value = null
-  selectedPersonalFieldKeys.value = []
-}
-
-const applyPersonalInfoFromCv = async () => {
-  if (applyingPersonalInfo.value) return
-
-  const payload = {}
-
-  if (selectedPersonalFieldKeys.value.includes('ho_ten') && String(parseResult.value?.parsed_name || '').trim()) {
-    payload.ho_ten = String(parseResult.value.parsed_name).trim()
-  }
-
-  if (selectedPersonalFieldKeys.value.includes('email') && String(parseResult.value?.parsed_email || '').trim()) {
-    payload.email = String(parseResult.value.parsed_email).trim()
-  }
-
-  if (selectedPersonalFieldKeys.value.includes('so_dien_thoai') && normalizedParsedPhone.value) {
-    payload.so_dien_thoai = normalizedParsedPhone.value
-  }
-
-  if (!Object.keys(payload).length) {
-    notify.warning('Hãy chọn ít nhất một trường hợp lệ để áp dụng từ CV.')
-    return
-  }
-
-  applyingPersonalInfo.value = true
-  try {
-    const response = await authService.updateProfile(payload)
-    const updatedUser = response?.data || null
-
-    if (updatedUser) {
-      updateStoredCandidate(updatedUser)
-      currentCandidate.value = updatedUser
-    }
-
-    const appliedLabels = availablePersonalFields.value
-      .filter((item) => selectedPersonalFieldKeys.value.includes(item.key))
-      .map((item) => item.label)
-      .join(', ')
-    notify.success(`Đã áp dụng thông tin cá nhân từ CV: ${appliedLabels}.`)
-  } catch (error) {
-    notify.apiError(error, 'Không thể áp dụng thông tin cá nhân từ CV.')
-  } finally {
-    applyingPersonalInfo.value = false
-  }
-}
-
-const parseProfile = async (profile) => {
-  if (parsingId.value) return
-
-  if (!profile.file_cv && !hasBuilderCv(profile)) {
-    notify.warning('Hồ sơ này chưa có đủ dữ liệu để phân tích.')
-    return
-  }
-
-  parsingId.value = profile.id
-  try {
-    const response = await profileService.parseProfileCv(profile.id)
-    const payload = response?.data || {}
-    const syncSummary = response?.sync_summary || null
-    openParseResultModal({
-      ...payload,
-      profileTitle: profile.tieu_de_ho_so,
-      syncSummary,
-    })
-    const updatedFields = Array.isArray(syncSummary?.updated_fields) ? syncSummary.updated_fields : []
-    const syncedSkills = Number(syncSummary?.synced_skills || 0)
-    const summaryParts = []
-
-    if (updatedFields.length) {
-      summaryParts.push(`đã tự điền ${updatedFields.length} trường hồ sơ`)
-    }
-
-    if (syncedSkills > 0) {
-      summaryParts.push(`đồng bộ ${syncedSkills} kỹ năng`)
-    }
-
-    notify.success(
-      summaryParts.length
-        ? `Đã phân tích CV thành công, ${summaryParts.join(' và ')}.`
-        : `Đã phân tích ${profile.file_cv ? 'CV file' : 'CV web'} thành công.`
-    )
-    await fetchProfiles()
-  } catch (error) {
-    notify.apiError(error, 'Không thể phân tích CV này.')
-    await fetchProfiles()
-  } finally {
-    parsingId.value = null
-  }
-}
-
-onMounted(fetchProfiles)
-</script>
-
 <template>
   <div>
     <div class="flex justify-between items-end mb-8">
@@ -636,10 +112,10 @@ onMounted(fetchProfiles)
                   {{ degreeLabel(profile.trinh_do) }}
                 </span>
                 <span class="text-xs bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded font-medium">
-                  {{ profile.kinh_nghiem_nam ?? 0 }} năm kinh nghiệm
+                  {{ formatYears(profile.kinh_nghiem_nam) }} kinh nghiệm
                 </span>
               </div>
-              <p v-if="profile.muc_tieu_nghe_nghiep" class="mt-3 max-w-3xl text-sm text-slate-500 dark:text-slate-400 line-clamp-2">
+              <p v-if="profile.muc_tieu_nghe_nghiep" class="mt-3 max-h-28 max-w-3xl overflow-y-auto pr-1 text-sm leading-7 text-slate-500 dark:text-slate-400 whitespace-pre-line">
                 {{ profile.muc_tieu_nghe_nghiep }}
               </p>
             </div>
@@ -767,11 +243,11 @@ onMounted(fetchProfiles)
             <label class="mb-2 block text-sm font-semibold text-slate-700">Số năm kinh nghiệm</label>
             <input
               v-model="form.kinh_nghiem_nam"
-              min="0"
-              max="50"
               class="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-              type="number"
+              placeholder="Ví dụ: 6 tháng, 0.5, 1 năm"
+              type="text"
             />
+            <p class="mt-1.5 text-xs text-slate-500">Có thể nhập theo tháng; ví dụ 6 tháng sẽ được quy đổi thành 0.5 năm.</p>
           </div>
 
           <div class="md:col-span-2">
@@ -911,7 +387,7 @@ onMounted(fetchProfiles)
             </div>
             <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
               <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Kinh nghiệm</p>
-              <p class="mt-2 text-base font-bold text-slate-900">{{ selectedProfileDetail.kinh_nghiem_nam ?? 0 }} năm</p>
+              <p class="mt-2 text-base font-bold text-slate-900">{{ formatYears(selectedProfileDetail.kinh_nghiem_nam) }}</p>
             </div>
             <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 md:col-span-2">
               <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Cập nhật lần cuối</p>
@@ -1230,3 +706,530 @@ onMounted(fetchProfiles)
     </div>
   </div>
 </template>
+
+<script setup>
+import { computed, onMounted, reactive, ref } from 'vue'
+import { authService, profileService } from '@/services/api'
+import { useNotify } from '@/composables/useNotify'
+import { getStoredCandidate, updateStoredCandidate } from '@/utils/authStorage'
+import { formatDateVN } from '@/utils/dateTime'
+import { formatExperienceYears, normalizeExperienceYears } from '@/utils/experience'
+import { hasBuilderCv, openCvPrintPreview } from '@/utils/profileCvBuilder'
+
+const notify = useNotify()
+
+const loading = ref(false)
+const saving = ref(false)
+const deletingId = ref(null)
+const togglingId = ref(null)
+const parsingId = ref(null)
+const profiles = ref([])
+const modalOpen = ref(false)
+const editingProfileId = ref(null)
+const selectedFile = ref(null)
+const parseResultModalOpen = ref(false)
+const parseResult = ref(null)
+const applyingPersonalInfo = ref(false)
+const currentCandidate = ref(getStoredCandidate())
+const selectedPersonalFieldKeys = ref([])
+const detailModalOpen = ref(false)
+const selectedProfileDetail = ref(null)
+const profileToDelete = ref(null)
+
+const educationOptions = [
+  { value: 'Trung học', label: 'Trung học' },
+  { value: 'Trung cấp', label: 'Trung cấp' },
+  { value: 'Cao đẳng', label: 'Cao đẳng' },
+  { value: 'Đại học', label: 'Đại học' },
+  { value: 'Thạc sĩ', label: 'Thạc sĩ' },
+  { value: 'Tiến sĩ', label: 'Tiến sĩ' },
+  { value: 'Khác', label: 'Khác' },
+]
+
+const form = reactive({
+  tieu_de_ho_so: '',
+  muc_tieu_nghe_nghiep: '',
+  trinh_do: '',
+  kinh_nghiem_nam: '',
+  mo_ta_ban_than: '',
+  trang_thai: 1,
+})
+
+const totalProfiles = computed(() => profiles.value.length)
+const publicProfiles = computed(() => profiles.value.filter((item) => Number(item.trang_thai) === 1).length)
+const withFiles = computed(() => profiles.value.filter((item) => item.file_cv).length)
+const parsedProfiles = computed(() =>
+  profiles.value.filter((item) => Number(item?.parsing?.parse_status) === 1).length
+)
+
+const formatDate = (value) => {
+  return formatDateVN(value)
+}
+
+const statusMeta = (value) => {
+  if (Number(value) === 1) {
+    return {
+      label: 'Công khai',
+      classes: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+      dot: 'bg-green-500',
+      action: 'Ẩn',
+      actionIcon: 'visibility_off',
+      actionClass: 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800',
+    }
+  }
+
+  return {
+    label: 'Đã ẩn',
+    classes: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400',
+    dot: 'bg-slate-400',
+    action: 'Hiện',
+    actionIcon: 'visibility',
+    actionClass: 'text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20',
+  }
+}
+
+const degreeLabel = (value) => {
+  return educationOptions.find((option) => option.value === value || option.label === value)?.label || value || 'Chưa cập nhật'
+}
+
+const formatYears = (value) => formatExperienceYears(value)
+
+const parseStatusMeta = (profile) => {
+  const parsing = profile?.parsing
+
+  if (!profile?.file_cv && !hasBuilderCv(profile)) {
+    return {
+      label: 'Chưa có dữ liệu CV',
+      classes: 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400',
+      icon: 'upload_file',
+    }
+  }
+
+  if (!parsing) {
+    return {
+      label: 'Chưa parse',
+      classes: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
+      icon: 'psychology_alt',
+    }
+  }
+
+  if (Number(parsing.parse_status) === 1) {
+    return {
+      label: 'Đã parse',
+      classes: 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300',
+      icon: 'check_circle',
+    }
+  }
+
+  if (Number(parsing.parse_status) === 2) {
+    return {
+      label: 'Parse lỗi',
+      classes: 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300',
+      icon: 'error',
+    }
+  }
+
+  return {
+    label: 'Đang parse',
+    classes: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+    icon: 'hourglass_top',
+  }
+}
+
+const hasUploadedCv = (profile) => Boolean(profile?.file_cv_url || profile?.file_cv)
+const canOpenAnyCv = (profile) => hasUploadedCv(profile) || hasBuilderCv(profile)
+const primaryCvActionLabel = (profile) => {
+  if (hasUploadedCv(profile)) return 'Xem file CV'
+  if (hasBuilderCv(profile)) return 'Xem CV hệ thống'
+  return 'Xem CV'
+}
+
+const formatDisplayText = (value) => {
+  const text = String(value || '')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (!text) return ''
+
+  return text.charAt(0).toUpperCase() + text.slice(1)
+}
+
+const normalizedSkillItems = (value) => {
+  if (!Array.isArray(value)) return []
+
+  return value
+    .map((item) => {
+      if (typeof item === 'string') return formatDisplayText(item)
+      if (!item || typeof item !== 'object') return ''
+      return formatDisplayText(item.skill_name || item.name || item.skill || item.keyword || '')
+    })
+    .filter(Boolean)
+    .filter((item, index, array) => array.indexOf(item) === index)
+}
+
+const normalizedSectionItems = (value) => {
+  if (!Array.isArray(value)) return []
+
+  return value
+    .map((item) => {
+      if (typeof item === 'string') return formatDisplayText(item)
+      if (!item || typeof item !== 'object') return ''
+
+      const ignoredKeys = ['confidence', 'score', 'type', 'label', 'raw_text']
+      const parts = Object.entries(item)
+        .filter(([key, raw]) => !ignoredKeys.includes(key) && raw !== null && raw !== undefined && String(raw).trim() !== '')
+        .map(([, raw]) => formatDisplayText(raw))
+        .filter(Boolean)
+
+      return parts.join(' • ')
+    })
+    .filter(Boolean)
+    .filter((item, index, array) => array.indexOf(item) === index)
+}
+
+const parsedSkills = computed(() => normalizedSkillItems(parseResult.value?.parsed_skills_json).slice(0, 12))
+const parsedEducation = computed(() => normalizedSectionItems(parseResult.value?.parsed_education_json).slice(0, 8))
+const parsedExperience = computed(() => normalizedSectionItems(parseResult.value?.parsed_experience_json).slice(0, 8))
+const parseQualityWarnings = computed(() => Array.isArray(parseResult.value?.quality_warnings_json) ? parseResult.value.quality_warnings_json : [])
+const parseSuggestedActions = computed(() => Array.isArray(parseResult.value?.suggested_actions) ? parseResult.value.suggested_actions : [])
+const parseLayoutAnalysis = computed(() => parseResult.value?.layout_analysis_json || {})
+const normalizedParsedPhone = computed(() => {
+  const raw = String(parseResult.value?.parsed_phone || '').replace(/\D/g, '')
+  if (/^0\d{9}$/.test(raw)) return raw
+  if (/^84\d{9}$/.test(raw)) return `0${raw.slice(2)}`
+  return ''
+})
+const candidateSnapshot = computed(() => currentCandidate.value || {})
+const availablePersonalFields = computed(() => {
+  const fields = []
+
+  if (String(parseResult.value?.parsed_name || '').trim()) {
+    fields.push({
+      key: 'ho_ten',
+      label: 'Họ và tên',
+      currentValue: candidateSnapshot.value?.ho_ten || 'Chưa cập nhật',
+      parsedValue: String(parseResult.value.parsed_name).trim(),
+    })
+  }
+
+  if (String(parseResult.value?.parsed_email || '').trim()) {
+    fields.push({
+      key: 'email',
+      label: 'Email',
+      currentValue: candidateSnapshot.value?.email || 'Chưa cập nhật',
+      parsedValue: String(parseResult.value.parsed_email).trim(),
+    })
+  }
+
+  if (normalizedParsedPhone.value) {
+    fields.push({
+      key: 'so_dien_thoai',
+      label: 'Số điện thoại',
+      currentValue: candidateSnapshot.value?.so_dien_thoai || 'Chưa cập nhật',
+      parsedValue: normalizedParsedPhone.value,
+    })
+  }
+
+  return fields
+})
+
+const resetForm = () => {
+  form.tieu_de_ho_so = ''
+  form.muc_tieu_nghe_nghiep = ''
+  form.trinh_do = ''
+  form.kinh_nghiem_nam = ''
+  form.mo_ta_ban_than = ''
+  form.trang_thai = 1
+  selectedFile.value = null
+  editingProfileId.value = null
+}
+
+const fillForm = (profile) => {
+  form.tieu_de_ho_so = profile?.tieu_de_ho_so || ''
+  form.muc_tieu_nghe_nghiep = profile?.muc_tieu_nghe_nghiep || ''
+  form.trinh_do = profile?.trinh_do || ''
+  form.kinh_nghiem_nam = profile?.kinh_nghiem_nam ?? ''
+  form.mo_ta_ban_than = profile?.mo_ta_ban_than || ''
+  form.trang_thai = Number(profile?.trang_thai ?? 1)
+  selectedFile.value = null
+}
+
+const fetchProfiles = async () => {
+  loading.value = true
+  try {
+    const response = await profileService.getProfiles({
+      per_page: 100,
+      sort_by: 'updated_at',
+      sort_dir: 'desc',
+    })
+    const payload = response?.data || {}
+    profiles.value = payload.data || []
+  } catch (error) {
+    profiles.value = []
+    notify.apiError(error, 'Không tải được danh sách hồ sơ/CV.')
+  } finally {
+    loading.value = false
+  }
+}
+
+const openCreateModal = () => {
+  resetForm()
+  modalOpen.value = true
+}
+
+const openEditModal = (profile) => {
+  editingProfileId.value = profile.id
+  fillForm(profile)
+  modalOpen.value = true
+}
+
+const openDetailModal = (profile) => {
+  selectedProfileDetail.value = profile
+  detailModalOpen.value = true
+}
+
+const openBuilderProfileCv = (profile) => {
+  const opened = openCvPrintPreview({
+    profile,
+    owner: currentCandidate.value,
+  })
+
+  if (!opened) {
+    notify.warning('Trình duyệt đang chặn cửa sổ xem CV. Hãy cho phép popup và thử lại.')
+  }
+}
+
+const openUploadedProfileCv = async (profile) => {
+  if (!profile?.id) {
+    notify.warning('Không xác định được hồ sơ cần mở file CV.')
+    return
+  }
+
+  try {
+    const { blob } = await profileService.viewProfileCv(profile.id)
+    const objectUrl = URL.createObjectURL(blob)
+    window.open(objectUrl, '_blank', 'noopener')
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000)
+  } catch (error) {
+    notify.apiError(error, 'Không mở được file CV đã tải lên.')
+  }
+}
+
+const openPrimaryProfileCv = async (profile) => {
+  if (hasUploadedCv(profile)) {
+    await openUploadedProfileCv(profile)
+    return
+  }
+
+  if (hasBuilderCv(profile)) {
+    openBuilderProfileCv(profile)
+    return
+  }
+
+  notify.info('Hồ sơ này chưa có file CV hoặc dữ liệu CV tạo trên hệ thống để xem.')
+}
+
+const closeDetailModal = () => {
+  detailModalOpen.value = false
+  selectedProfileDetail.value = null
+}
+
+const closeModal = () => {
+  if (saving.value) return
+  modalOpen.value = false
+  resetForm()
+}
+
+const handleFileChange = (event) => {
+  const file = event.target.files?.[0]
+  if (!file) return
+  selectedFile.value = file
+}
+
+const buildFormData = () => {
+  const payload = new FormData()
+  payload.append('tieu_de_ho_so', form.tieu_de_ho_so)
+  payload.append('muc_tieu_nghe_nghiep', form.muc_tieu_nghe_nghiep || '')
+  payload.append('trinh_do', form.trinh_do || '')
+  payload.append('kinh_nghiem_nam', String(normalizeExperienceYears(form.kinh_nghiem_nam)))
+  payload.append('mo_ta_ban_than', form.mo_ta_ban_than || '')
+  payload.append('trang_thai', String(form.trang_thai))
+  if (selectedFile.value) {
+    payload.append('file_cv', selectedFile.value)
+  }
+  return payload
+}
+
+const submitProfile = async () => {
+  saving.value = true
+  try {
+    const payload = buildFormData()
+    if (editingProfileId.value) {
+      await profileService.updateProfile(editingProfileId.value, payload)
+      notify.success('Cập nhật hồ sơ thành công.')
+    } else {
+      await profileService.createProfile(payload)
+      notify.success('Tạo hồ sơ mới thành công.')
+    }
+    modalOpen.value = false
+    resetForm()
+    await fetchProfiles()
+  } catch (error) {
+    notify.apiError(error, 'Không thể lưu hồ sơ/CV.')
+  } finally {
+    saving.value = false
+  }
+}
+
+const toggleProfileStatus = async (profile) => {
+  if (togglingId.value) return
+  togglingId.value = profile.id
+  try {
+    await profileService.toggleProfileStatus(profile.id)
+    notify.success(`Đã ${Number(profile.trang_thai) === 1 ? 'ẩn' : 'công khai'} hồ sơ.`)
+    await fetchProfiles()
+  } catch (error) {
+    notify.apiError(error, 'Không thể cập nhật trạng thái hồ sơ.')
+  } finally {
+    togglingId.value = null
+  }
+}
+
+const openDeleteProfileModal = (profile) => {
+  if (deletingId.value) return
+  profileToDelete.value = profile
+}
+
+const closeDeleteProfileModal = () => {
+  if (deletingId.value) return
+  profileToDelete.value = null
+}
+
+const deleteProfile = async () => {
+  if (!profileToDelete.value || deletingId.value) return
+
+  deletingId.value = profileToDelete.value.id
+  try {
+    await profileService.deleteProfile(profileToDelete.value.id)
+    notify.success('Đã xóa hồ sơ thành công.')
+    profileToDelete.value = null
+    await fetchProfiles()
+  } catch (error) {
+    notify.apiError(error, 'Không thể xóa hồ sơ.')
+  } finally {
+    deletingId.value = null
+  }
+}
+
+const openParseResultModal = (result) => {
+  currentCandidate.value = getStoredCandidate()
+  parseResult.value = result
+  selectedPersonalFieldKeys.value = [
+    String(result?.parsed_name || '').trim() ? 'ho_ten' : null,
+    String(result?.parsed_email || '').trim() ? 'email' : null,
+    (() => {
+      const raw = String(result?.parsed_phone || '').replace(/\D/g, '')
+      return /^0\d{9}$/.test(raw) || /^84\d{9}$/.test(raw) ? 'so_dien_thoai' : null
+    })(),
+  ].filter(Boolean)
+  parseResultModalOpen.value = true
+}
+
+const closeParseResultModal = () => {
+  if (parsingId.value || applyingPersonalInfo.value) return
+  parseResultModalOpen.value = false
+  parseResult.value = null
+  selectedPersonalFieldKeys.value = []
+}
+
+const applyPersonalInfoFromCv = async () => {
+  if (applyingPersonalInfo.value) return
+
+  const payload = {}
+
+  if (selectedPersonalFieldKeys.value.includes('ho_ten') && String(parseResult.value?.parsed_name || '').trim()) {
+    payload.ho_ten = String(parseResult.value.parsed_name).trim()
+  }
+
+  if (selectedPersonalFieldKeys.value.includes('email') && String(parseResult.value?.parsed_email || '').trim()) {
+    payload.email = String(parseResult.value.parsed_email).trim()
+  }
+
+  if (selectedPersonalFieldKeys.value.includes('so_dien_thoai') && normalizedParsedPhone.value) {
+    payload.so_dien_thoai = normalizedParsedPhone.value
+  }
+
+  if (!Object.keys(payload).length) {
+    notify.warning('Hãy chọn ít nhất một trường hợp lệ để áp dụng từ CV.')
+    return
+  }
+
+  applyingPersonalInfo.value = true
+  try {
+    const response = await authService.updateProfile(payload)
+    const updatedUser = response?.data || null
+
+    if (updatedUser) {
+      updateStoredCandidate(updatedUser)
+      currentCandidate.value = updatedUser
+    }
+
+    const appliedLabels = availablePersonalFields.value
+      .filter((item) => selectedPersonalFieldKeys.value.includes(item.key))
+      .map((item) => item.label)
+      .join(', ')
+    notify.success(`Đã áp dụng thông tin cá nhân từ CV: ${appliedLabels}.`)
+  } catch (error) {
+    notify.apiError(error, 'Không thể áp dụng thông tin cá nhân từ CV.')
+  } finally {
+    applyingPersonalInfo.value = false
+  }
+}
+
+const parseProfile = async (profile) => {
+  if (parsingId.value) return
+
+  if (!profile.file_cv && !hasBuilderCv(profile)) {
+    notify.warning('Hồ sơ này chưa có đủ dữ liệu để phân tích.')
+    return
+  }
+
+  parsingId.value = profile.id
+  try {
+    const response = await profileService.parseProfileCv(profile.id)
+    const payload = response?.data || {}
+    const syncSummary = response?.sync_summary || null
+    openParseResultModal({
+      ...payload,
+      profileTitle: profile.tieu_de_ho_so,
+      syncSummary,
+    })
+    const updatedFields = Array.isArray(syncSummary?.updated_fields) ? syncSummary.updated_fields : []
+    const syncedSkills = Number(syncSummary?.synced_skills || 0)
+    const summaryParts = []
+
+    if (updatedFields.length) {
+      summaryParts.push(`đã tự điền ${updatedFields.length} trường hồ sơ`)
+    }
+
+    if (syncedSkills > 0) {
+      summaryParts.push(`đồng bộ ${syncedSkills} kỹ năng`)
+    }
+
+    notify.success(
+      summaryParts.length
+        ? `Đã phân tích CV thành công, ${summaryParts.join(' và ')}.`
+        : `Đã phân tích ${profile.file_cv ? 'CV file' : 'CV web'} thành công.`
+    )
+    await fetchProfiles()
+  } catch (error) {
+    notify.apiError(error, 'Không thể phân tích CV này.')
+    await fetchProfiles()
+  } finally {
+    parsingId.value = null
+  }
+}
+
+onMounted(fetchProfiles)
+</script>

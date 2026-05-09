@@ -1,179 +1,3 @@
-<script setup>
-import { computed, onMounted, ref } from 'vue'
-import { RouterLink, useRoute, useRouter } from 'vue-router'
-import { subscriptionService, walletService } from '@/services/api'
-import { useNotify } from '@/composables/useNotify'
-import {
-  getBillingFeatureLabel,
-  getEntitlementLabel,
-  getFreeQuotaText,
-  getSubscriptionQuotaText,
-  sortEntitlementsByFeature,
-} from '@/utils/billing'
-
-const notify = useNotify()
-const route = useRoute()
-const router = useRouter()
-
-const loading = ref(false)
-const purchasingCode = ref('')
-const selectedGateway = ref('momo')
-const plans = ref([])
-const currentSubscription = ref(null)
-const entitlements = ref([])
-const wallet = ref(null)
-const paymentGateways = [
-  {
-    value: 'momo',
-    label: 'MoMo',
-    description: 'Ví điện tử, chuyển nhanh sang app',
-  },
-  {
-    value: 'vnpay',
-    label: 'VNPay',
-    description: 'ATM, QR hoặc ứng dụng ngân hàng',
-  },
-  {
-    value: 'wallet',
-    label: 'Ví AI',
-    description: 'Dùng số dư hiện có để kích hoạt ngay',
-  },
-]
-
-const formatCurrency = (value) =>
-  `${new Intl.NumberFormat('vi-VN').format(Number(value || 0))} đ`
-
-const getGatewayLabel = (gateway) => {
-  if (gateway === 'vnpay') return 'VNPay'
-  if (gateway === 'momo') return 'MoMo'
-  if (gateway === 'wallet') return 'Ví AI'
-  return 'cổng thanh toán'
-}
-
-const cycleLabel = (cycle) => {
-  if (cycle === 'free') return 'Mặc định'
-  if (cycle === 'monthly') return 'Theo tháng'
-  if (cycle === 'yearly') return 'Theo năm'
-  return cycle || 'Không xác định'
-}
-
-const currentPlanCode = computed(() => currentSubscription.value?.goi_dich_vu?.ma_goi || null)
-const walletAvailable = computed(() => Number(wallet.value?.so_du_kha_dung || 0))
-
-const entitlementRows = computed(() => sortEntitlementsByFeature(entitlements.value))
-
-const sortedPlans = computed(() =>
-  [...plans.value].sort((left, right) => Number(left.is_free || 0) - Number(right.is_free || 0) || Number(left.gia || 0) - Number(right.gia || 0))
-)
-
-const buildSubscriptionReturnStorageKey = () => {
-  const status = typeof route.query.subscription === 'string' ? route.query.subscription : ''
-  const orderId = typeof route.query.orderId === 'string' ? route.query.orderId : ''
-
-  if (!status && !orderId) return ''
-
-  return `plans-subscription-return:${status || 'unknown'}:${orderId || 'no-order'}`
-}
-
-const loadPlans = async () => {
-  loading.value = true
-  try {
-    const [plansResponse, currentResponse, entitlementsResponse, walletResponse] = await Promise.all([
-      subscriptionService.getPlans(),
-      subscriptionService.getCurrent(),
-      subscriptionService.getEntitlements(),
-      walletService.getWallet(),
-    ])
-
-    plans.value = plansResponse?.data || []
-    currentSubscription.value = currentResponse?.data || null
-    entitlements.value = entitlementsResponse?.data?.entitlements || []
-    wallet.value = walletResponse?.data?.wallet || null
-  } catch (error) {
-    notify.apiError(error, 'Không thể tải dữ liệu gói Pro.')
-  } finally {
-    loading.value = false
-  }
-}
-
-const maybeHandleReturn = async () => {
-  const status = typeof route.query.subscription === 'string' ? route.query.subscription : ''
-  const orderId = typeof route.query.orderId === 'string' ? route.query.orderId : ''
-  if (!status && !orderId) return false
-
-  const handledKey = buildSubscriptionReturnStorageKey()
-  const alreadyHandled = handledKey && window.sessionStorage.getItem(handledKey) === '1'
-
-  if (alreadyHandled) {
-    return false
-  }
-
-  await loadPlans()
-
-  const message = typeof route.query.message === 'string' && route.query.message
-    ? route.query.message
-    : (status === 'success'
-        ? 'Kích hoạt gói Pro thành công.'
-        : status === 'pending'
-          ? 'Giao dịch đang chờ xác nhận thêm từ hệ thống.'
-          : 'Thanh toán gói Pro chưa thành công.')
-
-  if (status === 'success') {
-    notify.success(message)
-  } else if (status === 'pending') {
-    notify.warning(message)
-  } else {
-    notify.error(message)
-  }
-
-  if (handledKey) {
-    window.sessionStorage.setItem(handledKey, '1')
-  }
-
-  await router.push({ path: '/plans' })
-  return true
-}
-
-const purchasePlan = async (planCode) => {
-  purchasingCode.value = planCode
-  try {
-    const createPayment = selectedGateway.value === 'wallet'
-      ? subscriptionService.createWalletPurchase
-      : selectedGateway.value === 'vnpay'
-        ? subscriptionService.createVnpayPurchase
-        : subscriptionService.createMomoPurchase
-    const response = await createPayment(planCode)
-    const payUrl = response?.data?.pay_url || ''
-    const payment = response?.data?.payment || null
-
-    if (payUrl) {
-      window.location.href = payUrl
-      return
-    }
-
-    if (selectedGateway.value === 'wallet' && payment?.trang_thai === 'success') {
-      await loadPlans()
-      notify.success(response?.message || 'Đã kích hoạt gói Pro bằng ví AI.')
-      return
-    }
-
-    notify.warning('Giao dịch đã được tạo nhưng chưa có liên kết thanh toán để chuyển tiếp.')
-  } catch (error) {
-    notify.apiError(error, `Không thể tạo giao dịch mua gói Pro qua ${getGatewayLabel(selectedGateway.value)}.`)
-  } finally {
-    purchasingCode.value = ''
-  }
-}
-
-onMounted(async () => {
-  const handledReturn = await maybeHandleReturn()
-
-  if (!handledReturn) {
-    await loadPlans()
-  }
-})
-</script>
-
 <template>
   <div class="space-y-8">
     <section class="overflow-hidden rounded-[30px] border border-blue-200 bg-gradient-to-r from-[#0f163e] via-[#183389] to-[#2463eb] px-8 py-8 text-white shadow-[0_28px_90px_rgba(37,99,235,0.22)]">
@@ -196,7 +20,9 @@ onMounted(async () => {
               {{ currentSubscription.ngay_het_han ? new Intl.DateTimeFormat('vi-VN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(currentSubscription.ngay_het_han)) : 'Không giới hạn' }}
             </p>
           </template>
-          <p v-else class="mt-3 text-sm leading-7 text-blue-50/90">
+
+
+<p v-else class="mt-3 text-sm leading-7 text-blue-50/90">
             Bạn đang ở lớp Free mặc định. Hệ thống sẽ dùng free quota trước rồi mới đến ví AI.
           </p>
         </div>
@@ -387,3 +213,179 @@ onMounted(async () => {
     </div>
   </div>
 </template>
+
+<script setup>
+import { computed, onMounted, ref } from 'vue'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
+import { subscriptionService, walletService } from '@/services/api'
+import { useNotify } from '@/composables/useNotify'
+import {
+  getBillingFeatureLabel,
+  getEntitlementLabel,
+  getFreeQuotaText,
+  getSubscriptionQuotaText,
+  sortEntitlementsByFeature,
+} from '@/utils/billing'
+
+const notify = useNotify()
+const route = useRoute()
+const router = useRouter()
+
+const loading = ref(false)
+const purchasingCode = ref('')
+const selectedGateway = ref('momo')
+const plans = ref([])
+const currentSubscription = ref(null)
+const entitlements = ref([])
+const wallet = ref(null)
+const paymentGateways = [
+  {
+    value: 'momo',
+    label: 'MoMo',
+    description: 'Ví điện tử, chuyển nhanh sang app',
+  },
+  {
+    value: 'vnpay',
+    label: 'VNPay',
+    description: 'ATM, QR hoặc ứng dụng ngân hàng',
+  },
+  {
+    value: 'wallet',
+    label: 'Ví AI',
+    description: 'Dùng số dư hiện có để kích hoạt ngay',
+  },
+]
+
+const formatCurrency = (value) =>
+  `${new Intl.NumberFormat('vi-VN').format(Number(value || 0))} đ`
+
+const getGatewayLabel = (gateway) => {
+  if (gateway === 'vnpay') return 'VNPay'
+  if (gateway === 'momo') return 'MoMo'
+  if (gateway === 'wallet') return 'Ví AI'
+  return 'cổng thanh toán'
+}
+
+const cycleLabel = (cycle) => {
+  if (cycle === 'free') return 'Mặc định'
+  if (cycle === 'monthly') return 'Theo tháng'
+  if (cycle === 'yearly') return 'Theo năm'
+  return cycle || 'Không xác định'
+}
+
+const currentPlanCode = computed(() => currentSubscription.value?.goi_dich_vu?.ma_goi || null)
+const walletAvailable = computed(() => Number(wallet.value?.so_du_kha_dung || 0))
+
+const entitlementRows = computed(() => sortEntitlementsByFeature(entitlements.value))
+
+const sortedPlans = computed(() =>
+  [...plans.value].sort((left, right) => Number(left.is_free || 0) - Number(right.is_free || 0) || Number(left.gia || 0) - Number(right.gia || 0))
+)
+
+const buildSubscriptionReturnStorageKey = () => {
+  const status = typeof route.query.subscription === 'string' ? route.query.subscription : ''
+  const orderId = typeof route.query.orderId === 'string' ? route.query.orderId : ''
+
+  if (!status && !orderId) return ''
+
+  return `plans-subscription-return:${status || 'unknown'}:${orderId || 'no-order'}`
+}
+
+const loadPlans = async () => {
+  loading.value = true
+  try {
+    const [plansResponse, currentResponse, entitlementsResponse, walletResponse] = await Promise.all([
+      subscriptionService.getPlans(),
+      subscriptionService.getCurrent(),
+      subscriptionService.getEntitlements(),
+      walletService.getWallet(),
+    ])
+
+    plans.value = plansResponse?.data || []
+    currentSubscription.value = currentResponse?.data || null
+    entitlements.value = entitlementsResponse?.data?.entitlements || []
+    wallet.value = walletResponse?.data?.wallet || null
+  } catch (error) {
+    notify.apiError(error, 'Không thể tải dữ liệu gói Pro.')
+  } finally {
+    loading.value = false
+  }
+}
+
+const maybeHandleReturn = async () => {
+  const status = typeof route.query.subscription === 'string' ? route.query.subscription : ''
+  const orderId = typeof route.query.orderId === 'string' ? route.query.orderId : ''
+  if (!status && !orderId) return false
+
+  const handledKey = buildSubscriptionReturnStorageKey()
+  const alreadyHandled = handledKey && window.sessionStorage.getItem(handledKey) === '1'
+
+  if (alreadyHandled) {
+    return false
+  }
+
+  await loadPlans()
+
+  const message = typeof route.query.message === 'string' && route.query.message
+    ? route.query.message
+    : (status === 'success'
+        ? 'Kích hoạt gói Pro thành công.'
+        : status === 'pending'
+          ? 'Giao dịch đang chờ xác nhận thêm từ hệ thống.'
+          : 'Thanh toán gói Pro chưa thành công.')
+
+  if (status === 'success') {
+    notify.success(message)
+  } else if (status === 'pending') {
+    notify.warning(message)
+  } else {
+    notify.error(message)
+  }
+
+  if (handledKey) {
+    window.sessionStorage.setItem(handledKey, '1')
+  }
+
+  await router.push({ path: '/plans' })
+  return true
+}
+
+const purchasePlan = async (planCode) => {
+  purchasingCode.value = planCode
+  try {
+    const createPayment = selectedGateway.value === 'wallet'
+      ? subscriptionService.createWalletPurchase
+      : selectedGateway.value === 'vnpay'
+        ? subscriptionService.createVnpayPurchase
+        : subscriptionService.createMomoPurchase
+    const response = await createPayment(planCode)
+    const payUrl = response?.data?.pay_url || ''
+    const payment = response?.data?.payment || null
+
+    if (payUrl) {
+      window.location.href = payUrl
+      return
+    }
+
+    if (selectedGateway.value === 'wallet' && payment?.trang_thai === 'success') {
+      await loadPlans()
+      notify.success(response?.message || 'Đã kích hoạt gói Pro bằng ví AI.')
+      return
+    }
+
+    notify.warning('Giao dịch đã được tạo nhưng chưa có liên kết thanh toán để chuyển tiếp.')
+  } catch (error) {
+    notify.apiError(error, `Không thể tạo giao dịch mua gói Pro qua ${getGatewayLabel(selectedGateway.value)}.`)
+  } finally {
+    purchasingCode.value = ''
+  }
+}
+
+onMounted(async () => {
+  const handledReturn = await maybeHandleReturn()
+
+  if (!handledReturn) {
+    await loadPlans()
+  }
+})
+</script>

@@ -1,3 +1,666 @@
+<template>
+  <div>
+    <div class="mb-8 flex justify-between items-end">
+      <div>
+        <h1 class="text-2xl font-bold text-slate-900 dark:text-white">Việc đã ứng tuyển</h1>
+        <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Theo dõi trạng thái hồ sơ ứng tuyển của bạn.</p>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+      <div
+        v-for="stat in stats"
+        :key="stat.label"
+        class="bg-white dark:bg-slate-900 p-5 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800"
+      >
+        <div class="flex items-center justify-between mb-2">
+          <p class="text-sm font-medium text-slate-500 dark:text-slate-400">{{ stat.label }}</p>
+          <div class="p-2 rounded-lg" :class="stat.iconClass">
+            <span class="material-symbols-outlined">{{ stat.icon }}</span>
+          </div>
+        </div>
+        <h3 class="text-2xl font-bold">{{ stat.value }}</h3>
+      </div>
+    </div>
+
+    <div class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+      <div class="flex border-b border-slate-200 dark:border-slate-800 px-6 gap-6 overflow-x-auto">
+        <button
+          v-for="tab in statusTabs"
+          :key="tab.value || 'all'"
+          class="flex items-center border-b-2 pb-3 pt-4 font-medium text-sm whitespace-nowrap transition"
+          :class="activeStatus === tab.value
+            ? 'border-[#2463eb] text-[#2463eb] font-bold'
+            : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'"
+          type="button"
+          @click="selectStatus(tab.value)"
+        >
+          {{ tab.label }}
+          <span
+            class="ml-2 px-2 py-0.5 rounded text-[10px]"
+            :class="activeStatus === tab.value ? 'bg-[#2463eb]/10' : 'bg-slate-100 dark:bg-slate-800'"
+          >
+            {{ tab.total }}
+          </span>
+        </button>
+      </div>
+
+      <div v-if="loading" class="divide-y divide-slate-100 dark:divide-slate-800">
+        <div
+          v-for="index in 4"
+          :key="index"
+          class="p-5"
+        >
+          <div class="h-24 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800"></div>
+        </div>
+      </div>
+
+      <div
+        v-else-if="!applications.length"
+        class="px-6 py-16 text-center"
+      >
+        <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
+          <span class="material-symbols-outlined text-3xl text-slate-500">send</span>
+        </div>
+        <h2 class="mt-5 text-xl font-bold text-slate-900 dark:text-white">Chưa có ứng tuyển nào</h2>
+        <p class="mx-auto mt-3 max-w-xl text-sm leading-7 text-slate-500 dark:text-slate-400">
+          {{ activeStatus === STATUS_WITHDRAWN
+            ? 'Bạn chưa rút đơn ứng tuyển nào.'
+            : 'Bạn chưa nộp hồ sơ vào tin tuyển dụng nào trong nhóm trạng thái này.' }}
+        </p>
+        <RouterLink
+          :to="{ name: 'JobSearch' }"
+          class="mt-6 inline-flex rounded-xl bg-[#2463eb] px-5 py-3 text-sm font-bold text-white transition hover:bg-blue-700"
+        >
+          Tìm việc để ứng tuyển
+        </RouterLink>
+      </div>
+
+      <div ref="applicationListRef" v-else class="divide-y divide-slate-100 dark:divide-slate-800">
+        <div
+          v-for="application in applications"
+          :key="application.id"
+          :data-application-id="application.id"
+          class="p-5 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+        >
+          <div class="flex flex-col gap-4">
+            <div class="flex flex-col md:flex-row md:items-center gap-4 justify-between">
+              <div class="flex items-center gap-4 flex-1">
+              <div class="size-12 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center shrink-0">
+                <span class="material-symbols-outlined text-slate-500">domain</span>
+              </div>
+                <div class="flex-1">
+                  <h3 class="font-bold text-slate-900 dark:text-white">
+                    {{ application.tin_tuyen_dung?.tieu_de || 'Tin tuyển dụng đang cập nhật' }}
+                  </h3>
+                  <p class="text-sm text-slate-500 dark:text-slate-400">
+                    {{ application.tin_tuyen_dung?.cong_ty?.ten_cong_ty || 'Công ty đang cập nhật' }}
+                    <span v-if="application.tin_tuyen_dung?.dia_diem_lam_viec">• {{ application.tin_tuyen_dung.dia_diem_lam_viec }}</span>
+                  </p>
+                  <div class="mt-1.5 flex flex-wrap items-center gap-4 text-xs text-slate-400 dark:text-slate-500">
+                    <span class="flex items-center gap-1">
+                      <span class="material-symbols-outlined text-[14px]">calendar_today</span>
+                      Nộp ngày {{ formatAppliedDate(application.thoi_gian_ung_tuyen) }}
+                    </span>
+                    <span class="flex items-center gap-1">
+                      <span class="material-symbols-outlined text-[14px]">description</span>
+                      {{ application.ho_so?.tieu_de_ho_so || `Hồ sơ #${application.ho_so_id}` }}
+                    </span>
+                    <span class="flex items-center gap-1" v-if="application.tin_tuyen_dung?.muc_luong_tu">
+                      <span class="material-symbols-outlined text-[14px]">payments</span>
+                      {{ formatCurrency(application.tin_tuyen_dung.muc_luong_tu) }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="flex items-center gap-4 shrink-0">
+                <span
+                  class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold"
+                  :class="statusMeta(application.trang_thai).classes"
+                >
+                  <span class="size-1.5 rounded-full" :class="statusMeta(application.trang_thai).dot"></span>
+                  {{ statusMeta(application.trang_thai).label }}
+                </span>
+                <span
+                  v-if="hasOffer(application)"
+                  class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold"
+                  :class="offerStatusMeta(application.trang_thai_offer).classes"
+                >
+                  <span class="size-1.5 rounded-full" :class="offerStatusMeta(application.trang_thai_offer).dot"></span>
+                  {{ offerStatusMeta(application.trang_thai_offer).label }}
+                </span>
+                <span
+                  v-if="application.da_rut_don"
+                  class="inline-flex items-center rounded-full bg-slate-200 px-2.5 py-1 text-xs font-bold text-slate-700 dark:bg-slate-700 dark:text-slate-200"
+                >
+                  Đã rút
+                </span>
+                <button
+                  v-if="canEditApplication(application)"
+                  class="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                  type="button"
+                  @click="openEditModal(application)"
+                >
+                  <span class="material-symbols-outlined text-[16px]">edit_square</span>
+                  Cập nhật CV
+                </button>
+                <button
+                  class="inline-flex items-center gap-2 rounded-lg border border-blue-200 px-3 py-2 text-xs font-semibold text-blue-700 transition hover:bg-blue-50 disabled:opacity-60 dark:border-blue-500/20 dark:text-blue-300 dark:hover:bg-blue-500/10"
+                  :disabled="exportingApplicationId === `${application.id}:full`"
+                  type="button"
+                  @click="downloadApplicationExport(application, 'full')"
+                >
+                  <span class="material-symbols-outlined text-[16px]">picture_as_pdf</span>
+                  {{ exportingApplicationId === `${application.id}:full` ? 'Đang tạo...' : 'PDF' }}
+                </button>
+                <RouterLink
+                  v-if="application.tin_tuyen_dung?.id"
+                  :to="{ name: 'JobDetail', params: { id: application.tin_tuyen_dung.id } }"
+                  class="text-slate-400 transition hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300"
+                >
+                  <span class="material-symbols-outlined">chevron_right</span>
+                </RouterLink>
+              </div>
+            </div>
+
+            <div
+              v-if="application.application_timeline?.length"
+              :data-application-section="`${application.id}:timeline`"
+              class="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950/40"
+            >
+              <div class="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p class="text-sm font-bold text-slate-900 dark:text-white">Timeline ứng tuyển tổng hợp</p>
+                  <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    Nộp hồ sơ, phỏng vấn, offer và onboarding trong một luồng.
+                  </p>
+                </div>
+                <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-500 dark:bg-slate-800 dark:text-slate-300">
+                  {{ application.application_timeline.length }} mốc
+                </span>
+              </div>
+
+              <div class="mt-4 grid gap-3 lg:grid-cols-2">
+                <article
+                  v-for="item in application.application_timeline"
+                  :key="item.key"
+                  class="rounded-2xl border px-4 py-3"
+                  :class="timelineStatusClasses(item.status)"
+                >
+                  <div class="flex items-start gap-3">
+                    <span class="material-symbols-outlined mt-0.5 text-[20px]">{{ item.icon || 'radio_button_checked' }}</span>
+                    <div class="min-w-0 flex-1">
+                      <div class="flex flex-wrap items-center gap-2">
+                        <p class="font-bold">{{ item.title }}</p>
+                        <span class="rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide dark:bg-slate-950/40">
+                          {{ timelineStatusLabel(item.status) }}
+                        </span>
+                      </div>
+                      <p class="mt-1 text-xs opacity-80">{{ timelineDate(item) }}</p>
+                      <p v-if="item.description" class="mt-2 text-sm leading-6">{{ item.description }}</p>
+                      <p v-if="item.due_at" class="mt-1 text-xs font-semibold">Hạn: {{ formatDateTime(item.due_at) }}</p>
+                    </div>
+                  </div>
+                </article>
+              </div>
+            </div>
+
+            <div
+              v-if="sortedInterviewRounds(application).length"
+              :data-application-section="`${application.id}:interview`"
+              class="rounded-2xl border border-violet-200 bg-violet-50/70 p-4 dark:border-violet-500/20 dark:bg-violet-500/10"
+            >
+              <div class="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p class="text-sm font-bold text-slate-900 dark:text-white">Timeline phỏng vấn</p>
+                  <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    {{ sortedInterviewRounds(application).length }} vòng trong quy trình tuyển dụng.
+                  </p>
+                </div>
+                <button
+                  v-if="canExportDocument(application, 'interview')"
+                  class="inline-flex items-center gap-2 rounded-xl border border-violet-200 bg-white px-3 py-2 text-xs font-bold text-violet-700 transition hover:bg-violet-50 disabled:opacity-60 dark:border-violet-500/20 dark:bg-slate-950/40 dark:text-violet-300"
+                  :disabled="exportingApplicationId === `${application.id}:interview`"
+                  type="button"
+                  @click="downloadApplicationExport(application, 'interview')"
+                >
+                  <span class="material-symbols-outlined text-[16px]">picture_as_pdf</span>
+                  {{ exportingApplicationId === `${application.id}:interview` ? 'Đang tạo...' : 'PDF phỏng vấn' }}
+                </button>
+              </div>
+
+              <div class="mt-4 space-y-3">
+                <div
+                  v-for="round in sortedInterviewRounds(application)"
+                  :key="round.id"
+                  :data-interview-round-id="round.id"
+                  class="rounded-2xl bg-white p-4 dark:bg-slate-950/40"
+                >
+                  <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      <div class="flex flex-wrap items-center gap-2">
+                        <p class="font-bold text-slate-900 dark:text-white">{{ round.ten_vong }}</p>
+                        <span class="rounded-full px-2.5 py-1 text-[11px] font-bold" :class="roundStatusMeta(round.trang_thai).classes">
+                          {{ roundStatusMeta(round.trang_thai).label }}
+                        </span>
+                        <span class="rounded-full px-2.5 py-1 text-[11px] font-bold" :class="interviewAttendanceMeta(round.trang_thai_tham_gia).classes">
+                          {{ interviewAttendanceMeta(round.trang_thai_tham_gia).label }}
+                        </span>
+                      </div>
+                      <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">
+                        {{ roundTypeLabel(round.loai_vong) }} • {{ formatDateTime(round.ngay_hen_phong_van) }}
+                        <span v-if="round.hinh_thuc_phong_van">• {{ round.hinh_thuc_phong_van === 'online' ? 'Online' : round.hinh_thuc_phong_van === 'offline' ? 'Trực tiếp' : 'Điện thoại' }}</span>
+                      </p>
+                      <p v-if="round.nguoi_phong_van" class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                        Người phỏng vấn: {{ round.nguoi_phong_van }}
+                      </p>
+                      <p v-if="round.link_phong_van" class="mt-1 break-words text-xs text-slate-500 dark:text-slate-400">
+                        Link / địa điểm: {{ round.link_phong_van }}
+                      </p>
+                      <p v-if="round.ket_qua" class="mt-2 text-xs font-semibold text-slate-600 dark:text-slate-300">
+                        Kết quả: {{ round.ket_qua }}
+                      </p>
+                    </div>
+
+                    <div
+                      v-if="canRespondInterviewRound(application, round)"
+                      class="flex flex-wrap items-center gap-2 lg:justify-end"
+                    >
+                      <button
+                        class="inline-flex items-center justify-center rounded-xl border border-emerald-200 bg-white px-4 py-2 text-xs font-bold text-emerald-700 transition hover:bg-emerald-50 disabled:opacity-60 dark:border-emerald-500/20 dark:bg-slate-950/40 dark:text-emerald-300"
+                        :disabled="confirmingInterviewId === `${application.id}-${round.id}`"
+                        type="button"
+                        @click="respondInterviewRound(application, round, 1)"
+                      >
+                        {{ confirmingInterviewId === `${application.id}-${round.id}` ? 'Đang lưu...' : 'Xác nhận' }}
+                      </button>
+                      <button
+                        class="inline-flex items-center justify-center rounded-xl border border-rose-200 bg-white px-4 py-2 text-xs font-bold text-rose-700 transition hover:bg-rose-50 disabled:opacity-60 dark:border-rose-500/20 dark:bg-slate-950/40 dark:text-rose-300"
+                        :disabled="confirmingInterviewId === `${application.id}-${round.id}`"
+                        type="button"
+                        @click="respondInterviewRound(application, round, 2)"
+                      >
+                        Không tham gia
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div
+              v-if="shouldShowInterviewSection(application)"
+              :data-application-section="`${application.id}:interview`"
+              class="rounded-2xl border border-violet-200 bg-violet-50/70 p-4 dark:border-violet-500/20 dark:bg-violet-500/10"
+            >
+              <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div class="space-y-2">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <p class="text-sm font-bold text-slate-900 dark:text-white">Lịch phỏng vấn</p>
+                    <span
+                      class="inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold"
+                      :class="interviewAttendanceMeta(application.trang_thai_tham_gia_phong_van).classes"
+                    >
+                      {{ interviewAttendanceMeta(application.trang_thai_tham_gia_phong_van).label }}
+                    </span>
+                  </div>
+                  <p class="text-sm text-slate-600 dark:text-slate-300">
+                    {{ formatDateTime(application.ngay_hen_phong_van) }}
+                    <span v-if="application.hinh_thuc_phong_van">• {{ application.hinh_thuc_phong_van === 'online' ? 'Online' : application.hinh_thuc_phong_van === 'offline' ? 'Trực tiếp' : 'Điện thoại' }}</span>
+                  </p>
+                  <p v-if="application.nguoi_phong_van" class="text-xs text-slate-500 dark:text-slate-400">
+                    Người phỏng vấn: {{ application.nguoi_phong_van }}
+                  </p>
+                  <p v-if="application.link_phong_van" class="text-xs text-slate-500 dark:text-slate-400 break-words">
+                    Link / địa điểm: {{ application.link_phong_van }}
+                  </p>
+                </div>
+
+                <div
+                  v-if="canRespondInterview(application) || canExportDocument(application, 'interview')"
+                  class="flex flex-wrap items-center gap-2 lg:justify-end"
+                >
+                  <button
+                    v-if="canExportDocument(application, 'interview')"
+                    class="inline-flex items-center justify-center rounded-xl border border-violet-200 bg-white px-4 py-2 text-xs font-bold text-violet-700 transition hover:bg-violet-50 disabled:opacity-60 dark:border-violet-500/20 dark:bg-slate-950/40 dark:text-violet-300"
+                    :disabled="exportingApplicationId === `${application.id}:interview`"
+                    type="button"
+                    @click="downloadApplicationExport(application, 'interview')"
+                  >
+                    {{ exportingApplicationId === `${application.id}:interview` ? 'Đang tạo...' : 'PDF phỏng vấn' }}
+                  </button>
+                  <button
+                    v-if="canRespondInterview(application)"
+                    class="inline-flex items-center justify-center rounded-xl border border-emerald-200 bg-white px-4 py-2 text-xs font-bold text-emerald-700 transition hover:bg-emerald-50 disabled:opacity-60 dark:border-emerald-500/20 dark:bg-slate-950/40 dark:text-emerald-300 dark:hover:bg-emerald-500/10"
+                    :disabled="confirmingInterviewId === application.id"
+                    type="button"
+                    @click="respondInterview(application, 1)"
+                  >
+                    {{ confirmingInterviewId === application.id && Number(application.trang_thai_tham_gia_phong_van) !== 2 ? 'Đang lưu...' : 'Xác nhận tham gia' }}
+                  </button>
+                  <button
+                    v-if="canRespondInterview(application)"
+                    class="inline-flex items-center justify-center rounded-xl border border-rose-200 bg-white px-4 py-2 text-xs font-bold text-rose-700 transition hover:bg-rose-50 disabled:opacity-60 dark:border-rose-500/20 dark:bg-slate-950/40 dark:text-rose-300 dark:hover:bg-rose-500/10"
+                    :disabled="confirmingInterviewId === application.id"
+                    type="button"
+                    @click="respondInterview(application, 2)"
+                  >
+                    {{ confirmingInterviewId === application.id && Number(application.trang_thai_tham_gia_phong_van) === 2 ? 'Đang lưu...' : 'Không tham gia được' }}
+                  </button>
+                </div>
+              </div>
+
+              <div
+                v-if="canWithdrawApplication(application) || application.da_rut_don"
+                class="mt-3 flex flex-wrap items-center gap-2"
+              >
+                <button
+                  v-if="canWithdrawApplication(application)"
+                  class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-950/40 dark:text-slate-200 dark:hover:bg-slate-800"
+                  :disabled="confirmingInterviewId === application.id"
+                  type="button"
+                  @click="withdrawApplication(application)"
+                >
+                  {{ confirmingInterviewId === application.id ? 'Đang xử lý...' : 'Rút đơn ứng tuyển' }}
+                </button>
+                <p
+                  v-if="application.da_rut_don"
+                  class="text-xs text-slate-500 dark:text-slate-400"
+                >
+                  Đã rút lúc {{ formatDateTime(application.thoi_gian_rut_don) }}
+                </p>
+              </div>
+            </div>
+
+            <div
+              v-if="hasOffer(application)"
+              :data-application-section="`${application.id}:offer`"
+              class="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4 dark:border-emerald-500/20 dark:bg-emerald-500/10"
+            >
+              <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div class="space-y-2">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <p class="text-sm font-bold text-slate-900 dark:text-white">Offer / nhận việc</p>
+                    <span
+                      class="inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold"
+                      :class="offerStatusMeta(application.trang_thai_offer).classes"
+                    >
+                      {{ offerStatusMeta(application.trang_thai_offer).label }}
+                    </span>
+                  </div>
+                  <p class="text-sm text-slate-600 dark:text-slate-300">
+                    Gửi lúc {{ formatDateTime(application.thoi_gian_gui_offer) }}
+                    <span v-if="application.han_phan_hoi_offer">• Hạn phản hồi {{ formatDateTime(application.han_phan_hoi_offer) }}</span>
+                  </p>
+                  <p v-if="application.ghi_chu_offer" class="text-sm leading-6 text-slate-600 dark:text-slate-300">
+                    {{ application.ghi_chu_offer }}
+                  </p>
+                  <a
+                    v-if="application.link_offer"
+                    :href="application.link_offer"
+                    class="inline-flex text-xs font-bold text-emerald-700 underline underline-offset-4 dark:text-emerald-300"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Xem tài liệu offer
+                  </a>
+                  <button
+                    v-if="canExportDocument(application, 'offer')"
+                    class="ml-0 inline-flex text-xs font-bold text-emerald-700 underline underline-offset-4 disabled:opacity-60 dark:text-emerald-300"
+                    :disabled="exportingApplicationId === `${application.id}:offer`"
+                    type="button"
+                    @click="downloadApplicationExport(application, 'offer')"
+                  >
+                    {{ exportingApplicationId === `${application.id}:offer` ? 'Đang tạo offer PDF...' : 'Tải offer PDF' }}
+                  </button>
+                  <p v-if="application.thoi_gian_phan_hoi_offer" class="text-xs text-slate-500 dark:text-slate-400">
+                    Đã phản hồi lúc {{ formatDateTime(application.thoi_gian_phan_hoi_offer) }}
+                  </p>
+                </div>
+
+                <div
+                  v-if="canRespondOffer(application)"
+                  class="flex flex-wrap items-center gap-2 lg:justify-end"
+                >
+                  <button
+                    class="inline-flex items-center justify-center rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-emerald-700 disabled:opacity-60"
+                    :disabled="respondingOfferId === application.id"
+                    type="button"
+                    @click="respondOffer(application, 'accept')"
+                  >
+                    {{ respondingOfferId === application.id ? 'Đang lưu...' : 'Chấp nhận offer' }}
+                  </button>
+                  <button
+                    class="inline-flex items-center justify-center rounded-xl border border-rose-200 bg-white px-4 py-2 text-xs font-bold text-rose-700 transition hover:bg-rose-50 disabled:opacity-60 dark:border-rose-500/20 dark:bg-slate-950/40 dark:text-rose-300 dark:hover:bg-rose-500/10"
+                    :disabled="respondingOfferId === application.id"
+                    type="button"
+                    @click="respondOffer(application, 'decline')"
+                  >
+                    {{ respondingOfferId === application.id ? 'Đang lưu...' : 'Từ chối offer' }}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div
+              v-if="application.onboarding_plan"
+              :data-application-section="`${application.id}:onboarding`"
+              class="rounded-2xl border border-blue-200 bg-blue-50/80 p-4 dark:border-blue-500/20 dark:bg-blue-500/10"
+            >
+              <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <p class="text-sm font-bold text-slate-900 dark:text-white">Onboarding nhận việc</p>
+                  <p class="mt-1 text-sm text-slate-600 dark:text-slate-300">
+                    Ngày bắt đầu: {{ application.onboarding_plan.ngay_bat_dau || 'HR sẽ cập nhật' }}
+                    <span v-if="application.onboarding_plan.dia_diem_lam_viec">• {{ application.onboarding_plan.dia_diem_lam_viec }}</span>
+                  </p>
+                  <p v-if="application.onboarding_plan.loi_chao_mung" class="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">
+                    {{ application.onboarding_plan.loi_chao_mung }}
+                  </p>
+                </div>
+                <div class="text-left lg:text-right">
+                  <p class="text-2xl font-black text-[#2463eb]">{{ onboardingProgress(application).percent || 0 }}%</p>
+                  <p class="text-xs font-bold text-slate-500 dark:text-slate-400">
+                    {{ onboardingProgress(application).done }}/{{ onboardingProgress(application).total }} hoàn tất
+                  </p>
+                  <button
+                    v-if="canExportDocument(application, 'onboarding')"
+                    class="mt-2 text-xs font-bold text-blue-700 underline underline-offset-4 disabled:opacity-60 dark:text-blue-300"
+                    :disabled="exportingApplicationId === `${application.id}:onboarding`"
+                    type="button"
+                    @click="downloadApplicationExport(application, 'onboarding')"
+                  >
+                    {{ exportingApplicationId === `${application.id}:onboarding` ? 'Đang tạo PDF...' : 'Tải PDF' }}
+                  </button>
+                </div>
+              </div>
+
+              <div v-if="application.onboarding_plan.tai_lieu_can_chuan_bi?.length" class="mt-4">
+                <p class="text-xs font-bold uppercase tracking-[0.18em] text-blue-700 dark:text-blue-300">Tài liệu cần chuẩn bị</p>
+                <div class="mt-2 flex flex-wrap gap-2">
+                  <span
+                    v-for="doc in application.onboarding_plan.tai_lieu_can_chuan_bi"
+                    :key="doc"
+                    class="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-950/50 dark:text-slate-300"
+                  >
+                    {{ doc }}
+                  </span>
+                </div>
+              </div>
+
+              <div class="mt-4 space-y-2">
+                <div
+                  v-for="task in application.onboarding_plan.tasks || []"
+                  :key="task.id"
+                  :data-onboarding-task-id="task.id"
+                  class="flex flex-col gap-3 rounded-xl bg-white px-4 py-3 dark:bg-slate-950/50 md:flex-row md:items-center md:justify-between"
+                >
+                  <div>
+                    <p class="text-sm font-bold text-slate-900 dark:text-white">{{ task.tieu_de }}</p>
+                    <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                      {{ task.nguoi_phu_trach === 'candidate' ? 'Bạn phụ trách' : 'HR phụ trách' }}
+                      <span v-if="task.han_hoan_tat">• hạn {{ task.han_hoan_tat }}</span>
+                    </p>
+                  </div>
+                  <div v-if="task.nguoi_phu_trach === 'candidate'" class="flex flex-wrap gap-2">
+                    <button
+                      class="rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 transition hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:text-slate-300"
+                      :disabled="onboardingTaskUpdatingId === task.id || task.trang_thai === 'in_progress'"
+                      type="button"
+                      @click="updateOnboardingTask(application, task, 'in_progress')"
+                    >
+                      Đang làm
+                    </button>
+                    <button
+                      class="rounded-xl bg-blue-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-blue-700 disabled:opacity-60"
+                      :disabled="onboardingTaskUpdatingId === task.id || task.trang_thai === 'done'"
+                      type="button"
+                      @click="updateOnboardingTask(application, task, 'done')"
+                    >
+                      Hoàn tất
+                    </button>
+                  </div>
+                  <span v-else class="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-500 dark:bg-slate-800 dark:text-slate-300">
+                    {{ task.trang_thai === 'done' ? 'Hoàn tất' : task.trang_thai === 'in_progress' ? 'Đang làm' : 'Chờ HR' }}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div
+        v-if="!loading && applications.length && pagination.last_page > 1"
+        class="flex items-center justify-between border-t border-slate-200 dark:border-slate-800 px-6 py-4"
+      >
+          <p class="text-xs text-slate-500 dark:text-slate-400">
+          Hiển thị {{ pagination.from }}-{{ pagination.to }} của {{ pagination.total }} kết quả
+        </p>
+        <div class="flex gap-2">
+          <button
+            class="h-8 w-8 flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-800 text-slate-500 disabled:opacity-50"
+            :disabled="pagination.current_page === 1"
+            type="button"
+            @click="changePage(pagination.current_page - 1)"
+          >
+            <span class="material-symbols-outlined text-[18px]">chevron_left</span>
+          </button>
+          <button
+            v-for="page in pagination.last_page"
+            :key="page"
+            class="h-8 w-8 flex items-center justify-center rounded-lg font-bold text-xs transition"
+            :class="page === pagination.current_page
+              ? 'bg-[#2463eb] text-white'
+              : 'border border-slate-200 dark:border-slate-800 text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800'"
+            type="button"
+            @click="changePage(page)"
+          >
+            {{ page }}
+          </button>
+          <button
+            class="h-8 w-8 flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-800 text-slate-500 disabled:opacity-50"
+            :disabled="pagination.current_page === pagination.last_page"
+            type="button"
+            @click="changePage(pagination.current_page + 1)"
+          >
+            <span class="material-symbols-outlined text-[18px]">chevron_right</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div
+      v-if="editModalOpen"
+      class="fixed inset-0 z-50 overflow-y-auto bg-slate-950/55 backdrop-blur-sm"
+      @click.self="closeEditModal"
+    >
+      <div class="flex min-h-full items-center justify-center px-4 py-6">
+        <div class="flex max-h-[calc(100vh-3rem)] w-full max-w-2xl flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-950">
+        <div class="flex items-start justify-between border-b border-slate-100 px-6 py-5 dark:border-slate-800">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-[0.28em] text-blue-500">Cập nhật ứng tuyển</p>
+            <h3 class="mt-2 text-2xl font-bold text-slate-900 dark:text-white">{{ editableApplication?.tin_tuyen_dung?.tieu_de }}</h3>
+            <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">
+              Bạn chỉ có thể đổi CV khi đơn vẫn đang chờ duyệt.
+            </p>
+          </div>
+          <button
+            class="rounded-full p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-900 dark:hover:text-slate-200"
+            type="button"
+            @click="closeEditModal"
+          >
+            <span class="material-symbols-outlined">close</span>
+          </button>
+        </div>
+
+        <div class="min-h-0 flex-1 space-y-5 overflow-y-auto px-6 py-6">
+          <div v-if="loadingProfiles" class="rounded-2xl bg-slate-50 px-4 py-5 text-sm text-slate-500 dark:bg-slate-900 dark:text-slate-400">
+            Đang tải danh sách hồ sơ...
+          </div>
+
+          <template v-else>
+            <div>
+              <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">Chọn hồ sơ thay thế</label>
+              <select
+                v-model="selectedProfileId"
+                class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:focus:ring-blue-500/20"
+              >
+                <option value="" disabled>Chọn hồ sơ của bạn</option>
+                <option v-for="profile in profiles" :key="profile.id" :value="String(profile.id)">
+                  {{ profile.tieu_de_ho_so || `Hồ sơ #${profile.id}` }}
+                </option>
+              </select>
+            </div>
+
+            <div v-if="selectedProfile" class="rounded-2xl bg-slate-50 px-4 py-4 text-sm text-slate-600 dark:bg-slate-900 dark:text-slate-400">
+              <p class="font-semibold text-slate-800 dark:text-slate-200">{{ selectedProfile.tieu_de_ho_so || `Hồ sơ #${selectedProfile.id}` }}</p>
+              <p class="mt-1">
+                Kinh nghiệm: {{ formatExperienceYears(selectedProfile.kinh_nghiem_nam) }}
+                <span v-if="selectedProfile.vi_tri_mong_muon">• Mục tiêu: {{ selectedProfile.vi_tri_mong_muon }}</span>
+              </p>
+            </div>
+
+            <div>
+              <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">Thư xin việc hiện tại</label>
+              <textarea
+                v-model="coverLetter"
+                rows="5"
+                maxlength="5000"
+                class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:focus:ring-blue-500/20"
+                placeholder="Bạn có thể chỉnh lại thư xin việc để phù hợp với hồ sơ mới."
+              />
+              <div class="mt-2 text-right text-xs text-slate-400 dark:text-slate-500">{{ coverLetter.length }}/5000</div>
+            </div>
+          </template>
+
+
+</div>
+
+        <div class="flex flex-col gap-3 border-t border-slate-100 px-6 py-5 dark:border-slate-800 sm:flex-row sm:justify-end">
+          <button
+            class="rounded-2xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-900"
+            type="button"
+            @click="closeEditModal"
+          >
+            Hủy
+          </button>
+          <button
+            class="rounded-2xl bg-blue-600 px-5 py-3 text-sm font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+            :disabled="!selectedProfileId || updating || loadingProfiles"
+            type="button"
+            @click="submitApplicationUpdate"
+          >
+            {{ updating ? 'Đang cập nhật...' : 'Lưu thay đổi' }}
+          </button>
+        </div>
+      </div>
+      </div>
+    </div>
+  </div>
+</template>
+
 <script setup>
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
@@ -6,6 +669,7 @@ import { useNotify } from '@/composables/useNotify'
 import { getStoredUser } from '@/utils/authStorage'
 import { connectPrivateChannel } from '@/services/realtime'
 import { formatDateTimeVN, formatDateVN, formatHistoricalDateVN } from '@/utils/dateTime'
+import { formatExperienceYears } from '@/utils/experience'
 import {
   APPLICATION_STATUS,
   OFFER_STATUS,
@@ -658,664 +1322,3 @@ onUnmounted(() => {
   }
 })
 </script>
-
-<template>
-  <div>
-    <div class="mb-8 flex justify-between items-end">
-      <div>
-        <h1 class="text-2xl font-bold text-slate-900 dark:text-white">Việc đã ứng tuyển</h1>
-        <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Theo dõi trạng thái hồ sơ ứng tuyển của bạn.</p>
-      </div>
-    </div>
-
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-      <div
-        v-for="stat in stats"
-        :key="stat.label"
-        class="bg-white dark:bg-slate-900 p-5 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800"
-      >
-        <div class="flex items-center justify-between mb-2">
-          <p class="text-sm font-medium text-slate-500 dark:text-slate-400">{{ stat.label }}</p>
-          <div class="p-2 rounded-lg" :class="stat.iconClass">
-            <span class="material-symbols-outlined">{{ stat.icon }}</span>
-          </div>
-        </div>
-        <h3 class="text-2xl font-bold">{{ stat.value }}</h3>
-      </div>
-    </div>
-
-    <div class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-      <div class="flex border-b border-slate-200 dark:border-slate-800 px-6 gap-6 overflow-x-auto">
-        <button
-          v-for="tab in statusTabs"
-          :key="tab.value || 'all'"
-          class="flex items-center border-b-2 pb-3 pt-4 font-medium text-sm whitespace-nowrap transition"
-          :class="activeStatus === tab.value
-            ? 'border-[#2463eb] text-[#2463eb] font-bold'
-            : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'"
-          type="button"
-          @click="selectStatus(tab.value)"
-        >
-          {{ tab.label }}
-          <span
-            class="ml-2 px-2 py-0.5 rounded text-[10px]"
-            :class="activeStatus === tab.value ? 'bg-[#2463eb]/10' : 'bg-slate-100 dark:bg-slate-800'"
-          >
-            {{ tab.total }}
-          </span>
-        </button>
-      </div>
-
-      <div v-if="loading" class="divide-y divide-slate-100 dark:divide-slate-800">
-        <div
-          v-for="index in 4"
-          :key="index"
-          class="p-5"
-        >
-          <div class="h-24 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800"></div>
-        </div>
-      </div>
-
-      <div
-        v-else-if="!applications.length"
-        class="px-6 py-16 text-center"
-      >
-        <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
-          <span class="material-symbols-outlined text-3xl text-slate-500">send</span>
-        </div>
-        <h2 class="mt-5 text-xl font-bold text-slate-900 dark:text-white">Chưa có ứng tuyển nào</h2>
-        <p class="mx-auto mt-3 max-w-xl text-sm leading-7 text-slate-500 dark:text-slate-400">
-          {{ activeStatus === STATUS_WITHDRAWN
-            ? 'Bạn chưa rút đơn ứng tuyển nào.'
-            : 'Bạn chưa nộp hồ sơ vào tin tuyển dụng nào trong nhóm trạng thái này.' }}
-        </p>
-        <RouterLink
-          :to="{ name: 'JobSearch' }"
-          class="mt-6 inline-flex rounded-xl bg-[#2463eb] px-5 py-3 text-sm font-bold text-white transition hover:bg-blue-700"
-        >
-          Tìm việc để ứng tuyển
-        </RouterLink>
-      </div>
-
-      <div ref="applicationListRef" v-else class="divide-y divide-slate-100 dark:divide-slate-800">
-        <div
-          v-for="application in applications"
-          :key="application.id"
-          :data-application-id="application.id"
-          class="p-5 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
-        >
-          <div class="flex flex-col gap-4">
-            <div class="flex flex-col md:flex-row md:items-center gap-4 justify-between">
-              <div class="flex items-center gap-4 flex-1">
-              <div class="size-12 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center shrink-0">
-                <span class="material-symbols-outlined text-slate-500">domain</span>
-              </div>
-                <div class="flex-1">
-                  <h3 class="font-bold text-slate-900 dark:text-white">
-                    {{ application.tin_tuyen_dung?.tieu_de || 'Tin tuyển dụng đang cập nhật' }}
-                  </h3>
-                  <p class="text-sm text-slate-500 dark:text-slate-400">
-                    {{ application.tin_tuyen_dung?.cong_ty?.ten_cong_ty || 'Công ty đang cập nhật' }}
-                    <span v-if="application.tin_tuyen_dung?.dia_diem_lam_viec">• {{ application.tin_tuyen_dung.dia_diem_lam_viec }}</span>
-                  </p>
-                  <div class="mt-1.5 flex flex-wrap items-center gap-4 text-xs text-slate-400 dark:text-slate-500">
-                    <span class="flex items-center gap-1">
-                      <span class="material-symbols-outlined text-[14px]">calendar_today</span>
-                      Nộp ngày {{ formatAppliedDate(application.thoi_gian_ung_tuyen) }}
-                    </span>
-                    <span class="flex items-center gap-1">
-                      <span class="material-symbols-outlined text-[14px]">description</span>
-                      {{ application.ho_so?.tieu_de_ho_so || `Hồ sơ #${application.ho_so_id}` }}
-                    </span>
-                    <span class="flex items-center gap-1" v-if="application.tin_tuyen_dung?.muc_luong_tu">
-                      <span class="material-symbols-outlined text-[14px]">payments</span>
-                      {{ formatCurrency(application.tin_tuyen_dung.muc_luong_tu) }}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div class="flex items-center gap-4 shrink-0">
-                <span
-                  class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold"
-                  :class="statusMeta(application.trang_thai).classes"
-                >
-                  <span class="size-1.5 rounded-full" :class="statusMeta(application.trang_thai).dot"></span>
-                  {{ statusMeta(application.trang_thai).label }}
-                </span>
-                <span
-                  v-if="hasOffer(application)"
-                  class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold"
-                  :class="offerStatusMeta(application.trang_thai_offer).classes"
-                >
-                  <span class="size-1.5 rounded-full" :class="offerStatusMeta(application.trang_thai_offer).dot"></span>
-                  {{ offerStatusMeta(application.trang_thai_offer).label }}
-                </span>
-                <span
-                  v-if="application.da_rut_don"
-                  class="inline-flex items-center rounded-full bg-slate-200 px-2.5 py-1 text-xs font-bold text-slate-700 dark:bg-slate-700 dark:text-slate-200"
-                >
-                  Đã rút
-                </span>
-                <button
-                  v-if="canEditApplication(application)"
-                  class="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-                  type="button"
-                  @click="openEditModal(application)"
-                >
-                  <span class="material-symbols-outlined text-[16px]">edit_square</span>
-                  Cập nhật CV
-                </button>
-                <button
-                  class="inline-flex items-center gap-2 rounded-lg border border-blue-200 px-3 py-2 text-xs font-semibold text-blue-700 transition hover:bg-blue-50 disabled:opacity-60 dark:border-blue-500/20 dark:text-blue-300 dark:hover:bg-blue-500/10"
-                  :disabled="exportingApplicationId === `${application.id}:full`"
-                  type="button"
-                  @click="downloadApplicationExport(application, 'full')"
-                >
-                  <span class="material-symbols-outlined text-[16px]">picture_as_pdf</span>
-                  {{ exportingApplicationId === `${application.id}:full` ? 'Đang tạo...' : 'PDF' }}
-                </button>
-                <RouterLink
-                  v-if="application.tin_tuyen_dung?.id"
-                  :to="{ name: 'JobDetail', params: { id: application.tin_tuyen_dung.id } }"
-                  class="text-slate-400 transition hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300"
-                >
-                  <span class="material-symbols-outlined">chevron_right</span>
-                </RouterLink>
-              </div>
-            </div>
-
-            <div
-              v-if="application.application_timeline?.length"
-              :data-application-section="`${application.id}:timeline`"
-              class="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950/40"
-            >
-              <div class="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p class="text-sm font-bold text-slate-900 dark:text-white">Timeline ứng tuyển tổng hợp</p>
-                  <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                    Nộp hồ sơ, phỏng vấn, offer và onboarding trong một luồng.
-                  </p>
-                </div>
-                <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-500 dark:bg-slate-800 dark:text-slate-300">
-                  {{ application.application_timeline.length }} mốc
-                </span>
-              </div>
-
-              <div class="mt-4 grid gap-3 lg:grid-cols-2">
-                <article
-                  v-for="item in application.application_timeline"
-                  :key="item.key"
-                  class="rounded-2xl border px-4 py-3"
-                  :class="timelineStatusClasses(item.status)"
-                >
-                  <div class="flex items-start gap-3">
-                    <span class="material-symbols-outlined mt-0.5 text-[20px]">{{ item.icon || 'radio_button_checked' }}</span>
-                    <div class="min-w-0 flex-1">
-                      <div class="flex flex-wrap items-center gap-2">
-                        <p class="font-bold">{{ item.title }}</p>
-                        <span class="rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide dark:bg-slate-950/40">
-                          {{ timelineStatusLabel(item.status) }}
-                        </span>
-                      </div>
-                      <p class="mt-1 text-xs opacity-80">{{ timelineDate(item) }}</p>
-                      <p v-if="item.description" class="mt-2 text-sm leading-6">{{ item.description }}</p>
-                      <p v-if="item.due_at" class="mt-1 text-xs font-semibold">Hạn: {{ formatDateTime(item.due_at) }}</p>
-                    </div>
-                  </div>
-                </article>
-              </div>
-            </div>
-
-            <div
-              v-if="sortedInterviewRounds(application).length"
-              :data-application-section="`${application.id}:interview`"
-              class="rounded-2xl border border-violet-200 bg-violet-50/70 p-4 dark:border-violet-500/20 dark:bg-violet-500/10"
-            >
-              <div class="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p class="text-sm font-bold text-slate-900 dark:text-white">Timeline phỏng vấn</p>
-                  <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                    {{ sortedInterviewRounds(application).length }} vòng trong quy trình tuyển dụng.
-                  </p>
-                </div>
-                <button
-                  v-if="canExportDocument(application, 'interview')"
-                  class="inline-flex items-center gap-2 rounded-xl border border-violet-200 bg-white px-3 py-2 text-xs font-bold text-violet-700 transition hover:bg-violet-50 disabled:opacity-60 dark:border-violet-500/20 dark:bg-slate-950/40 dark:text-violet-300"
-                  :disabled="exportingApplicationId === `${application.id}:interview`"
-                  type="button"
-                  @click="downloadApplicationExport(application, 'interview')"
-                >
-                  <span class="material-symbols-outlined text-[16px]">picture_as_pdf</span>
-                  {{ exportingApplicationId === `${application.id}:interview` ? 'Đang tạo...' : 'PDF phỏng vấn' }}
-                </button>
-              </div>
-
-              <div class="mt-4 space-y-3">
-                <div
-                  v-for="round in sortedInterviewRounds(application)"
-                  :key="round.id"
-                  :data-interview-round-id="round.id"
-                  class="rounded-2xl bg-white p-4 dark:bg-slate-950/40"
-                >
-                  <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                    <div>
-                      <div class="flex flex-wrap items-center gap-2">
-                        <p class="font-bold text-slate-900 dark:text-white">{{ round.ten_vong }}</p>
-                        <span class="rounded-full px-2.5 py-1 text-[11px] font-bold" :class="roundStatusMeta(round.trang_thai).classes">
-                          {{ roundStatusMeta(round.trang_thai).label }}
-                        </span>
-                        <span class="rounded-full px-2.5 py-1 text-[11px] font-bold" :class="interviewAttendanceMeta(round.trang_thai_tham_gia).classes">
-                          {{ interviewAttendanceMeta(round.trang_thai_tham_gia).label }}
-                        </span>
-                      </div>
-                      <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">
-                        {{ roundTypeLabel(round.loai_vong) }} • {{ formatDateTime(round.ngay_hen_phong_van) }}
-                        <span v-if="round.hinh_thuc_phong_van">• {{ round.hinh_thuc_phong_van === 'online' ? 'Online' : round.hinh_thuc_phong_van === 'offline' ? 'Trực tiếp' : 'Điện thoại' }}</span>
-                      </p>
-                      <p v-if="round.nguoi_phong_van" class="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                        Người phỏng vấn: {{ round.nguoi_phong_van }}
-                      </p>
-                      <p v-if="round.link_phong_van" class="mt-1 break-words text-xs text-slate-500 dark:text-slate-400">
-                        Link / địa điểm: {{ round.link_phong_van }}
-                      </p>
-                      <p v-if="round.ket_qua" class="mt-2 text-xs font-semibold text-slate-600 dark:text-slate-300">
-                        Kết quả: {{ round.ket_qua }}
-                      </p>
-                    </div>
-
-                    <div
-                      v-if="canRespondInterviewRound(application, round)"
-                      class="flex flex-wrap items-center gap-2 lg:justify-end"
-                    >
-                      <button
-                        class="inline-flex items-center justify-center rounded-xl border border-emerald-200 bg-white px-4 py-2 text-xs font-bold text-emerald-700 transition hover:bg-emerald-50 disabled:opacity-60 dark:border-emerald-500/20 dark:bg-slate-950/40 dark:text-emerald-300"
-                        :disabled="confirmingInterviewId === `${application.id}-${round.id}`"
-                        type="button"
-                        @click="respondInterviewRound(application, round, 1)"
-                      >
-                        {{ confirmingInterviewId === `${application.id}-${round.id}` ? 'Đang lưu...' : 'Xác nhận' }}
-                      </button>
-                      <button
-                        class="inline-flex items-center justify-center rounded-xl border border-rose-200 bg-white px-4 py-2 text-xs font-bold text-rose-700 transition hover:bg-rose-50 disabled:opacity-60 dark:border-rose-500/20 dark:bg-slate-950/40 dark:text-rose-300"
-                        :disabled="confirmingInterviewId === `${application.id}-${round.id}`"
-                        type="button"
-                        @click="respondInterviewRound(application, round, 2)"
-                      >
-                        Không tham gia
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div
-              v-if="shouldShowInterviewSection(application)"
-              :data-application-section="`${application.id}:interview`"
-              class="rounded-2xl border border-violet-200 bg-violet-50/70 p-4 dark:border-violet-500/20 dark:bg-violet-500/10"
-            >
-              <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                <div class="space-y-2">
-                  <div class="flex flex-wrap items-center gap-2">
-                    <p class="text-sm font-bold text-slate-900 dark:text-white">Lịch phỏng vấn</p>
-                    <span
-                      class="inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold"
-                      :class="interviewAttendanceMeta(application.trang_thai_tham_gia_phong_van).classes"
-                    >
-                      {{ interviewAttendanceMeta(application.trang_thai_tham_gia_phong_van).label }}
-                    </span>
-                  </div>
-                  <p class="text-sm text-slate-600 dark:text-slate-300">
-                    {{ formatDateTime(application.ngay_hen_phong_van) }}
-                    <span v-if="application.hinh_thuc_phong_van">• {{ application.hinh_thuc_phong_van === 'online' ? 'Online' : application.hinh_thuc_phong_van === 'offline' ? 'Trực tiếp' : 'Điện thoại' }}</span>
-                  </p>
-                  <p v-if="application.nguoi_phong_van" class="text-xs text-slate-500 dark:text-slate-400">
-                    Người phỏng vấn: {{ application.nguoi_phong_van }}
-                  </p>
-                  <p v-if="application.link_phong_van" class="text-xs text-slate-500 dark:text-slate-400 break-words">
-                    Link / địa điểm: {{ application.link_phong_van }}
-                  </p>
-                </div>
-
-                <div
-                  v-if="canRespondInterview(application) || canExportDocument(application, 'interview')"
-                  class="flex flex-wrap items-center gap-2 lg:justify-end"
-                >
-                  <button
-                    v-if="canExportDocument(application, 'interview')"
-                    class="inline-flex items-center justify-center rounded-xl border border-violet-200 bg-white px-4 py-2 text-xs font-bold text-violet-700 transition hover:bg-violet-50 disabled:opacity-60 dark:border-violet-500/20 dark:bg-slate-950/40 dark:text-violet-300"
-                    :disabled="exportingApplicationId === `${application.id}:interview`"
-                    type="button"
-                    @click="downloadApplicationExport(application, 'interview')"
-                  >
-                    {{ exportingApplicationId === `${application.id}:interview` ? 'Đang tạo...' : 'PDF phỏng vấn' }}
-                  </button>
-                  <button
-                    v-if="canRespondInterview(application)"
-                    class="inline-flex items-center justify-center rounded-xl border border-emerald-200 bg-white px-4 py-2 text-xs font-bold text-emerald-700 transition hover:bg-emerald-50 disabled:opacity-60 dark:border-emerald-500/20 dark:bg-slate-950/40 dark:text-emerald-300 dark:hover:bg-emerald-500/10"
-                    :disabled="confirmingInterviewId === application.id"
-                    type="button"
-                    @click="respondInterview(application, 1)"
-                  >
-                    {{ confirmingInterviewId === application.id && Number(application.trang_thai_tham_gia_phong_van) !== 2 ? 'Đang lưu...' : 'Xác nhận tham gia' }}
-                  </button>
-                  <button
-                    v-if="canRespondInterview(application)"
-                    class="inline-flex items-center justify-center rounded-xl border border-rose-200 bg-white px-4 py-2 text-xs font-bold text-rose-700 transition hover:bg-rose-50 disabled:opacity-60 dark:border-rose-500/20 dark:bg-slate-950/40 dark:text-rose-300 dark:hover:bg-rose-500/10"
-                    :disabled="confirmingInterviewId === application.id"
-                    type="button"
-                    @click="respondInterview(application, 2)"
-                  >
-                    {{ confirmingInterviewId === application.id && Number(application.trang_thai_tham_gia_phong_van) === 2 ? 'Đang lưu...' : 'Không tham gia được' }}
-                  </button>
-                </div>
-              </div>
-
-              <div
-                v-if="canWithdrawApplication(application) || application.da_rut_don"
-                class="mt-3 flex flex-wrap items-center gap-2"
-              >
-                <button
-                  v-if="canWithdrawApplication(application)"
-                  class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-950/40 dark:text-slate-200 dark:hover:bg-slate-800"
-                  :disabled="confirmingInterviewId === application.id"
-                  type="button"
-                  @click="withdrawApplication(application)"
-                >
-                  {{ confirmingInterviewId === application.id ? 'Đang xử lý...' : 'Rút đơn ứng tuyển' }}
-                </button>
-                <p
-                  v-if="application.da_rut_don"
-                  class="text-xs text-slate-500 dark:text-slate-400"
-                >
-                  Đã rút lúc {{ formatDateTime(application.thoi_gian_rut_don) }}
-                </p>
-              </div>
-            </div>
-
-            <div
-              v-if="hasOffer(application)"
-              :data-application-section="`${application.id}:offer`"
-              class="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4 dark:border-emerald-500/20 dark:bg-emerald-500/10"
-            >
-              <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                <div class="space-y-2">
-                  <div class="flex flex-wrap items-center gap-2">
-                    <p class="text-sm font-bold text-slate-900 dark:text-white">Offer / nhận việc</p>
-                    <span
-                      class="inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold"
-                      :class="offerStatusMeta(application.trang_thai_offer).classes"
-                    >
-                      {{ offerStatusMeta(application.trang_thai_offer).label }}
-                    </span>
-                  </div>
-                  <p class="text-sm text-slate-600 dark:text-slate-300">
-                    Gửi lúc {{ formatDateTime(application.thoi_gian_gui_offer) }}
-                    <span v-if="application.han_phan_hoi_offer">• Hạn phản hồi {{ formatDateTime(application.han_phan_hoi_offer) }}</span>
-                  </p>
-                  <p v-if="application.ghi_chu_offer" class="text-sm leading-6 text-slate-600 dark:text-slate-300">
-                    {{ application.ghi_chu_offer }}
-                  </p>
-                  <a
-                    v-if="application.link_offer"
-                    :href="application.link_offer"
-                    class="inline-flex text-xs font-bold text-emerald-700 underline underline-offset-4 dark:text-emerald-300"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    Xem tài liệu offer
-                  </a>
-                  <button
-                    v-if="canExportDocument(application, 'offer')"
-                    class="ml-0 inline-flex text-xs font-bold text-emerald-700 underline underline-offset-4 disabled:opacity-60 dark:text-emerald-300"
-                    :disabled="exportingApplicationId === `${application.id}:offer`"
-                    type="button"
-                    @click="downloadApplicationExport(application, 'offer')"
-                  >
-                    {{ exportingApplicationId === `${application.id}:offer` ? 'Đang tạo offer PDF...' : 'Tải offer PDF' }}
-                  </button>
-                  <p v-if="application.thoi_gian_phan_hoi_offer" class="text-xs text-slate-500 dark:text-slate-400">
-                    Đã phản hồi lúc {{ formatDateTime(application.thoi_gian_phan_hoi_offer) }}
-                  </p>
-                </div>
-
-                <div
-                  v-if="canRespondOffer(application)"
-                  class="flex flex-wrap items-center gap-2 lg:justify-end"
-                >
-                  <button
-                    class="inline-flex items-center justify-center rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-emerald-700 disabled:opacity-60"
-                    :disabled="respondingOfferId === application.id"
-                    type="button"
-                    @click="respondOffer(application, 'accept')"
-                  >
-                    {{ respondingOfferId === application.id ? 'Đang lưu...' : 'Chấp nhận offer' }}
-                  </button>
-                  <button
-                    class="inline-flex items-center justify-center rounded-xl border border-rose-200 bg-white px-4 py-2 text-xs font-bold text-rose-700 transition hover:bg-rose-50 disabled:opacity-60 dark:border-rose-500/20 dark:bg-slate-950/40 dark:text-rose-300 dark:hover:bg-rose-500/10"
-                    :disabled="respondingOfferId === application.id"
-                    type="button"
-                    @click="respondOffer(application, 'decline')"
-                  >
-                    {{ respondingOfferId === application.id ? 'Đang lưu...' : 'Từ chối offer' }}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div
-              v-if="application.onboarding_plan"
-              :data-application-section="`${application.id}:onboarding`"
-              class="rounded-2xl border border-blue-200 bg-blue-50/80 p-4 dark:border-blue-500/20 dark:bg-blue-500/10"
-            >
-              <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                <div>
-                  <p class="text-sm font-bold text-slate-900 dark:text-white">Onboarding nhận việc</p>
-                  <p class="mt-1 text-sm text-slate-600 dark:text-slate-300">
-                    Ngày bắt đầu: {{ application.onboarding_plan.ngay_bat_dau || 'HR sẽ cập nhật' }}
-                    <span v-if="application.onboarding_plan.dia_diem_lam_viec">• {{ application.onboarding_plan.dia_diem_lam_viec }}</span>
-                  </p>
-                  <p v-if="application.onboarding_plan.loi_chao_mung" class="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">
-                    {{ application.onboarding_plan.loi_chao_mung }}
-                  </p>
-                </div>
-                <div class="text-left lg:text-right">
-                  <p class="text-2xl font-black text-[#2463eb]">{{ onboardingProgress(application).percent || 0 }}%</p>
-                  <p class="text-xs font-bold text-slate-500 dark:text-slate-400">
-                    {{ onboardingProgress(application).done }}/{{ onboardingProgress(application).total }} hoàn tất
-                  </p>
-                  <button
-                    v-if="canExportDocument(application, 'onboarding')"
-                    class="mt-2 text-xs font-bold text-blue-700 underline underline-offset-4 disabled:opacity-60 dark:text-blue-300"
-                    :disabled="exportingApplicationId === `${application.id}:onboarding`"
-                    type="button"
-                    @click="downloadApplicationExport(application, 'onboarding')"
-                  >
-                    {{ exportingApplicationId === `${application.id}:onboarding` ? 'Đang tạo PDF...' : 'Tải PDF' }}
-                  </button>
-                </div>
-              </div>
-
-              <div v-if="application.onboarding_plan.tai_lieu_can_chuan_bi?.length" class="mt-4">
-                <p class="text-xs font-bold uppercase tracking-[0.18em] text-blue-700 dark:text-blue-300">Tài liệu cần chuẩn bị</p>
-                <div class="mt-2 flex flex-wrap gap-2">
-                  <span
-                    v-for="doc in application.onboarding_plan.tai_lieu_can_chuan_bi"
-                    :key="doc"
-                    class="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-950/50 dark:text-slate-300"
-                  >
-                    {{ doc }}
-                  </span>
-                </div>
-              </div>
-
-              <div class="mt-4 space-y-2">
-                <div
-                  v-for="task in application.onboarding_plan.tasks || []"
-                  :key="task.id"
-                  :data-onboarding-task-id="task.id"
-                  class="flex flex-col gap-3 rounded-xl bg-white px-4 py-3 dark:bg-slate-950/50 md:flex-row md:items-center md:justify-between"
-                >
-                  <div>
-                    <p class="text-sm font-bold text-slate-900 dark:text-white">{{ task.tieu_de }}</p>
-                    <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                      {{ task.nguoi_phu_trach === 'candidate' ? 'Bạn phụ trách' : 'HR phụ trách' }}
-                      <span v-if="task.han_hoan_tat">• hạn {{ task.han_hoan_tat }}</span>
-                    </p>
-                  </div>
-                  <div v-if="task.nguoi_phu_trach === 'candidate'" class="flex flex-wrap gap-2">
-                    <button
-                      class="rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 transition hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:text-slate-300"
-                      :disabled="onboardingTaskUpdatingId === task.id || task.trang_thai === 'in_progress'"
-                      type="button"
-                      @click="updateOnboardingTask(application, task, 'in_progress')"
-                    >
-                      Đang làm
-                    </button>
-                    <button
-                      class="rounded-xl bg-blue-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-blue-700 disabled:opacity-60"
-                      :disabled="onboardingTaskUpdatingId === task.id || task.trang_thai === 'done'"
-                      type="button"
-                      @click="updateOnboardingTask(application, task, 'done')"
-                    >
-                      Hoàn tất
-                    </button>
-                  </div>
-                  <span v-else class="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-500 dark:bg-slate-800 dark:text-slate-300">
-                    {{ task.trang_thai === 'done' ? 'Hoàn tất' : task.trang_thai === 'in_progress' ? 'Đang làm' : 'Chờ HR' }}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div
-        v-if="!loading && applications.length && pagination.last_page > 1"
-        class="flex items-center justify-between border-t border-slate-200 dark:border-slate-800 px-6 py-4"
-      >
-          <p class="text-xs text-slate-500 dark:text-slate-400">
-          Hiển thị {{ pagination.from }}-{{ pagination.to }} của {{ pagination.total }} kết quả
-        </p>
-        <div class="flex gap-2">
-          <button
-            class="h-8 w-8 flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-800 text-slate-500 disabled:opacity-50"
-            :disabled="pagination.current_page === 1"
-            type="button"
-            @click="changePage(pagination.current_page - 1)"
-          >
-            <span class="material-symbols-outlined text-[18px]">chevron_left</span>
-          </button>
-          <button
-            v-for="page in pagination.last_page"
-            :key="page"
-            class="h-8 w-8 flex items-center justify-center rounded-lg font-bold text-xs transition"
-            :class="page === pagination.current_page
-              ? 'bg-[#2463eb] text-white'
-              : 'border border-slate-200 dark:border-slate-800 text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800'"
-            type="button"
-            @click="changePage(page)"
-          >
-            {{ page }}
-          </button>
-          <button
-            class="h-8 w-8 flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-800 text-slate-500 disabled:opacity-50"
-            :disabled="pagination.current_page === pagination.last_page"
-            type="button"
-            @click="changePage(pagination.current_page + 1)"
-          >
-            <span class="material-symbols-outlined text-[18px]">chevron_right</span>
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <div
-      v-if="editModalOpen"
-      class="fixed inset-0 z-50 overflow-y-auto bg-slate-950/55 backdrop-blur-sm"
-      @click.self="closeEditModal"
-    >
-      <div class="flex min-h-full items-center justify-center px-4 py-6">
-        <div class="flex max-h-[calc(100vh-3rem)] w-full max-w-2xl flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-950">
-        <div class="flex items-start justify-between border-b border-slate-100 px-6 py-5 dark:border-slate-800">
-          <div>
-            <p class="text-xs font-semibold uppercase tracking-[0.28em] text-blue-500">Cập nhật ứng tuyển</p>
-            <h3 class="mt-2 text-2xl font-bold text-slate-900 dark:text-white">{{ editableApplication?.tin_tuyen_dung?.tieu_de }}</h3>
-            <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">
-              Bạn chỉ có thể đổi CV khi đơn vẫn đang chờ duyệt.
-            </p>
-          </div>
-          <button
-            class="rounded-full p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-900 dark:hover:text-slate-200"
-            type="button"
-            @click="closeEditModal"
-          >
-            <span class="material-symbols-outlined">close</span>
-          </button>
-        </div>
-
-        <div class="min-h-0 flex-1 space-y-5 overflow-y-auto px-6 py-6">
-          <div v-if="loadingProfiles" class="rounded-2xl bg-slate-50 px-4 py-5 text-sm text-slate-500 dark:bg-slate-900 dark:text-slate-400">
-            Đang tải danh sách hồ sơ...
-          </div>
-
-          <template v-else>
-            <div>
-              <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">Chọn hồ sơ thay thế</label>
-              <select
-                v-model="selectedProfileId"
-                class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:focus:ring-blue-500/20"
-              >
-                <option value="" disabled>Chọn hồ sơ của bạn</option>
-                <option v-for="profile in profiles" :key="profile.id" :value="String(profile.id)">
-                  {{ profile.tieu_de_ho_so || `Hồ sơ #${profile.id}` }}
-                </option>
-              </select>
-            </div>
-
-            <div v-if="selectedProfile" class="rounded-2xl bg-slate-50 px-4 py-4 text-sm text-slate-600 dark:bg-slate-900 dark:text-slate-400">
-              <p class="font-semibold text-slate-800 dark:text-slate-200">{{ selectedProfile.tieu_de_ho_so || `Hồ sơ #${selectedProfile.id}` }}</p>
-              <p class="mt-1">
-                Kinh nghiệm: {{ selectedProfile.kinh_nghiem_nam || 0 }} năm
-                <span v-if="selectedProfile.vi_tri_mong_muon">• Mục tiêu: {{ selectedProfile.vi_tri_mong_muon }}</span>
-              </p>
-            </div>
-
-            <div>
-              <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">Thư xin việc hiện tại</label>
-              <textarea
-                v-model="coverLetter"
-                rows="5"
-                maxlength="5000"
-                class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:focus:ring-blue-500/20"
-                placeholder="Bạn có thể chỉnh lại thư xin việc để phù hợp với hồ sơ mới."
-              />
-              <div class="mt-2 text-right text-xs text-slate-400 dark:text-slate-500">{{ coverLetter.length }}/5000</div>
-            </div>
-          </template>
-        </div>
-
-        <div class="flex flex-col gap-3 border-t border-slate-100 px-6 py-5 dark:border-slate-800 sm:flex-row sm:justify-end">
-          <button
-            class="rounded-2xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-900"
-            type="button"
-            @click="closeEditModal"
-          >
-            Hủy
-          </button>
-          <button
-            class="rounded-2xl bg-blue-600 px-5 py-3 text-sm font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
-            :disabled="!selectedProfileId || updating || loadingProfiles"
-            type="button"
-            @click="submitApplicationUpdate"
-          >
-            {{ updating ? 'Đang cập nhật...' : 'Lưu thay đổi' }}
-          </button>
-        </div>
-      </div>
-      </div>
-    </div>
-  </div>
-</template>

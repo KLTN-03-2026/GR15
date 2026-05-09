@@ -1,3 +1,214 @@
+<template>
+  <div class="space-y-6">
+    <div class="flex flex-wrap items-end justify-between gap-4">
+      <div>
+        <p class="text-xs font-bold uppercase tracking-[0.24em] text-blue-600/80 dark:text-blue-300/80">Audit log</p>
+        <h1 class="mt-2 text-3xl font-black tracking-tight text-slate-900 dark:text-white">{{ title }}</h1>
+        <p class="mt-1 max-w-3xl text-sm text-slate-500 dark:text-slate-400">{{ description }}</p>
+      </div>
+      <button
+        class="rounded-xl border border-slate-200 px-4 py-3 text-sm font-bold transition hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+        type="button"
+        @click="fetchData"
+      >
+        Làm mới
+      </button>
+    </div>
+
+    <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div>
+          <label class="mb-2 block text-xs font-bold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+            Phạm vi nhật ký
+          </label>
+          <select
+            v-model="filters.scope"
+            class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-950"
+          >
+            <option v-for="option in scopeOptions" :key="option.value" :value="option.value">
+              {{ option.label }}
+            </option>
+          </select>
+        </div>
+        <div>
+          <label class="mb-2 block text-xs font-bold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+            Loại thao tác
+          </label>
+          <select
+            v-model="filters.action"
+            class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-950"
+          >
+            <option value="">Tất cả thao tác</option>
+            <optgroup v-for="group in actionGroups" :key="group.label" :label="group.label">
+              <option v-for="action in group.actions" :key="action.value" :value="action.value">
+                {{ action.label }}
+              </option>
+            </optgroup>
+          </select>
+          <p class="mt-1 text-xs text-slate-400">
+            Chọn theo tên nghiệp vụ, hệ thống tự lọc bằng mã action tương ứng.
+          </p>
+        </div>
+        <div>
+          <label class="mb-2 block text-xs font-bold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+            Người thực hiện
+          </label>
+          <input
+            v-model="filters.actor_query"
+            class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-950"
+            placeholder="Nhập tên, email hoặc ID"
+            type="text"
+            @keyup.enter="applyFilters"
+          >
+          <p class="mt-1 text-xs text-slate-400">
+            Ví dụ: Nguyễn Văn A, hr@company.com hoặc 12.
+          </p>
+        </div>
+        <div v-if="adminMode">
+          <label class="mb-2 block text-xs font-bold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+            Vai trò người thực hiện
+          </label>
+          <select
+            v-model="filters.actor_role"
+            class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-950"
+          >
+            <option v-for="option in roleOptions" :key="option.value" :value="option.value">
+              {{ option.label }}
+            </option>
+          </select>
+        </div>
+        <div v-if="adminMode">
+          <label class="mb-2 block text-xs font-bold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+            Công ty
+          </label>
+          <select
+            v-model="filters.company_id"
+            :disabled="loadingCompanies"
+            class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-950"
+          >
+            <option value="">
+              {{ loadingCompanies ? 'Đang tải công ty...' : 'Tất cả công ty' }}
+            </option>
+            <option v-for="company in companyOptions" :key="company.id" :value="company.id">
+              {{ company.ten_cong_ty }}{{ company.email ? ` - ${company.email}` : '' }}
+            </option>
+          </select>
+        </div>
+        <div>
+          <label class="mb-2 block text-xs font-bold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+            Từ ngày
+          </label>
+          <input
+            v-model="filters.from"
+            class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-950"
+            type="date"
+          >
+        </div>
+        <div>
+          <label class="mb-2 block text-xs font-bold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+            Đến ngày
+          </label>
+          <input
+            v-model="filters.to"
+            class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-950"
+            type="date"
+          >
+        </div>
+      </div>
+      <div class="mt-4 flex flex-wrap gap-3">
+        <button
+          class="rounded-xl bg-[#2463eb] px-5 py-3 text-sm font-bold text-white transition hover:bg-blue-700"
+          type="button"
+          @click="applyFilters"
+        >
+          Áp dụng bộ lọc
+        </button>
+        <button
+          class="rounded-xl border border-slate-200 px-5 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+          type="button"
+          @click="resetFilters"
+        >
+          Xóa lọc
+        </button>
+      </div>
+    </div>
+
+    <div class="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div v-if="loading" class="space-y-3 p-4">
+        <div v-for="index in 6" :key="index" class="h-20 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800" />
+      </div>
+
+      <div v-else-if="!logs.length" class="p-10 text-center">
+        <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300">
+          <span class="material-symbols-outlined">manage_search</span>
+        </div>
+        <h2 class="mt-4 text-lg font-black text-slate-900 dark:text-white">Chưa có nhật ký phù hợp</h2>
+        <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Thử đổi bộ lọc hoặc thực hiện một thao tác có ghi audit.</p>
+      </div>
+
+      <div v-else class="overflow-x-auto">
+        <table class="w-full min-w-[840px] text-left">
+          <thead>
+            <tr class="border-b border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-800/50">
+              <th class="px-5 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">Thời gian</th>
+              <th class="px-5 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">Người thực hiện</th>
+              <th class="px-5 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">Thao tác</th>
+              <th class="px-5 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">Mô tả</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+            <tr v-for="log in logs" :key="log.id" class="align-top">
+              <td class="px-5 py-4 text-sm text-slate-600 dark:text-slate-300">
+                {{ formatDateTime(log.created_at) }}
+              </td>
+              <td class="px-5 py-4">
+                <p class="text-sm font-bold text-slate-900 dark:text-white">{{ log.actor?.ho_ten || 'Hệ thống' }}</p>
+                <p class="text-xs text-slate-500">{{ log.actor?.email || log.actor_role || '--' }}</p>
+                <p v-if="log.company" class="mt-1 text-xs text-slate-400">{{ log.company.ten_cong_ty }}</p>
+              </td>
+              <td class="px-5 py-4">
+                <span class="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700 dark:bg-blue-500/10 dark:text-blue-200">
+                  {{ getActionLabel(log.action) }}
+                </span>
+              </td>
+              <td class="max-w-2xl px-5 py-4 text-sm text-slate-600 dark:text-slate-300">
+                {{ log.description }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div
+        v-if="pagination && pagination.last_page > 1"
+        class="flex items-center justify-between border-t border-slate-200 px-5 py-4 text-sm dark:border-slate-800"
+      >
+        <span class="text-slate-500">
+          Trang {{ pagination.current_page }} / {{ pagination.last_page }}
+        </span>
+        <div class="flex gap-2">
+          <button
+            class="rounded-lg border border-slate-200 px-3 py-2 font-bold disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700"
+            :disabled="pagination.current_page <= 1 || loading"
+            type="button"
+            @click="goToPage(pagination.current_page - 1)"
+          >
+            Trước
+          </button>
+          <button
+            class="rounded-lg border border-slate-200 px-3 py-2 font-bold disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700"
+            :disabled="pagination.current_page >= pagination.last_page || loading"
+            type="button"
+            @click="goToPage(pagination.current_page + 1)"
+          >
+            Sau
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useNotify } from '@/composables/useNotify'
@@ -245,214 +456,3 @@ onMounted(() => {
   fetchCompanyOptions()
 })
 </script>
-
-<template>
-  <div class="space-y-6">
-    <div class="flex flex-wrap items-end justify-between gap-4">
-      <div>
-        <p class="text-xs font-bold uppercase tracking-[0.24em] text-blue-600/80 dark:text-blue-300/80">Audit log</p>
-        <h1 class="mt-2 text-3xl font-black tracking-tight text-slate-900 dark:text-white">{{ title }}</h1>
-        <p class="mt-1 max-w-3xl text-sm text-slate-500 dark:text-slate-400">{{ description }}</p>
-      </div>
-      <button
-        class="rounded-xl border border-slate-200 px-4 py-3 text-sm font-bold transition hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
-        type="button"
-        @click="fetchData"
-      >
-        Làm mới
-      </button>
-    </div>
-
-    <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-      <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <div>
-          <label class="mb-2 block text-xs font-bold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
-            Phạm vi nhật ký
-          </label>
-          <select
-            v-model="filters.scope"
-            class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-950"
-          >
-            <option v-for="option in scopeOptions" :key="option.value" :value="option.value">
-              {{ option.label }}
-            </option>
-          </select>
-        </div>
-        <div>
-          <label class="mb-2 block text-xs font-bold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
-            Loại thao tác
-          </label>
-          <select
-            v-model="filters.action"
-            class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-950"
-          >
-            <option value="">Tất cả thao tác</option>
-            <optgroup v-for="group in actionGroups" :key="group.label" :label="group.label">
-              <option v-for="action in group.actions" :key="action.value" :value="action.value">
-                {{ action.label }}
-              </option>
-            </optgroup>
-          </select>
-          <p class="mt-1 text-xs text-slate-400">
-            Chọn theo tên nghiệp vụ, hệ thống tự lọc bằng mã action tương ứng.
-          </p>
-        </div>
-        <div>
-          <label class="mb-2 block text-xs font-bold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
-            Người thực hiện
-          </label>
-          <input
-            v-model="filters.actor_query"
-            class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-950"
-            placeholder="Nhập tên, email hoặc ID"
-            type="text"
-            @keyup.enter="applyFilters"
-          >
-          <p class="mt-1 text-xs text-slate-400">
-            Ví dụ: Nguyễn Văn A, hr@company.com hoặc 12.
-          </p>
-        </div>
-        <div v-if="adminMode">
-          <label class="mb-2 block text-xs font-bold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
-            Vai trò người thực hiện
-          </label>
-          <select
-            v-model="filters.actor_role"
-            class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-950"
-          >
-            <option v-for="option in roleOptions" :key="option.value" :value="option.value">
-              {{ option.label }}
-            </option>
-          </select>
-        </div>
-        <div v-if="adminMode">
-          <label class="mb-2 block text-xs font-bold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
-            Công ty
-          </label>
-          <select
-            v-model="filters.company_id"
-            :disabled="loadingCompanies"
-            class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-950"
-          >
-            <option value="">
-              {{ loadingCompanies ? 'Đang tải công ty...' : 'Tất cả công ty' }}
-            </option>
-            <option v-for="company in companyOptions" :key="company.id" :value="company.id">
-              {{ company.ten_cong_ty }}{{ company.email ? ` - ${company.email}` : '' }}
-            </option>
-          </select>
-        </div>
-        <div>
-          <label class="mb-2 block text-xs font-bold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
-            Từ ngày
-          </label>
-          <input
-            v-model="filters.from"
-            class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-950"
-            type="date"
-          >
-        </div>
-        <div>
-          <label class="mb-2 block text-xs font-bold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
-            Đến ngày
-          </label>
-          <input
-            v-model="filters.to"
-            class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-950"
-            type="date"
-          >
-        </div>
-      </div>
-      <div class="mt-4 flex flex-wrap gap-3">
-        <button
-          class="rounded-xl bg-[#2463eb] px-5 py-3 text-sm font-bold text-white transition hover:bg-blue-700"
-          type="button"
-          @click="applyFilters"
-        >
-          Áp dụng bộ lọc
-        </button>
-        <button
-          class="rounded-xl border border-slate-200 px-5 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
-          type="button"
-          @click="resetFilters"
-        >
-          Xóa lọc
-        </button>
-      </div>
-    </div>
-
-    <div class="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-      <div v-if="loading" class="space-y-3 p-4">
-        <div v-for="index in 6" :key="index" class="h-20 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800" />
-      </div>
-
-      <div v-else-if="!logs.length" class="p-10 text-center">
-        <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300">
-          <span class="material-symbols-outlined">manage_search</span>
-        </div>
-        <h2 class="mt-4 text-lg font-black text-slate-900 dark:text-white">Chưa có nhật ký phù hợp</h2>
-        <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Thử đổi bộ lọc hoặc thực hiện một thao tác có ghi audit.</p>
-      </div>
-
-      <div v-else class="overflow-x-auto">
-        <table class="w-full min-w-[840px] text-left">
-          <thead>
-            <tr class="border-b border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-800/50">
-              <th class="px-5 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">Thời gian</th>
-              <th class="px-5 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">Người thực hiện</th>
-              <th class="px-5 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">Thao tác</th>
-              <th class="px-5 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">Mô tả</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
-            <tr v-for="log in logs" :key="log.id" class="align-top">
-              <td class="px-5 py-4 text-sm text-slate-600 dark:text-slate-300">
-                {{ formatDateTime(log.created_at) }}
-              </td>
-              <td class="px-5 py-4">
-                <p class="text-sm font-bold text-slate-900 dark:text-white">{{ log.actor?.ho_ten || 'Hệ thống' }}</p>
-                <p class="text-xs text-slate-500">{{ log.actor?.email || log.actor_role || '--' }}</p>
-                <p v-if="log.company" class="mt-1 text-xs text-slate-400">{{ log.company.ten_cong_ty }}</p>
-              </td>
-              <td class="px-5 py-4">
-                <span class="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700 dark:bg-blue-500/10 dark:text-blue-200">
-                  {{ getActionLabel(log.action) }}
-                </span>
-              </td>
-              <td class="max-w-2xl px-5 py-4 text-sm text-slate-600 dark:text-slate-300">
-                {{ log.description }}
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <div
-        v-if="pagination && pagination.last_page > 1"
-        class="flex items-center justify-between border-t border-slate-200 px-5 py-4 text-sm dark:border-slate-800"
-      >
-        <span class="text-slate-500">
-          Trang {{ pagination.current_page }} / {{ pagination.last_page }}
-        </span>
-        <div class="flex gap-2">
-          <button
-            class="rounded-lg border border-slate-200 px-3 py-2 font-bold disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700"
-            :disabled="pagination.current_page <= 1 || loading"
-            type="button"
-            @click="goToPage(pagination.current_page - 1)"
-          >
-            Trước
-          </button>
-          <button
-            class="rounded-lg border border-slate-200 px-3 py-2 font-bold disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700"
-            :disabled="pagination.current_page >= pagination.last_page || loading"
-            type="button"
-            @click="goToPage(pagination.current_page + 1)"
-          >
-            Sau
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-</template>

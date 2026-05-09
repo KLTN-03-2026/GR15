@@ -1,263 +1,3 @@
-<script setup>
-import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
-import { employerApplicationService, employerCompanyService, employerJobService } from '@/services/api'
-import { useNotify } from '@/composables/useNotify'
-import { formatDateTimeVN, formatHistoricalDateTimeVN } from '@/utils/dateTime'
-import { getApplicationStatusLabel, getApplicationStatusMeta } from '@/utils/applicationStatus'
-import { useEmployerCompanyPermissions } from '@/composables/useEmployerCompanyPermissions'
-
-const router = useRouter()
-const notify = useNotify()
-
-const loading = ref(false)
-const company = ref(null)
-const jobs = ref([])
-const applications = ref([])
-const {
-  permissions,
-  permissionsLoaded,
-  ensurePermissionsLoaded,
-} = useEmployerCompanyPermissions()
-const canViewJobs = computed(() => permissionsLoaded.value && Boolean(permissions.value.jobs))
-const canViewApplications = computed(() => permissionsLoaded.value && Boolean(permissions.value.applications))
-const canViewCompany = computed(() => permissionsLoaded.value && Boolean(permissions.value.company_profile))
-const lockedMessage = 'Bạn không có quyền thực hiện chức năng này'
-
-const applicationStatusLabel = getApplicationStatusLabel
-const applicationStatusTone = (status) => `${getApplicationStatusMeta(status).classes} border border-transparent`
-
-const stats = computed(() => {
-  const allJobs = jobs.value
-  const activeJobs = allJobs.filter((item) => Number(item.trang_thai) === 1)
-  const pausedJobs = allJobs.filter((item) => Number(item.trang_thai) !== 1)
-  const allApplications = applications.value
-  const pendingApplications = allApplications.filter((item) => Number(item.trang_thai) === 0)
-
-  return [
-    {
-      label: 'Tin đang hoạt động',
-      value: activeJobs.length,
-      hint: pausedJobs.length ? `${pausedJobs.length} tin đang tạm ngưng` : 'Không có tin nào bị tạm ngưng',
-      icon: 'work',
-      tone: 'text-blue-300 bg-blue-500/10',
-    },
-    {
-      label: 'Ứng viên đã nộp',
-      value: allApplications.length,
-      hint: pendingApplications.length ? `${pendingApplications.length} hồ sơ cần xử lý` : 'Không có hồ sơ chờ mới',
-      icon: 'groups',
-      tone: 'text-violet-300 bg-violet-500/10',
-    },
-    {
-      label: 'CV chờ xem',
-      value: pendingApplications.length,
-      hint: 'Ưu tiên xử lý trong ngày',
-      icon: 'description',
-      tone: 'text-amber-300 bg-amber-500/10',
-    },
-    {
-      label: 'Hồ sơ công ty',
-      value: company.value ? 'Sẵn sàng' : 'Chưa có',
-      hint: company.value?.ten_cong_ty || 'Thiết lập công ty để đăng tuyển',
-      icon: 'apartment',
-      tone: 'text-emerald-300 bg-emerald-500/10',
-    },
-  ]
-})
-
-const recentJobs = computed(() => jobs.value.slice(0, 4))
-const recentApplications = computed(() => applications.value.slice(0, 5))
-
-const funnelStats = computed(() => {
-  const all = applications.value
-  const total = all.length || 1
-  const rows = [
-    { label: 'Chờ duyệt', status: 0 },
-    { label: 'Đã xem', status: 1 },
-    { label: 'Hẹn phỏng vấn', status: 2 },
-    { label: 'Qua phỏng vấn', status: 3 },
-    { label: 'Trúng tuyển', status: 4 },
-    { label: 'Từ chối', status: 5 },
-  ]
-
-  return rows.map((row) => {
-    const count = all.filter((item) => Number(item.trang_thai) === row.status).length
-    return {
-      ...row,
-      count,
-      percent: Math.round((count / total) * 100),
-    }
-  })
-})
-
-const advancedMetrics = computed(() => {
-  const all = applications.value
-  const total = all.length || 0
-  const interviewed = all.filter((item) => [2, 3, 4].includes(Number(item.trang_thai))).length
-  const hired = all.filter((item) => Number(item.trang_thai) === 4).length
-  const rejected = all.filter((item) => Number(item.trang_thai) === 5).length
-
-  return [
-    {
-      label: 'Tỷ lệ vào phỏng vấn',
-      value: total ? `${Math.round((interviewed / total) * 100)}%` : '0%',
-      hint: `${interviewed}/${total} hồ sơ đã vào pipeline phỏng vấn`,
-    },
-    {
-      label: 'Tỷ lệ tuyển thành công',
-      value: total ? `${Math.round((hired / total) * 100)}%` : '0%',
-      hint: `${hired}/${total} hồ sơ trúng tuyển`,
-    },
-    {
-      label: 'Tỷ lệ từ chối',
-      value: total ? `${Math.round((rejected / total) * 100)}%` : '0%',
-      hint: `${rejected}/${total} hồ sơ không phù hợp`,
-    },
-  ]
-})
-
-const cvSourceStats = computed(() => {
-  const uploaded = applications.value.filter((item) => item.ho_so?.file_cv).length
-  const builder = applications.value.filter((item) => !item.ho_so?.file_cv).length
-  const total = Math.max(1, uploaded + builder)
-
-  return [
-    { label: 'CV upload', count: uploaded, percent: Math.round((uploaded / total) * 100), tone: 'bg-blue-500' },
-    { label: 'CV tạo trên hệ thống', count: builder, percent: Math.round((builder / total) * 100), tone: 'bg-emerald-500' },
-  ]
-})
-
-const topApplicationJobs = computed(() => {
-  const map = new Map()
-
-  applications.value.forEach((application) => {
-    const jobId = application.tin_tuyen_dung?.id || application.tin_tuyen_dung_id
-    if (!jobId) return
-
-    const current = map.get(jobId) || {
-      id: jobId,
-      title: application.tin_tuyen_dung?.tieu_de || 'Tin tuyển dụng',
-      total: 0,
-      pending: 0,
-      hired: 0,
-    }
-
-    current.total += 1
-    if (Number(application.trang_thai) === 0) current.pending += 1
-    if (Number(application.trang_thai) === 4) current.hired += 1
-    map.set(jobId, current)
-  })
-
-  return [...map.values()].sort((a, b) => b.total - a.total).slice(0, 5)
-})
-
-const hiringInsights = computed(() => {
-  const insights = []
-
-  if (!company.value) {
-    insights.push('Hoàn thiện hồ sơ công ty để bắt đầu đăng tin tuyển dụng và tạo độ tin cậy với ứng viên.')
-  }
-
-  const activeJobs = jobs.value.filter((item) => Number(item.trang_thai) === 1).length
-  if (!activeJobs) {
-    insights.push('Hiện chưa có tin tuyển dụng đang hoạt động. Hãy đăng hoặc kích hoạt lại một tin để thu hút ứng viên.')
-  }
-
-  const pendingApplications = applications.value.filter((item) => Number(item.trang_thai) === 0).length
-  if (pendingApplications) {
-    insights.push(`Có ${pendingApplications} hồ sơ đang ở trạng thái chờ. Nên xem và phản hồi sớm để không bỏ lỡ ứng viên phù hợp.`)
-  }
-
-  const topJob = topApplicationJobs.value[0]
-  if (topJob) {
-    insights.push(`Tin "${topJob.title}" đang có nhiều ứng viên nhất (${topJob.total} hồ sơ). Nên ưu tiên rà soát pipeline cho tin này.`)
-  }
-
-  if (!insights.length) {
-    insights.push('Dữ liệu tuyển dụng đang ổn định. Hãy tiếp tục cập nhật JD và theo dõi hồ sơ mới mỗi ngày.')
-  }
-
-  return insights.slice(0, 3)
-})
-
-const companyCompletion = computed(() => {
-  if (!company.value) return 0
-
-  const fields = [
-    company.value.ten_cong_ty,
-    company.value.mo_ta,
-    company.value.dia_chi,
-    company.value.website,
-    company.value.nganh_nghe_id,
-  ]
-
-  const filled = fields.filter(Boolean).length
-  return Math.round((filled / fields.length) * 100)
-})
-
-const fetchDashboard = async () => {
-  loading.value = true
-  try {
-    await ensurePermissionsLoaded()
-    const [companyRes, jobsRes, applicationsRes] = await Promise.all([
-      employerCompanyService.getCompany().catch(() => null),
-      canViewJobs.value ? employerJobService.getJobs({ per_page: 50 }) : Promise.resolve(null),
-      canViewApplications.value ? employerApplicationService.getApplications({ per_page: 50 }) : Promise.resolve(null),
-    ])
-
-    company.value = companyRes?.data || null
-    jobs.value = jobsRes?.data?.data || []
-    applications.value = applicationsRes?.data?.data || []
-  } catch (error) {
-    notify.apiError(error, 'Không tải được dashboard nhà tuyển dụng.')
-  } finally {
-    loading.value = false
-  }
-}
-
-const showLockedNotice = () => {
-  notify.warning(lockedMessage)
-}
-
-const goToCompany = () => {
-  if (!canViewCompany.value) {
-    showLockedNotice()
-    return
-  }
-
-  router.push('/employer/company')
-}
-
-const goToJobs = () => {
-  if (!canViewJobs.value) {
-    showLockedNotice()
-    return
-  }
-
-  router.push('/employer/jobs')
-}
-
-const goToCandidates = () => {
-  if (!canViewApplications.value) {
-    showLockedNotice()
-    return
-  }
-
-  router.push('/employer/candidates')
-}
-
-const refreshDashboard = async () => {
-  await fetchDashboard()
-  notify.info('Đã tải lại dashboard nhà tuyển dụng.')
-}
-
-const formatDateTime = (value) => formatDateTimeVN(value, 'Chưa cập nhật')
-const formatSubmittedDateTime = (value) => formatHistoricalDateTimeVN(value, 'Chưa cập nhật')
-
-onMounted(fetchDashboard)
-</script>
-
 <template>
   <div class="mx-auto max-w-7xl">
     <div class="mb-8 rounded-3xl border border-blue-200 bg-gradient-to-r from-white via-blue-50 to-[#dce7ff] p-6 text-slate-900 shadow-[0_24px_70px_rgba(148,163,184,0.18)] dark:border-slate-800 dark:bg-gradient-to-r dark:from-slate-900 dark:via-slate-900 dark:to-[#1e46a7] dark:text-white dark:shadow-[0_24px_70px_rgba(14,22,42,0.35)]">
@@ -587,5 +327,267 @@ onMounted(fetchDashboard)
         </div>
       </div>
     </template>
-  </div>
+
+
+</div>
 </template>
+
+<script setup>
+import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
+import { employerApplicationService, employerCompanyService, employerJobService } from '@/services/api'
+import { useNotify } from '@/composables/useNotify'
+import { formatDateTimeVN, formatHistoricalDateTimeVN } from '@/utils/dateTime'
+import { getApplicationStatusLabel, getApplicationStatusMeta } from '@/utils/applicationStatus'
+import { useEmployerCompanyPermissions } from '@/composables/useEmployerCompanyPermissions'
+
+const router = useRouter()
+const notify = useNotify()
+
+const loading = ref(false)
+const company = ref(null)
+const jobs = ref([])
+const applications = ref([])
+const {
+  permissions,
+  permissionsLoaded,
+  ensurePermissionsLoaded,
+} = useEmployerCompanyPermissions()
+const canViewJobs = computed(() => permissionsLoaded.value && Boolean(permissions.value.jobs))
+const canViewApplications = computed(() => permissionsLoaded.value && Boolean(permissions.value.applications))
+const canViewCompany = computed(() => permissionsLoaded.value && Boolean(permissions.value.company_profile))
+const lockedMessage = 'Bạn không có quyền thực hiện chức năng này'
+
+const applicationStatusLabel = getApplicationStatusLabel
+const applicationStatusTone = (status) => `${getApplicationStatusMeta(status).classes} border border-transparent`
+
+const stats = computed(() => {
+  const allJobs = jobs.value
+  const activeJobs = allJobs.filter((item) => Number(item.trang_thai) === 1)
+  const pausedJobs = allJobs.filter((item) => Number(item.trang_thai) !== 1)
+  const allApplications = applications.value
+  const pendingApplications = allApplications.filter((item) => Number(item.trang_thai) === 0)
+
+  return [
+    {
+      label: 'Tin đang hoạt động',
+      value: activeJobs.length,
+      hint: pausedJobs.length ? `${pausedJobs.length} tin đang tạm ngưng` : 'Không có tin nào bị tạm ngưng',
+      icon: 'work',
+      tone: 'text-blue-300 bg-blue-500/10',
+    },
+    {
+      label: 'Ứng viên đã nộp',
+      value: allApplications.length,
+      hint: pendingApplications.length ? `${pendingApplications.length} hồ sơ cần xử lý` : 'Không có hồ sơ chờ mới',
+      icon: 'groups',
+      tone: 'text-violet-300 bg-violet-500/10',
+    },
+    {
+      label: 'CV chờ xem',
+      value: pendingApplications.length,
+      hint: 'Ưu tiên xử lý trong ngày',
+      icon: 'description',
+      tone: 'text-amber-300 bg-amber-500/10',
+    },
+    {
+      label: 'Hồ sơ công ty',
+      value: company.value ? 'Sẵn sàng' : 'Chưa có',
+      hint: company.value?.ten_cong_ty || 'Thiết lập công ty để đăng tuyển',
+      icon: 'apartment',
+      tone: 'text-emerald-300 bg-emerald-500/10',
+    },
+  ]
+})
+
+const recentJobs = computed(() => jobs.value.slice(0, 4))
+const recentApplications = computed(() => applications.value.slice(0, 5))
+
+const funnelStats = computed(() => {
+  const all = applications.value
+  const total = all.length || 1
+  const rows = [
+    { label: 'Chờ duyệt', status: 0 },
+    { label: 'Đã xem', status: 1 },
+    { label: 'Hẹn phỏng vấn', status: 2 },
+    { label: 'Qua phỏng vấn', status: 3 },
+    { label: 'Trúng tuyển', status: 4 },
+    { label: 'Từ chối', status: 5 },
+  ]
+
+  return rows.map((row) => {
+    const count = all.filter((item) => Number(item.trang_thai) === row.status).length
+    return {
+      ...row,
+      count,
+      percent: Math.round((count / total) * 100),
+    }
+  })
+})
+
+const advancedMetrics = computed(() => {
+  const all = applications.value
+  const total = all.length || 0
+  const interviewed = all.filter((item) => [2, 3, 4].includes(Number(item.trang_thai))).length
+  const hired = all.filter((item) => Number(item.trang_thai) === 4).length
+  const rejected = all.filter((item) => Number(item.trang_thai) === 5).length
+
+  return [
+    {
+      label: 'Tỷ lệ vào phỏng vấn',
+      value: total ? `${Math.round((interviewed / total) * 100)}%` : '0%',
+      hint: `${interviewed}/${total} hồ sơ đã vào pipeline phỏng vấn`,
+    },
+    {
+      label: 'Tỷ lệ tuyển thành công',
+      value: total ? `${Math.round((hired / total) * 100)}%` : '0%',
+      hint: `${hired}/${total} hồ sơ trúng tuyển`,
+    },
+    {
+      label: 'Tỷ lệ từ chối',
+      value: total ? `${Math.round((rejected / total) * 100)}%` : '0%',
+      hint: `${rejected}/${total} hồ sơ không phù hợp`,
+    },
+  ]
+})
+
+const cvSourceStats = computed(() => {
+  const uploaded = applications.value.filter((item) => item.ho_so?.file_cv).length
+  const builder = applications.value.filter((item) => !item.ho_so?.file_cv).length
+  const total = Math.max(1, uploaded + builder)
+
+  return [
+    { label: 'CV upload', count: uploaded, percent: Math.round((uploaded / total) * 100), tone: 'bg-blue-500' },
+    { label: 'CV tạo trên hệ thống', count: builder, percent: Math.round((builder / total) * 100), tone: 'bg-emerald-500' },
+  ]
+})
+
+const topApplicationJobs = computed(() => {
+  const map = new Map()
+
+  applications.value.forEach((application) => {
+    const jobId = application.tin_tuyen_dung?.id || application.tin_tuyen_dung_id
+    if (!jobId) return
+
+    const current = map.get(jobId) || {
+      id: jobId,
+      title: application.tin_tuyen_dung?.tieu_de || 'Tin tuyển dụng',
+      total: 0,
+      pending: 0,
+      hired: 0,
+    }
+
+    current.total += 1
+    if (Number(application.trang_thai) === 0) current.pending += 1
+    if (Number(application.trang_thai) === 4) current.hired += 1
+    map.set(jobId, current)
+  })
+
+  return [...map.values()].sort((a, b) => b.total - a.total).slice(0, 5)
+})
+
+const hiringInsights = computed(() => {
+  const insights = []
+
+  if (!company.value) {
+    insights.push('Hoàn thiện hồ sơ công ty để bắt đầu đăng tin tuyển dụng và tạo độ tin cậy với ứng viên.')
+  }
+
+  const activeJobs = jobs.value.filter((item) => Number(item.trang_thai) === 1).length
+  if (!activeJobs) {
+    insights.push('Hiện chưa có tin tuyển dụng đang hoạt động. Hãy đăng hoặc kích hoạt lại một tin để thu hút ứng viên.')
+  }
+
+  const pendingApplications = applications.value.filter((item) => Number(item.trang_thai) === 0).length
+  if (pendingApplications) {
+    insights.push(`Có ${pendingApplications} hồ sơ đang ở trạng thái chờ. Nên xem và phản hồi sớm để không bỏ lỡ ứng viên phù hợp.`)
+  }
+
+  const topJob = topApplicationJobs.value[0]
+  if (topJob) {
+    insights.push(`Tin "${topJob.title}" đang có nhiều ứng viên nhất (${topJob.total} hồ sơ). Nên ưu tiên rà soát pipeline cho tin này.`)
+  }
+
+  if (!insights.length) {
+    insights.push('Dữ liệu tuyển dụng đang ổn định. Hãy tiếp tục cập nhật JD và theo dõi hồ sơ mới mỗi ngày.')
+  }
+
+  return insights.slice(0, 3)
+})
+
+const companyCompletion = computed(() => {
+  if (!company.value) return 0
+
+  const fields = [
+    company.value.ten_cong_ty,
+    company.value.mo_ta,
+    company.value.dia_chi,
+    company.value.website,
+    company.value.nganh_nghe_id,
+  ]
+
+  const filled = fields.filter(Boolean).length
+  return Math.round((filled / fields.length) * 100)
+})
+
+const fetchDashboard = async () => {
+  loading.value = true
+  try {
+    await ensurePermissionsLoaded()
+    const [companyRes, jobsRes, applicationsRes] = await Promise.all([
+      employerCompanyService.getCompany().catch(() => null),
+      canViewJobs.value ? employerJobService.getJobs({ per_page: 50 }) : Promise.resolve(null),
+      canViewApplications.value ? employerApplicationService.getApplications({ per_page: 50 }) : Promise.resolve(null),
+    ])
+
+    company.value = companyRes?.data || null
+    jobs.value = jobsRes?.data?.data || []
+    applications.value = applicationsRes?.data?.data || []
+  } catch (error) {
+    notify.apiError(error, 'Không tải được dashboard nhà tuyển dụng.')
+  } finally {
+    loading.value = false
+  }
+}
+
+const showLockedNotice = () => {
+  notify.warning(lockedMessage)
+}
+
+const goToCompany = () => {
+  if (!canViewCompany.value) {
+    showLockedNotice()
+    return
+  }
+
+  router.push('/employer/company')
+}
+
+const goToJobs = () => {
+  if (!canViewJobs.value) {
+    showLockedNotice()
+    return
+  }
+
+  router.push('/employer/jobs')
+}
+
+const goToCandidates = () => {
+  if (!canViewApplications.value) {
+    showLockedNotice()
+    return
+  }
+
+  router.push('/employer/candidates')
+}
+
+const refreshDashboard = async () => {
+  await fetchDashboard()
+  notify.info('Đã tải lại dashboard nhà tuyển dụng.')
+}
+
+const formatDateTime = (value) => formatDateTimeVN(value, 'Chưa cập nhật')
+const formatSubmittedDateTime = (value) => formatHistoricalDateTimeVN(value, 'Chưa cập nhật')
+
+onMounted(fetchDashboard)
+</script>

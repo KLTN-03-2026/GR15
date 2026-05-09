@@ -1,231 +1,3 @@
-<script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
-import { employerCandidateService } from '@/services/api'
-import { useEmployerCompanyPermissions } from '@/composables/useEmployerCompanyPermissions'
-import { useNotify } from '@/composables/useNotify'
-import { getAuthToken } from '@/utils/authStorage'
-import { hasBuilderCv, openCvPrintPreview } from '@/utils/profileCvBuilder'
-
-const notify = useNotify()
-const { currentInternalRoleLabel, ensurePermissionsLoaded } = useEmployerCompanyPermissions()
-
-const loading = ref(false)
-const candidates = ref([])
-const pagination = ref(null)
-const selectedCvByCandidate = reactive({})
-
-const filters = reactive({
-  search: '',
-  trinh_do: '',
-  kinh_nghiem_tu: '',
-  kinh_nghiem_den: '',
-  sort_by: 'created_at',
-  sort_dir: 'desc',
-  per_page: 10,
-  page: 1,
-})
-
-const degreeOptions = [
-  { value: '', label: 'Tất cả trình độ' },
-  { value: 'Trung học', label: 'Trung học' },
-  { value: 'Trung cấp', label: 'Trung cấp' },
-  { value: 'Cao đẳng', label: 'Cao đẳng' },
-  { value: 'Đại học', label: 'Đại học' },
-  { value: 'Thạc sĩ', label: 'Thạc sĩ' },
-  { value: 'Tiến sĩ', label: 'Tiến sĩ' },
-  { value: 'Khác', label: 'Khác' },
-]
-
-const stats = computed(() => {
-  const all = candidates.value
-  const senior = all.filter((item) => Number(item.kinh_nghiem_nam || 0) >= 5).length
-  const availableCv = all.filter((item) => (item.ho_sos || []).some((profile) => canOpenProfileCv(profile))).length
-  const degreeCount = new Set(all.map((item) => item.trinh_do).filter(Boolean)).size
-
-  return [
-    {
-      label: 'Ứng viên công khai',
-      value: pagination.value?.total ?? all.length,
-      hint: 'Có thể xem ngay từ hệ thống',
-      icon: 'groups',
-      tone: 'text-blue-300 bg-blue-500/10',
-    },
-    {
-      label: 'Từ 5 năm kinh nghiệm',
-      value: senior,
-      hint: 'Nguồn ứng viên senior hiện có',
-      icon: 'military_tech',
-      tone: 'text-violet-300 bg-violet-500/10',
-    },
-    {
-      label: 'Có CV xem được',
-      value: availableCv,
-      hint: 'Gồm file upload và CV tạo trên hệ thống',
-      icon: 'description',
-      tone: 'text-emerald-300 bg-emerald-500/10',
-    },
-    {
-      label: 'Nhóm trình độ',
-      value: degreeCount,
-      hint: 'Đang xuất hiện trong kết quả',
-      icon: 'school',
-      tone: 'text-amber-300 bg-amber-500/10',
-    },
-  ]
-})
-
-const paginationSummary = computed(() => {
-  if (!pagination.value) return 'Chưa có dữ liệu'
-  return `Hiển thị ${pagination.value.from || 0}-${pagination.value.to || 0} trên ${pagination.value.total || 0} ứng viên`
-})
-
-const degreeLabel = (value) => {
-  const match = degreeOptions.find((item) => item.value === value || item.label === value)
-  return match?.label || value || 'Chưa cập nhật'
-}
-
-const formatYears = (value) => {
-  const years = Number(value || 0)
-  if (!years) return 'Chưa cập nhật kinh nghiệm'
-  return `${years} năm kinh nghiệm`
-}
-
-const truncate = (text, max = 360) => {
-  if (!text) return 'Ứng viên chưa bổ sung mô tả bản thân.'
-  return text.length > max ? `${text.slice(0, max).trim()}...` : text
-}
-
-const candidateProfiles = (candidate) => Array.isArray(candidate?.ho_sos) ? candidate.ho_sos : []
-
-const getSelectedProfile = (candidate) => {
-  const profiles = candidateProfiles(candidate)
-  if (!profiles.length) return candidate?.ho_so_mac_dinh || candidate
-
-  const selectedId = selectedCvByCandidate[candidate.id]
-  return profiles.find((profile) => Number(profile.id) === Number(selectedId))
-    || candidate.ho_so_mac_dinh
-    || profiles[0]
-}
-
-const profileOptionLabel = (profile, index) => {
-  const title = profile?.tieu_de_ho_so || `CV ${index + 1}`
-  const source = hasBuilderCv(profile) && !profile?.file_cv_url ? 'Tạo trên hệ thống' : 'Upload file'
-  const template = profile?.ten_template_cv ? ` - ${profile.ten_template_cv}` : ''
-  return `${title} (${source}${template})`
-}
-
-const canOpenProfileCv = (profile) => Boolean(profile?.file_cv_url || hasBuilderCv(profile))
-
-const syncDefaultCvSelections = () => {
-  candidates.value.forEach((candidate) => {
-    const profile = getSelectedProfile(candidate)
-    if (candidate?.id && profile?.id && !selectedCvByCandidate[candidate.id]) {
-      selectedCvByCandidate[candidate.id] = profile.id
-    }
-  })
-}
-
-const fetchCandidates = async () => {
-  loading.value = true
-  try {
-    const response = await employerCandidateService.getCandidates(filters)
-    const payload = response?.data || {}
-    candidates.value = payload.data || []
-    pagination.value = payload
-    syncDefaultCvSelections()
-  } catch (error) {
-    candidates.value = []
-    pagination.value = null
-    notify.apiError(error, 'Không tải được danh sách ứng viên.')
-  } finally {
-    loading.value = false
-  }
-}
-
-const applyFilters = async () => {
-  filters.page = 1
-  await fetchCandidates()
-}
-
-const resetFilters = async () => {
-  filters.search = ''
-  filters.trinh_do = ''
-  filters.kinh_nghiem_tu = ''
-  filters.kinh_nghiem_den = ''
-  filters.sort_by = 'created_at'
-  filters.sort_dir = 'desc'
-  filters.per_page = 10
-  filters.page = 1
-  await fetchCandidates()
-}
-
-const goToPage = async (page) => {
-  if (!page || page === filters.page) return
-  filters.page = page
-  await fetchCandidates()
-}
-
-const fetchProtectedFile = async (url) => {
-  const token = getAuthToken()
-
-  if (!token) {
-    notify.warning('Vui lòng đăng nhập lại để xem file CV.')
-    return null
-  }
-
-  const response = await fetch(encodeURI(url), {
-    method: 'GET',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: 'application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,*/*',
-    },
-  })
-
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}`)
-  }
-
-  return response.blob()
-}
-
-const openCv = async (candidate) => {
-  const selectedProfile = getSelectedProfile(candidate)
-  const cvUrl = selectedProfile?.file_cv_url
-
-  if (!canOpenProfileCv(selectedProfile)) {
-    notify.info('CV đang chọn chưa có file upload hoặc dữ liệu CV tạo trên hệ thống để xem.')
-    return
-  }
-
-  if (!cvUrl && hasBuilderCv(selectedProfile)) {
-    const opened = openCvPrintPreview({
-      profile: selectedProfile,
-      owner: candidate?.nguoi_dung,
-    })
-
-    if (!opened) {
-      notify.warning('Trình duyệt đang chặn cửa sổ xem CV. Hãy cho phép popup và thử lại.')
-    }
-    return
-  }
-
-  try {
-    const blob = await fetchProtectedFile(cvUrl)
-    if (!blob) return
-    const objectUrl = URL.createObjectURL(blob)
-    window.open(objectUrl, '_blank', 'noopener')
-
-    setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000)
-  } catch (error) {
-    notify.error('Không mở được file CV. Vui lòng thử lại.')
-  }
-}
-
-onMounted(async () => {
-  await Promise.all([ensurePermissionsLoaded(), fetchCandidates()])
-})
-</script>
-
 <template>
   <div class="max-w-6xl mx-auto">
     <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -465,3 +237,232 @@ onMounted(async () => {
     </div>
   </div>
 </template>
+
+<script setup>
+import { computed, onMounted, reactive, ref } from 'vue'
+import { employerCandidateService } from '@/services/api'
+import { useEmployerCompanyPermissions } from '@/composables/useEmployerCompanyPermissions'
+import { useNotify } from '@/composables/useNotify'
+import { getAuthToken } from '@/utils/authStorage'
+import { formatExperienceYears } from '@/utils/experience'
+import { hasBuilderCv, openCvPrintPreview } from '@/utils/profileCvBuilder'
+
+const notify = useNotify()
+const { currentInternalRoleLabel, ensurePermissionsLoaded } = useEmployerCompanyPermissions()
+
+const loading = ref(false)
+const candidates = ref([])
+const pagination = ref(null)
+const selectedCvByCandidate = reactive({})
+
+const filters = reactive({
+  search: '',
+  trinh_do: '',
+  kinh_nghiem_tu: '',
+  kinh_nghiem_den: '',
+  sort_by: 'created_at',
+  sort_dir: 'desc',
+  per_page: 10,
+  page: 1,
+})
+
+const degreeOptions = [
+  { value: '', label: 'Tất cả trình độ' },
+  { value: 'Trung học', label: 'Trung học' },
+  { value: 'Trung cấp', label: 'Trung cấp' },
+  { value: 'Cao đẳng', label: 'Cao đẳng' },
+  { value: 'Đại học', label: 'Đại học' },
+  { value: 'Thạc sĩ', label: 'Thạc sĩ' },
+  { value: 'Tiến sĩ', label: 'Tiến sĩ' },
+  { value: 'Khác', label: 'Khác' },
+]
+
+const stats = computed(() => {
+  const all = candidates.value
+  const senior = all.filter((item) => Number(item.kinh_nghiem_nam || 0) >= 5).length
+  const availableCv = all.filter((item) => (item.ho_sos || []).some((profile) => canOpenProfileCv(profile))).length
+  const degreeCount = new Set(all.map((item) => item.trinh_do).filter(Boolean)).size
+
+  return [
+    {
+      label: 'Ứng viên công khai',
+      value: pagination.value?.total ?? all.length,
+      hint: 'Có thể xem ngay từ hệ thống',
+      icon: 'groups',
+      tone: 'text-blue-300 bg-blue-500/10',
+    },
+    {
+      label: 'Từ 5 năm kinh nghiệm',
+      value: senior,
+      hint: 'Nguồn ứng viên senior hiện có',
+      icon: 'military_tech',
+      tone: 'text-violet-300 bg-violet-500/10',
+    },
+    {
+      label: 'Có CV xem được',
+      value: availableCv,
+      hint: 'Gồm file upload và CV tạo trên hệ thống',
+      icon: 'description',
+      tone: 'text-emerald-300 bg-emerald-500/10',
+    },
+    {
+      label: 'Nhóm trình độ',
+      value: degreeCount,
+      hint: 'Đang xuất hiện trong kết quả',
+      icon: 'school',
+      tone: 'text-amber-300 bg-amber-500/10',
+    },
+  ]
+})
+
+const paginationSummary = computed(() => {
+  if (!pagination.value) return 'Chưa có dữ liệu'
+  return `Hiển thị ${pagination.value.from || 0}-${pagination.value.to || 0} trên ${pagination.value.total || 0} ứng viên`
+})
+
+const degreeLabel = (value) => {
+  const match = degreeOptions.find((item) => item.value === value || item.label === value)
+  return match?.label || value || 'Chưa cập nhật'
+}
+
+const formatYears = (value) => {
+  const years = Number(value || 0)
+  if (!years) return 'Chưa cập nhật kinh nghiệm'
+  return `${formatExperienceYears(years)} kinh nghiệm`
+}
+
+const truncate = (text, max = 360) => {
+  if (!text) return 'Ứng viên chưa bổ sung mô tả bản thân.'
+  return text.length > max ? `${text.slice(0, max).trim()}...` : text
+}
+
+const candidateProfiles = (candidate) => Array.isArray(candidate?.ho_sos) ? candidate.ho_sos : []
+
+const getSelectedProfile = (candidate) => {
+  const profiles = candidateProfiles(candidate)
+  if (!profiles.length) return candidate?.ho_so_mac_dinh || candidate
+
+  const selectedId = selectedCvByCandidate[candidate.id]
+  return profiles.find((profile) => Number(profile.id) === Number(selectedId))
+    || candidate.ho_so_mac_dinh
+    || profiles[0]
+}
+
+const profileOptionLabel = (profile, index) => {
+  const title = profile?.tieu_de_ho_so || `CV ${index + 1}`
+  const source = hasBuilderCv(profile) && !profile?.file_cv_url ? 'Tạo trên hệ thống' : 'Upload file'
+  const template = profile?.ten_template_cv ? ` - ${profile.ten_template_cv}` : ''
+  return `${title} (${source}${template})`
+}
+
+const canOpenProfileCv = (profile) => Boolean(profile?.file_cv_url || hasBuilderCv(profile))
+
+const syncDefaultCvSelections = () => {
+  candidates.value.forEach((candidate) => {
+    const profile = getSelectedProfile(candidate)
+    if (candidate?.id && profile?.id && !selectedCvByCandidate[candidate.id]) {
+      selectedCvByCandidate[candidate.id] = profile.id
+    }
+  })
+}
+
+const fetchCandidates = async () => {
+  loading.value = true
+  try {
+    const response = await employerCandidateService.getCandidates(filters)
+    const payload = response?.data || {}
+    candidates.value = payload.data || []
+    pagination.value = payload
+    syncDefaultCvSelections()
+  } catch (error) {
+    candidates.value = []
+    pagination.value = null
+    notify.apiError(error, 'Không tải được danh sách ứng viên.')
+  } finally {
+    loading.value = false
+  }
+}
+
+const applyFilters = async () => {
+  filters.page = 1
+  await fetchCandidates()
+}
+
+const resetFilters = async () => {
+  filters.search = ''
+  filters.trinh_do = ''
+  filters.kinh_nghiem_tu = ''
+  filters.kinh_nghiem_den = ''
+  filters.sort_by = 'created_at'
+  filters.sort_dir = 'desc'
+  filters.per_page = 10
+  filters.page = 1
+  await fetchCandidates()
+}
+
+const goToPage = async (page) => {
+  if (!page || page === filters.page) return
+  filters.page = page
+  await fetchCandidates()
+}
+
+const fetchProtectedFile = async (url) => {
+  const token = getAuthToken()
+
+  if (!token) {
+    notify.warning('Vui lòng đăng nhập lại để xem file CV.')
+    return null
+  }
+
+  const response = await fetch(encodeURI(url), {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,*/*',
+    },
+  })
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`)
+  }
+
+  return response.blob()
+}
+
+const openCv = async (candidate) => {
+  const selectedProfile = getSelectedProfile(candidate)
+  const cvUrl = selectedProfile?.file_cv_url
+
+  if (!canOpenProfileCv(selectedProfile)) {
+    notify.info('CV đang chọn chưa có file upload hoặc dữ liệu CV tạo trên hệ thống để xem.')
+    return
+  }
+
+  if (!cvUrl && hasBuilderCv(selectedProfile)) {
+    const opened = openCvPrintPreview({
+      profile: selectedProfile,
+      owner: candidate?.nguoi_dung,
+    })
+
+    if (!opened) {
+      notify.warning('Trình duyệt đang chặn cửa sổ xem CV. Hãy cho phép popup và thử lại.')
+    }
+    return
+  }
+
+  try {
+    const blob = await fetchProtectedFile(cvUrl)
+    if (!blob) return
+    const objectUrl = URL.createObjectURL(blob)
+    window.open(objectUrl, '_blank', 'noopener')
+
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000)
+  } catch (error) {
+    notify.error('Không mở được file CV. Vui lòng thử lại.')
+  }
+}
+
+onMounted(async () => {
+  await Promise.all([ensurePermissionsLoaded(), fetchCandidates()])
+})
+</script>

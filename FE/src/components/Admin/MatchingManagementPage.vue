@@ -1,180 +1,3 @@
-<script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
-import { adminMatchingService } from '@/services/api'
-import { useNotify } from '@/composables/useNotify'
-import { formatDateTimeVN } from '@/utils/dateTime'
-
-const notify = useNotify()
-
-const loading = ref(false)
-const error = ref('')
-const records = ref([])
-const currentPage = ref(1)
-const perPage = ref(10)
-const totalRecords = ref(0)
-
-const selectedModel = ref('')
-const minScore = ref('')
-const maxScore = ref('')
-
-const showDetailModal = ref(false)
-const selectedRecord = ref(null)
-
-const modelStats = ref([])
-
-const totalPages = computed(() => Math.max(1, Math.ceil(totalRecords.value / perPage.value)))
-
-const modelOptions = computed(() => {
-  const set = new Set(modelStats.value.map((item) => item.model_version).filter(Boolean))
-  return Array.from(set)
-})
-
-const summaryCards = computed(() => {
-  const totalMatches = modelStats.value.reduce((sum, item) => sum + Number(item.total_matches || 0), 0)
-  const bestModel = [...modelStats.value].sort((a, b) => Number(b.average_score || 0) - Number(a.average_score || 0))[0]
-  const highestScore = Math.max(...modelStats.value.map((item) => Number(item.max_score || 0)), 0)
-
-  return [
-    {
-      label: 'Lượt matching',
-      value: totalMatches,
-      description: 'Tổng số lần AI đã so khớp hồ sơ và tin tuyển dụng.',
-      icon: 'compare_arrows',
-      iconClass: 'bg-[#2463eb]/10 text-[#2463eb]',
-    },
-    {
-      label: 'Model tốt nhất',
-      value: bestModel?.model_version || 'Chưa có',
-      description: 'Model có điểm trung bình cao nhất hiện tại.',
-      icon: 'psychiatry',
-      iconClass: 'bg-emerald-500/10 text-emerald-500',
-    },
-    {
-      label: 'Điểm cao nhất',
-      value: `${highestScore.toFixed(1)}%`,
-      description: 'Match tốt nhất từng được ghi nhận trong hệ thống.',
-      icon: 'workspace_premium',
-      iconClass: 'bg-amber-500/10 text-amber-500',
-    },
-    {
-      label: 'Model đang dùng',
-      value: modelOptions.value.length,
-      description: 'Số model/version AI matching hiện có dữ liệu.',
-      icon: 'tune',
-      iconClass: 'bg-rose-500/10 text-rose-500',
-    },
-  ]
-})
-
-const formatDateTime = (value) => {
-  return formatDateTimeVN(value, 'Đang cập nhật')
-}
-
-const scoreColor = (score) => {
-  const numeric = Number(score || 0)
-  if (numeric >= 80) return 'text-emerald-500 bg-emerald-500/10'
-  if (numeric >= 60) return 'text-amber-500 bg-amber-500/10'
-  return 'text-rose-500 bg-rose-500/10'
-}
-
-const skillName = (skill) => {
-  if (!skill) return 'Không rõ kỹ năng'
-  if (typeof skill === 'string') return skill
-  if (typeof skill !== 'object') return String(skill)
-
-  return skill.skill_name
-    || skill.ten_ky_nang
-    || skill.name
-    || skill.ten
-    || skill.value
-    || 'Không rõ kỹ năng'
-}
-
-const skillMeta = (skill) => {
-  if (!skill || typeof skill !== 'object') return ''
-
-  const parts = []
-  if (skill.bat_buoc === true || skill.required === true) {
-    parts.push('Bắt buộc')
-  }
-
-  const weight = skill.trong_so ?? skill.weight
-  if (weight !== undefined && weight !== null && weight !== '') {
-    parts.push(`Trọng số ${Number(weight).toFixed(Number(weight) % 1 === 0 ? 0 : 1)}`)
-  }
-
-  return parts.join(' · ')
-}
-
-const skillKey = (skill, index, prefix = 'skill') => {
-  const name = skillName(skill)
-  const weight = skill && typeof skill === 'object' ? (skill.trong_so ?? skill.weight ?? '') : ''
-  return `${prefix}-${index}-${name}-${weight}`
-}
-
-const normalizePayload = (response) => {
-  const payload = response?.data || {}
-  records.value = payload.data || []
-  totalRecords.value = payload.total || 0
-}
-
-const loadStats = async () => {
-  const response = await adminMatchingService.getStats()
-  modelStats.value = response?.data || []
-}
-
-const loadMatchings = async () => {
-  loading.value = true
-  error.value = ''
-
-  try {
-    const response = await adminMatchingService.getMatchings({
-      page: currentPage.value,
-      per_page: perPage.value,
-      model_version: selectedModel.value || undefined,
-      min_score: minScore.value || undefined,
-      max_score: maxScore.value || undefined,
-    })
-
-    normalizePayload(response)
-  } catch (err) {
-    error.value = err.message || 'Không thể tải lịch sử AI matching.'
-    records.value = []
-    totalRecords.value = 0
-  } finally {
-    loading.value = false
-  }
-}
-
-const refreshAll = async () => {
-  await Promise.all([loadStats(), loadMatchings()])
-}
-
-const applyFilters = async () => {
-  currentPage.value = 1
-  await loadMatchings()
-}
-
-const changePage = async (page) => {
-  if (page < 1 || page > totalPages.value || page === currentPage.value) return
-  currentPage.value = page
-  await loadMatchings()
-}
-
-const openDetail = (record) => {
-  selectedRecord.value = record
-  showDetailModal.value = true
-}
-
-onMounted(async () => {
-  try {
-    await refreshAll()
-  } catch (err) {
-    notify.apiError(err, 'Không thể tải dữ liệu AI matching.')
-  }
-})
-</script>
-
 <template>
   <div v-if="error" class="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900 dark:bg-red-900/20 dark:text-red-300">
     {{ error }}
@@ -456,3 +279,180 @@ onMounted(async () => {
     </div>
   </div>
 </template>
+
+<script setup>
+import { computed, onMounted, reactive, ref } from 'vue'
+import { adminMatchingService } from '@/services/api'
+import { useNotify } from '@/composables/useNotify'
+import { formatDateTimeVN } from '@/utils/dateTime'
+
+const notify = useNotify()
+
+const loading = ref(false)
+const error = ref('')
+const records = ref([])
+const currentPage = ref(1)
+const perPage = ref(10)
+const totalRecords = ref(0)
+
+const selectedModel = ref('')
+const minScore = ref('')
+const maxScore = ref('')
+
+const showDetailModal = ref(false)
+const selectedRecord = ref(null)
+
+const modelStats = ref([])
+
+const totalPages = computed(() => Math.max(1, Math.ceil(totalRecords.value / perPage.value)))
+
+const modelOptions = computed(() => {
+  const set = new Set(modelStats.value.map((item) => item.model_version).filter(Boolean))
+  return Array.from(set)
+})
+
+const summaryCards = computed(() => {
+  const totalMatches = modelStats.value.reduce((sum, item) => sum + Number(item.total_matches || 0), 0)
+  const bestModel = [...modelStats.value].sort((a, b) => Number(b.average_score || 0) - Number(a.average_score || 0))[0]
+  const highestScore = Math.max(...modelStats.value.map((item) => Number(item.max_score || 0)), 0)
+
+  return [
+    {
+      label: 'Lượt matching',
+      value: totalMatches,
+      description: 'Tổng số lần AI đã so khớp hồ sơ và tin tuyển dụng.',
+      icon: 'compare_arrows',
+      iconClass: 'bg-[#2463eb]/10 text-[#2463eb]',
+    },
+    {
+      label: 'Model tốt nhất',
+      value: bestModel?.model_version || 'Chưa có',
+      description: 'Model có điểm trung bình cao nhất hiện tại.',
+      icon: 'psychiatry',
+      iconClass: 'bg-emerald-500/10 text-emerald-500',
+    },
+    {
+      label: 'Điểm cao nhất',
+      value: `${highestScore.toFixed(1)}%`,
+      description: 'Match tốt nhất từng được ghi nhận trong hệ thống.',
+      icon: 'workspace_premium',
+      iconClass: 'bg-amber-500/10 text-amber-500',
+    },
+    {
+      label: 'Model đang dùng',
+      value: modelOptions.value.length,
+      description: 'Số model/version AI matching hiện có dữ liệu.',
+      icon: 'tune',
+      iconClass: 'bg-rose-500/10 text-rose-500',
+    },
+  ]
+})
+
+const formatDateTime = (value) => {
+  return formatDateTimeVN(value, 'Đang cập nhật')
+}
+
+const scoreColor = (score) => {
+  const numeric = Number(score || 0)
+  if (numeric >= 80) return 'text-emerald-500 bg-emerald-500/10'
+  if (numeric >= 60) return 'text-amber-500 bg-amber-500/10'
+  return 'text-rose-500 bg-rose-500/10'
+}
+
+const skillName = (skill) => {
+  if (!skill) return 'Không rõ kỹ năng'
+  if (typeof skill === 'string') return skill
+  if (typeof skill !== 'object') return String(skill)
+
+  return skill.skill_name
+    || skill.ten_ky_nang
+    || skill.name
+    || skill.ten
+    || skill.value
+    || 'Không rõ kỹ năng'
+}
+
+const skillMeta = (skill) => {
+  if (!skill || typeof skill !== 'object') return ''
+
+  const parts = []
+  if (skill.bat_buoc === true || skill.required === true) {
+    parts.push('Bắt buộc')
+  }
+
+  const weight = skill.trong_so ?? skill.weight
+  if (weight !== undefined && weight !== null && weight !== '') {
+    parts.push(`Trọng số ${Number(weight).toFixed(Number(weight) % 1 === 0 ? 0 : 1)}`)
+  }
+
+  return parts.join(' · ')
+}
+
+const skillKey = (skill, index, prefix = 'skill') => {
+  const name = skillName(skill)
+  const weight = skill && typeof skill === 'object' ? (skill.trong_so ?? skill.weight ?? '') : ''
+  return `${prefix}-${index}-${name}-${weight}`
+}
+
+const normalizePayload = (response) => {
+  const payload = response?.data || {}
+  records.value = payload.data || []
+  totalRecords.value = payload.total || 0
+}
+
+const loadStats = async () => {
+  const response = await adminMatchingService.getStats()
+  modelStats.value = response?.data || []
+}
+
+const loadMatchings = async () => {
+  loading.value = true
+  error.value = ''
+
+  try {
+    const response = await adminMatchingService.getMatchings({
+      page: currentPage.value,
+      per_page: perPage.value,
+      model_version: selectedModel.value || undefined,
+      min_score: minScore.value || undefined,
+      max_score: maxScore.value || undefined,
+    })
+
+    normalizePayload(response)
+  } catch (err) {
+    error.value = err.message || 'Không thể tải lịch sử AI matching.'
+    records.value = []
+    totalRecords.value = 0
+  } finally {
+    loading.value = false
+  }
+}
+
+const refreshAll = async () => {
+  await Promise.all([loadStats(), loadMatchings()])
+}
+
+const applyFilters = async () => {
+  currentPage.value = 1
+  await loadMatchings()
+}
+
+const changePage = async (page) => {
+  if (page < 1 || page > totalPages.value || page === currentPage.value) return
+  currentPage.value = page
+  await loadMatchings()
+}
+
+const openDetail = (record) => {
+  selectedRecord.value = record
+  showDetailModal.value = true
+}
+
+onMounted(async () => {
+  try {
+    await refreshAll()
+  } catch (err) {
+    notify.apiError(err, 'Không thể tải dữ liệu AI matching.')
+  }
+})
+</script>

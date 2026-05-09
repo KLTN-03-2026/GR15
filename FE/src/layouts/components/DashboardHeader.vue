@@ -1,75 +1,3 @@
-<script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
-import AppNotificationCenter from '@/layouts/components/AppNotificationCenter.vue'
-import { useAuth } from '@/composables/useAuth'
-import { useNotify } from '@/composables/useNotify'
-import { getStoredCandidate } from '@/utils/authStorage'
-
-const props = defineProps({
-  sidebarCollapsed: {
-    type: Boolean,
-    default: false,
-  },
-})
-
-defineEmits(['toggle-sidebar'])
-
-const router = useRouter()
-const searchKeyword = ref('')
-const profileMenuOpen = ref(false)
-const profileMenuRef = ref(null)
-const { logout, isLoading } = useAuth()
-const notify = useNotify()
-
-const currentUser = computed(() => getStoredCandidate())
-const displayName = computed(() => currentUser.value?.ho_ten || 'Ứng viên')
-const displayRole = computed(() => currentUser.value?.ten_vai_tro || 'Job Seeker')
-const avatarLetter = computed(() => displayName.value.trim().charAt(0).toUpperCase() || 'U')
-
-const submitSearch = () => {
-  const keyword = searchKeyword.value.trim()
-  router.push(keyword ? `/jobs?search=${encodeURIComponent(keyword)}` : '/jobs')
-}
-
-const toggleProfileMenu = () => {
-  profileMenuOpen.value = !profileMenuOpen.value
-}
-
-const closeProfileMenu = () => {
-  profileMenuOpen.value = false
-}
-
-const goToProfile = () => {
-  closeProfileMenu()
-  router.push('/profile')
-}
-
-const handleLogout = async () => {
-  closeProfileMenu()
-  try {
-    await logout()
-    notify.success('Đăng xuất thành công.')
-  } catch (error) {
-    notify.apiError(error, 'Không thể đăng xuất khỏi hệ thống.')
-  }
-}
-
-const handleClickOutside = (event) => {
-  if (!profileMenuRef.value?.contains(event.target)) {
-    closeProfileMenu()
-  }
-}
-
-onMounted(() => {
-  document.addEventListener('click', handleClickOutside)
-})
-
-onBeforeUnmount(() => {
-  document.removeEventListener('click', handleClickOutside)
-})
-</script>
-
 <template>
   <header class="sticky top-0 z-20 flex h-20 shrink-0 items-center justify-between border-b border-slate-200/80 bg-white/85 px-4 backdrop-blur-md dark:border-slate-800 dark:bg-slate-950/80 sm:px-6 xl:px-8">
     <div class="flex flex-1 items-center gap-4">
@@ -146,3 +74,75 @@ onBeforeUnmount(() => {
     </div>
   </header>
 </template>
+
+<script setup>
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
+import AppNotificationCenter from '@/layouts/components/AppNotificationCenter.vue'
+import { useAuth } from '@/composables/useAuth'
+import { useNotify } from '@/composables/useNotify'
+import { getStoredCandidate } from '@/utils/authStorage'
+
+const props = defineProps({
+  sidebarCollapsed: {
+    type: Boolean,
+    default: false,
+  },
+})
+
+defineEmits(['toggle-sidebar'])
+
+const router = useRouter()
+const searchKeyword = ref('')
+const profileMenuOpen = ref(false)
+const profileMenuRef = ref(null)
+const { logout, isLoading } = useAuth()
+const notify = useNotify()
+
+const currentUser = computed(() => getStoredCandidate())
+const displayName = computed(() => currentUser.value?.ho_ten || 'Ứng viên')
+const displayRole = computed(() => currentUser.value?.ten_vai_tro || 'Job Seeker')
+const avatarLetter = computed(() => displayName.value.trim().charAt(0).toUpperCase() || 'U')
+
+const submitSearch = () => {
+  const keyword = searchKeyword.value.trim()
+  router.push(keyword ? `/jobs?search=${encodeURIComponent(keyword)}` : '/jobs')
+}
+
+const toggleProfileMenu = () => {
+  profileMenuOpen.value = !profileMenuOpen.value
+}
+
+const closeProfileMenu = () => {
+  profileMenuOpen.value = false
+}
+
+const goToProfile = () => {
+  closeProfileMenu()
+  router.push('/profile')
+}
+
+const handleLogout = async () => {
+  closeProfileMenu()
+  try {
+    await logout()
+    notify.success('Đăng xuất thành công.')
+  } catch (error) {
+    notify.apiError(error, 'Không thể đăng xuất khỏi hệ thống.')
+  }
+}
+
+const handleClickOutside = (event) => {
+  if (!profileMenuRef.value?.contains(event.target)) {
+    closeProfileMenu()
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('click', handleClickOutside)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', handleClickOutside)
+})
+</script>

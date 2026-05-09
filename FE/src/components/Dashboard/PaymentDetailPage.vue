@@ -1,102 +1,3 @@
-<script setup>
-import { computed, onMounted, ref } from 'vue'
-import { RouterLink, useRoute } from 'vue-router'
-import { paymentService } from '@/services/api'
-import { useNotify } from '@/composables/useNotify'
-
-const route = useRoute()
-const notify = useNotify()
-
-const loading = ref(true)
-const payment = ref(null)
-
-const paymentCode = computed(() => String(route.params.maGiaoDichNoiBo || ''))
-
-const formatCurrency = (value) =>
-  `${new Intl.NumberFormat('vi-VN').format(Number(value || 0))} đ`
-
-const formatDateTime = (value) => {
-  if (!value) return 'Chưa cập nhật'
-
-  return new Intl.DateTimeFormat('vi-VN', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(new Date(value))
-}
-
-const getGatewayLabel = (gateway) => {
-  if (gateway === 'momo') return 'MoMo'
-  if (gateway === 'vnpay') return 'VNPay'
-  if (gateway === 'wallet') return 'Ví AI'
-  return String(gateway || 'Không rõ').toUpperCase()
-}
-
-const paymentTypeLabel = computed(() => {
-  if (payment.value?.loai_giao_dich === 'topup_wallet') return 'Nạp ví AI'
-  if (payment.value?.loai_giao_dich === 'buy_subscription') return 'Mua gói Pro'
-  return 'Thanh toán'
-})
-
-const statusLabel = computed(() => {
-  if (payment.value?.trang_thai === 'success') return 'Thành công'
-  if (payment.value?.trang_thai === 'pending') return 'Đang chờ xác nhận'
-  if (payment.value?.trang_thai === 'failed') return 'Thất bại'
-  if (payment.value?.trang_thai === 'cancelled') return 'Đã hủy'
-  return 'Không rõ'
-})
-
-const statusTone = computed(() => {
-  if (payment.value?.trang_thai === 'success') return 'border-emerald-200 bg-emerald-50 text-emerald-700'
-  if (payment.value?.trang_thai === 'pending') return 'border-amber-200 bg-amber-50 text-amber-700'
-  if (payment.value?.trang_thai === 'failed') return 'border-rose-200 bg-rose-50 text-rose-700'
-  if (payment.value?.trang_thai === 'cancelled') return 'border-slate-200 bg-slate-100 text-slate-600'
-  return 'border-slate-200 bg-slate-50 text-slate-600'
-})
-
-const heroTitle = computed(() => {
-  if (payment.value?.trang_thai === 'success') return 'Giao dịch đã hoàn tất'
-  if (payment.value?.trang_thai === 'pending') return 'Giao dịch đang chờ xác nhận'
-  if (payment.value?.trang_thai === 'failed') return 'Giao dịch đã thất bại'
-  if (payment.value?.trang_thai === 'cancelled') return 'Giao dịch đã bị hủy'
-  return 'Chi tiết giao dịch'
-})
-
-const heroDescription = computed(() => {
-  if (payment.value?.loai_giao_dich === 'buy_subscription') {
-    return 'Theo dõi trạng thái giao dịch mua gói Pro, mã gateway và thời điểm hệ thống ghi nhận quyền lợi.'
-  }
-
-  return 'Theo dõi trạng thái nạp ví AI, mã giao dịch gateway và số dư ví liên quan tới giao dịch này.'
-})
-
-const canContinuePayment = computed(() =>
-  payment.value?.trang_thai === 'pending'
-    && Boolean(payment.value?.redirect_url)
-    && !payment.value?.is_payment_link_expired
-)
-
-const continuePayment = () => {
-  if (!canContinuePayment.value) return
-
-  window.location.href = payment.value.redirect_url
-}
-
-const loadPaymentDetail = async () => {
-  loading.value = true
-  try {
-    const response = await paymentService.getPaymentDetail(paymentCode.value)
-    payment.value = response?.data || null
-  } catch (error) {
-    payment.value = null
-    notify.apiError(error, 'Không thể tải chi tiết giao dịch thanh toán.')
-  } finally {
-    loading.value = false
-  }
-}
-
-onMounted(loadPaymentDetail)
-</script>
-
 <template>
   <div class="mx-auto max-w-6xl space-y-6">
     <section class="overflow-hidden rounded-[30px] border px-8 py-8 shadow-[0_28px_90px_rgba(15,23,42,0.12)]" :class="statusTone">
@@ -238,3 +139,102 @@ onMounted(loadPaymentDetail)
     </section>
   </div>
 </template>
+
+<script setup>
+import { computed, onMounted, ref } from 'vue'
+import { RouterLink, useRoute } from 'vue-router'
+import { paymentService } from '@/services/api'
+import { useNotify } from '@/composables/useNotify'
+
+const route = useRoute()
+const notify = useNotify()
+
+const loading = ref(true)
+const payment = ref(null)
+
+const paymentCode = computed(() => String(route.params.maGiaoDichNoiBo || ''))
+
+const formatCurrency = (value) =>
+  `${new Intl.NumberFormat('vi-VN').format(Number(value || 0))} đ`
+
+const formatDateTime = (value) => {
+  if (!value) return 'Chưa cập nhật'
+
+  return new Intl.DateTimeFormat('vi-VN', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date(value))
+}
+
+const getGatewayLabel = (gateway) => {
+  if (gateway === 'momo') return 'MoMo'
+  if (gateway === 'vnpay') return 'VNPay'
+  if (gateway === 'wallet') return 'Ví AI'
+  return String(gateway || 'Không rõ').toUpperCase()
+}
+
+const paymentTypeLabel = computed(() => {
+  if (payment.value?.loai_giao_dich === 'topup_wallet') return 'Nạp ví AI'
+  if (payment.value?.loai_giao_dich === 'buy_subscription') return 'Mua gói Pro'
+  return 'Thanh toán'
+})
+
+const statusLabel = computed(() => {
+  if (payment.value?.trang_thai === 'success') return 'Thành công'
+  if (payment.value?.trang_thai === 'pending') return 'Đang chờ xác nhận'
+  if (payment.value?.trang_thai === 'failed') return 'Thất bại'
+  if (payment.value?.trang_thai === 'cancelled') return 'Đã hủy'
+  return 'Không rõ'
+})
+
+const statusTone = computed(() => {
+  if (payment.value?.trang_thai === 'success') return 'border-emerald-200 bg-emerald-50 text-emerald-700'
+  if (payment.value?.trang_thai === 'pending') return 'border-amber-200 bg-amber-50 text-amber-700'
+  if (payment.value?.trang_thai === 'failed') return 'border-rose-200 bg-rose-50 text-rose-700'
+  if (payment.value?.trang_thai === 'cancelled') return 'border-slate-200 bg-slate-100 text-slate-600'
+  return 'border-slate-200 bg-slate-50 text-slate-600'
+})
+
+const heroTitle = computed(() => {
+  if (payment.value?.trang_thai === 'success') return 'Giao dịch đã hoàn tất'
+  if (payment.value?.trang_thai === 'pending') return 'Giao dịch đang chờ xác nhận'
+  if (payment.value?.trang_thai === 'failed') return 'Giao dịch đã thất bại'
+  if (payment.value?.trang_thai === 'cancelled') return 'Giao dịch đã bị hủy'
+  return 'Chi tiết giao dịch'
+})
+
+const heroDescription = computed(() => {
+  if (payment.value?.loai_giao_dich === 'buy_subscription') {
+    return 'Theo dõi trạng thái giao dịch mua gói Pro, mã gateway và thời điểm hệ thống ghi nhận quyền lợi.'
+  }
+
+  return 'Theo dõi trạng thái nạp ví AI, mã giao dịch gateway và số dư ví liên quan tới giao dịch này.'
+})
+
+const canContinuePayment = computed(() =>
+  payment.value?.trang_thai === 'pending'
+    && Boolean(payment.value?.redirect_url)
+    && !payment.value?.is_payment_link_expired
+)
+
+const continuePayment = () => {
+  if (!canContinuePayment.value) return
+
+  window.location.href = payment.value.redirect_url
+}
+
+const loadPaymentDetail = async () => {
+  loading.value = true
+  try {
+    const response = await paymentService.getPaymentDetail(paymentCode.value)
+    payment.value = response?.data || null
+  } catch (error) {
+    payment.value = null
+    notify.apiError(error, 'Không thể tải chi tiết giao dịch thanh toán.')
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(loadPaymentDetail)
+</script>

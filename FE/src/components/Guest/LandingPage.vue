@@ -1,163 +1,3 @@
-<script setup>
-import { computed, onMounted, ref } from 'vue'
-import { RouterLink, useRouter } from 'vue-router'
-import { useNotify } from '@/composables/useNotify'
-import { jobService } from '@/services/api'
-import { VIETNAM_PROVINCES_34 } from '@/constants/vietnamProvinces'
-
-const router = useRouter()
-const notify = useNotify()
-
-const quickQuery = ref('')
-const quickLocation = ref('')
-
-const featuredJobs = ref([])
-const featuredIndustries = ref([])
-const featuredSkills = ref([])
-const featuredCompanies = ref([])
-const loadingLanding = ref(false)
-
-const scoreFeaturedJob = (job) => {
-  const featuredBoost = job?.is_featured ? 5000000000000 : 0
-  const hasSalary = Number(job?.muc_luong_tu || 0) ? 1 : 0
-  const views = Number(job?.luot_xem || 0)
-  const createdAt = job?.created_at ? new Date(job.created_at).getTime() : 0
-  return featuredBoost + (hasSalary * 2000000000000) + (views * 1000000) + createdAt
-}
-
-const sortedFeaturedJobs = computed(() =>
-  [...featuredJobs.value]
-    .sort((a, b) => scoreFeaturedJob(b) - scoreFeaturedJob(a))
-    .slice(0, 3),
-)
-
-const extractList = (response) => {
-  const payload = response?.data
-  if (Array.isArray(payload?.data)) return payload.data
-  if (Array.isArray(payload)) return payload
-  return []
-}
-
-const formatSalary = (job) => {
-  const salaryFrom = Number(job?.muc_luong_tu || 0)
-  const salaryTo = Number(job?.muc_luong_den || 0)
-  const formatMillion = (value) => {
-    const million = value / 1000000
-    return Number.isInteger(million)
-      ? `${million}`
-      : million.toLocaleString('vi-VN', { maximumFractionDigits: 1 })
-  }
-
-  if (salaryFrom && salaryTo) {
-    return `${formatMillion(salaryFrom)} - ${formatMillion(salaryTo)} triệu`
-  }
-
-  if (salaryFrom) {
-    return `${formatMillion(salaryFrom)} triệu`
-  }
-
-  return 'Thỏa thuận'
-}
-
-const getRemainingSlots = (job) => {
-  const totalSlots = Number(job?.so_luong_tuyen || 0)
-  const acceptedSlots = Number(job?.so_luong_da_nhan || 0)
-  const explicitRemaining = Number(job?.so_luong_con_lai || 0)
-
-  if (explicitRemaining > 0) return explicitRemaining
-  if (totalSlots > 0) return Math.max(totalSlots - acceptedSlots, 0)
-  return 0
-}
-
-const getHiringStatus = (job) => {
-  const totalSlots = Number(job?.so_luong_tuyen || 0)
-  const acceptedSlots = Number(job?.so_luong_da_nhan || 0)
-  const remainingSlots = getRemainingSlots(job)
-
-  if (!totalSlots) {
-    return {
-      label: 'Đang tuyển',
-      tone: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200/80 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20',
-    }
-  }
-
-  if (remainingSlots <= 0) {
-    return {
-      label: `Đủ ${acceptedSlots}/${totalSlots} vị trí`,
-      tone: 'bg-rose-50 text-rose-700 ring-1 ring-rose-200/80 dark:bg-rose-500/10 dark:text-rose-300 dark:ring-rose-500/20',
-    }
-  }
-
-  return {
-    label: `Còn ${remainingSlots}/${totalSlots} vị trí`,
-    tone: 'bg-amber-50 text-amber-700 ring-1 ring-amber-200/80 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/20',
-  }
-}
-
-const formatCompactNumber = (value) => Number(value || 0).toLocaleString('vi-VN')
-
-const getCompanyName = (job) =>
-  job?.cong_ty?.ten_cong_ty || job?.ten_cong_ty || 'Doanh nghiệp đang cập nhật'
-
-const getLocationText = (job) => job?.dia_diem_lam_viec || 'Linh hoạt'
-
-const getTagList = (job) => {
-  const industries = Array.isArray(job?.nganh_nghes)
-    ? job.nganh_nghes.map((item) => item?.ten_nganh || item?.ten_nganh_nghe).filter(Boolean)
-    : []
-
-  const skills = Array.isArray(job?.ky_nangs)
-    ? job.ky_nangs.map((item) => item?.ten_ky_nang || item?.ten).filter(Boolean)
-    : []
-
-  return [...new Set([...industries, ...skills])].slice(0, 3)
-}
-
-const loadLandingData = async () => {
-  loadingLanding.value = true
-
-  try {
-    const [jobsResponse, industriesResponse, skillsResponse, companiesResponse] = await Promise.all([
-      jobService.getJobs({ per_page: 8 }),
-      jobService.getIndustries({ per_page: 6 }),
-      jobService.getSkills({ per_page: 8 }),
-      jobService.getCompanies({ per_page: 4 }),
-    ])
-
-    featuredJobs.value = extractList(jobsResponse)
-    featuredIndustries.value = extractList(industriesResponse)
-    featuredSkills.value = extractList(skillsResponse)
-    featuredCompanies.value = extractList(companiesResponse)
-  } catch (error) {
-    notify.apiError(error, 'Không thể tải dữ liệu trang chủ.')
-  } finally {
-    loadingLanding.value = false
-  }
-}
-
-const handleHeroSearch = () => {
-  const value = quickQuery.value.trim()
-  const location = quickLocation.value.trim()
-
-  if (!value && !location) {
-    notify.warning('Hãy nhập từ khóa hoặc chọn tỉnh/thành để tìm việc.')
-    return
-  }
-
-  router.push({
-    path: '/jobs',
-    query: {
-      ...(value ? { search: value } : {}),
-      ...(location ? { dia_diem: location } : {}),
-    },
-  })
-}
-
-onMounted(() => {
-  loadLandingData()
-})
-</script>
-
 <template>
   <section class="relative overflow-hidden py-16 lg:py-24">
     <div class="mx-auto max-w-7xl px-6">
@@ -482,3 +322,163 @@ onMounted(() => {
     </div>
   </section>
 </template>
+
+<script setup>
+import { computed, onMounted, ref } from 'vue'
+import { RouterLink, useRouter } from 'vue-router'
+import { useNotify } from '@/composables/useNotify'
+import { jobService } from '@/services/api'
+import { VIETNAM_PROVINCES_34 } from '@/constants/vietnamProvinces'
+
+const router = useRouter()
+const notify = useNotify()
+
+const quickQuery = ref('')
+const quickLocation = ref('')
+
+const featuredJobs = ref([])
+const featuredIndustries = ref([])
+const featuredSkills = ref([])
+const featuredCompanies = ref([])
+const loadingLanding = ref(false)
+
+const scoreFeaturedJob = (job) => {
+  const featuredBoost = job?.is_featured ? 5000000000000 : 0
+  const hasSalary = Number(job?.muc_luong_tu || 0) ? 1 : 0
+  const views = Number(job?.luot_xem || 0)
+  const createdAt = job?.created_at ? new Date(job.created_at).getTime() : 0
+  return featuredBoost + (hasSalary * 2000000000000) + (views * 1000000) + createdAt
+}
+
+const sortedFeaturedJobs = computed(() =>
+  [...featuredJobs.value]
+    .sort((a, b) => scoreFeaturedJob(b) - scoreFeaturedJob(a))
+    .slice(0, 3),
+)
+
+const extractList = (response) => {
+  const payload = response?.data
+  if (Array.isArray(payload?.data)) return payload.data
+  if (Array.isArray(payload)) return payload
+  return []
+}
+
+const formatSalary = (job) => {
+  const salaryFrom = Number(job?.muc_luong_tu || 0)
+  const salaryTo = Number(job?.muc_luong_den || 0)
+  const formatMillion = (value) => {
+    const million = value / 1000000
+    return Number.isInteger(million)
+      ? `${million}`
+      : million.toLocaleString('vi-VN', { maximumFractionDigits: 1 })
+  }
+
+  if (salaryFrom && salaryTo) {
+    return `${formatMillion(salaryFrom)} - ${formatMillion(salaryTo)} triệu`
+  }
+
+  if (salaryFrom) {
+    return `${formatMillion(salaryFrom)} triệu`
+  }
+
+  return 'Thỏa thuận'
+}
+
+const getRemainingSlots = (job) => {
+  const totalSlots = Number(job?.so_luong_tuyen || 0)
+  const acceptedSlots = Number(job?.so_luong_da_nhan || 0)
+  const explicitRemaining = Number(job?.so_luong_con_lai || 0)
+
+  if (explicitRemaining > 0) return explicitRemaining
+  if (totalSlots > 0) return Math.max(totalSlots - acceptedSlots, 0)
+  return 0
+}
+
+const getHiringStatus = (job) => {
+  const totalSlots = Number(job?.so_luong_tuyen || 0)
+  const acceptedSlots = Number(job?.so_luong_da_nhan || 0)
+  const remainingSlots = getRemainingSlots(job)
+
+  if (!totalSlots) {
+    return {
+      label: 'Đang tuyển',
+      tone: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200/80 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20',
+    }
+  }
+
+  if (remainingSlots <= 0) {
+    return {
+      label: `Đủ ${acceptedSlots}/${totalSlots} vị trí`,
+      tone: 'bg-rose-50 text-rose-700 ring-1 ring-rose-200/80 dark:bg-rose-500/10 dark:text-rose-300 dark:ring-rose-500/20',
+    }
+  }
+
+  return {
+    label: `Còn ${remainingSlots}/${totalSlots} vị trí`,
+    tone: 'bg-amber-50 text-amber-700 ring-1 ring-amber-200/80 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/20',
+  }
+}
+
+const formatCompactNumber = (value) => Number(value || 0).toLocaleString('vi-VN')
+
+const getCompanyName = (job) =>
+  job?.cong_ty?.ten_cong_ty || job?.ten_cong_ty || 'Doanh nghiệp đang cập nhật'
+
+const getLocationText = (job) => job?.dia_diem_lam_viec || 'Linh hoạt'
+
+const getTagList = (job) => {
+  const industries = Array.isArray(job?.nganh_nghes)
+    ? job.nganh_nghes.map((item) => item?.ten_nganh || item?.ten_nganh_nghe).filter(Boolean)
+    : []
+
+  const skills = Array.isArray(job?.ky_nangs)
+    ? job.ky_nangs.map((item) => item?.ten_ky_nang || item?.ten).filter(Boolean)
+    : []
+
+  return [...new Set([...industries, ...skills])].slice(0, 3)
+}
+
+const loadLandingData = async () => {
+  loadingLanding.value = true
+
+  try {
+    const [jobsResponse, industriesResponse, skillsResponse, companiesResponse] = await Promise.all([
+      jobService.getJobs({ per_page: 8 }),
+      jobService.getIndustries({ per_page: 6 }),
+      jobService.getSkills({ per_page: 8 }),
+      jobService.getCompanies({ per_page: 4 }),
+    ])
+
+    featuredJobs.value = extractList(jobsResponse)
+    featuredIndustries.value = extractList(industriesResponse)
+    featuredSkills.value = extractList(skillsResponse)
+    featuredCompanies.value = extractList(companiesResponse)
+  } catch (error) {
+    notify.apiError(error, 'Không thể tải dữ liệu trang chủ.')
+  } finally {
+    loadingLanding.value = false
+  }
+}
+
+const handleHeroSearch = () => {
+  const value = quickQuery.value.trim()
+  const location = quickLocation.value.trim()
+
+  if (!value && !location) {
+    notify.warning('Hãy nhập từ khóa hoặc chọn tỉnh/thành để tìm việc.')
+    return
+  }
+
+  router.push({
+    path: '/jobs',
+    query: {
+      ...(value ? { search: value } : {}),
+      ...(location ? { dia_diem: location } : {}),
+    },
+  })
+}
+
+onMounted(() => {
+  loadLandingData()
+})
+</script>

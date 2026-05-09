@@ -1,16 +1,3 @@
-<script setup>
-import { computed } from 'vue'
-import { RouterLink, useRoute } from 'vue-router'
-import AppLogo from '@/components/AppLogo.vue'
-import { getStoredCandidate } from '@/utils/authStorage'
-
-const route = useRoute()
-
-const currentUser = computed(() => getStoredCandidate())
-const displayName = computed(() => currentUser.value?.ho_ten || 'Ứng viên')
-const currentPageTitle = computed(() => route.meta?.pageTitle || 'CV Builder')
-</script>
-
 <template>
   <div class="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(36,99,235,0.08),_transparent_26%),linear-gradient(180deg,_#f8fafc_0%,_#f4f6fb_100%)] text-slate-900 dark:bg-[#111621] dark:text-slate-100">
     <header class="sticky top-0 z-30 border-b border-slate-200/80 bg-white/90 backdrop-blur dark:border-slate-800 dark:bg-slate-950/85">
@@ -52,3 +39,16 @@ const currentPageTitle = computed(() => route.meta?.pageTitle || 'CV Builder')
     </main>
   </div>
 </template>
+
+<script setup>
+import { computed } from 'vue'
+import { RouterLink, useRoute } from 'vue-router'
+import AppLogo from '@/components/AppLogo.vue'
+import { getStoredCandidate } from '@/utils/authStorage'
+
+const route = useRoute()
+
+const currentUser = computed(() => getStoredCandidate())
+const displayName = computed(() => currentUser.value?.ho_ten || 'Ứng viên')
+const currentPageTitle = computed(() => route.meta?.pageTitle || 'CV Builder')
+</script>

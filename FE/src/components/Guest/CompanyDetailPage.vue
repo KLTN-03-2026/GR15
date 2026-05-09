@@ -1,129 +1,3 @@
-<script setup>
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { RouterLink, useRoute } from 'vue-router'
-import { followCompanyService, jobService } from '@/services/api'
-import { useNotify } from '@/composables/useNotify'
-import { connectPublicChannel, leaveRealtimeChannel } from '@/services/realtime'
-import { getAuthToken, getStoredCandidate } from '@/utils/authStorage'
-
-const route = useRoute()
-const notify = useNotify()
-
-const loading = ref(false)
-const followSubmitting = ref(false)
-const company = ref(null)
-let followerChannelName = null
-
-const hasAuthToken = computed(() => Boolean(getAuthToken()))
-const currentUser = computed(() => getStoredCandidate())
-const isCandidate = computed(() => hasAuthToken.value && currentUser.value?.vai_tro === 0)
-
-const loadCompany = async () => {
-  loading.value = true
-  try {
-    const response = await jobService.getCompanyById(route.params.id)
-    company.value = response?.data || null
-  } catch (error) {
-    company.value = null
-    notify.apiError(error, 'Không tải được thông tin công ty.')
-  } finally {
-    loading.value = false
-  }
-}
-
-const formatSalary = (job) => {
-  const from = Number(job?.muc_luong_tu || 0)
-  const to = Number(job?.muc_luong_den || 0)
-
-  if (from && to) return `${from.toLocaleString('vi-VN')} - ${to.toLocaleString('vi-VN')} đ`
-  if (from) return `${from.toLocaleString('vi-VN')} đ`
-  return 'Thỏa thuận'
-}
-
-const companyJobs = computed(() => company.value?.tin_tuyen_dungs || [])
-const companyIndustry = computed(() => company.value?.nganh_nghe?.ten_nganh || 'Đang cập nhật')
-const companyAddress = computed(() => company.value?.dia_chi || 'Đang cập nhật')
-const companyWebsite = computed(() => company.value?.website || '')
-const companyEmail = computed(() => company.value?.email || company.value?.nguoi_dung?.email || '')
-const companyScale = computed(() => company.value?.quy_mo || 'Đang cập nhật')
-const openJobsCount = computed(() => company.value?.so_tin_dang_hoat_dong || companyJobs.value.length || 0)
-const followerCount = computed(() => Number(company.value?.so_nguoi_theo_doi || 0))
-const isFollowed = computed(() => Boolean(company.value?.da_theo_doi))
-
-const toggleFollowCompany = async () => {
-  if (!company.value?.id || followSubmitting.value) return
-
-  if (!isCandidate.value) {
-    notify.warning('Vui lòng đăng nhập bằng tài khoản ứng viên để theo dõi công ty.')
-    return
-  }
-
-  followSubmitting.value = true
-  try {
-    const response = await followCompanyService.toggleFollowCompany(company.value.id)
-    const payload = response?.data || {}
-    const followed = Boolean(payload?.trang_thai_theo_doi)
-
-    company.value = {
-      ...company.value,
-      da_theo_doi: followed,
-      so_nguoi_theo_doi: Number(payload?.so_nguoi_theo_doi || 0),
-    }
-
-    if (followed) {
-      notify.success('Đã theo dõi công ty. Bạn sẽ nhận thông báo khi có job mới.')
-    } else {
-      notify.info('Đã bỏ theo dõi công ty.')
-    }
-  } catch (error) {
-    notify.apiError(error, 'Không thể cập nhật trạng thái theo dõi công ty.')
-  } finally {
-    followSubmitting.value = false
-  }
-}
-
-const subscribeFollowerChannel = (companyId) => {
-  if (!companyId) return
-
-  followerChannelName = `company.public.${companyId}`
-
-  connectPublicChannel(followerChannelName)?.listen('.company.followers.updated', (payload) => {
-    const followerCount = Number(payload?.follower_count)
-
-    if (!Number.isFinite(followerCount) || !company.value) return
-
-    company.value = {
-      ...company.value,
-      so_nguoi_theo_doi: followerCount,
-    }
-  })
-}
-
-watch(() => route.params.id, loadCompany)
-onMounted(loadCompany)
-
-watch(
-  () => company.value?.id,
-  (nextCompanyId, previousCompanyId) => {
-    if (previousCompanyId) {
-      leaveRealtimeChannel(`company.public.${previousCompanyId}`)
-    }
-
-    followerChannelName = null
-
-    if (nextCompanyId) {
-      subscribeFollowerChannel(nextCompanyId)
-    }
-  },
-)
-
-onUnmounted(() => {
-  if (followerChannelName) {
-    leaveRealtimeChannel(followerChannelName)
-  }
-})
-</script>
-
 <template>
   <section class="py-14 lg:py-16">
     <div class="mx-auto max-w-7xl px-6">
@@ -348,3 +222,129 @@ onUnmounted(() => {
     </div>
   </section>
 </template>
+
+<script setup>
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { RouterLink, useRoute } from 'vue-router'
+import { followCompanyService, jobService } from '@/services/api'
+import { useNotify } from '@/composables/useNotify'
+import { connectPublicChannel, leaveRealtimeChannel } from '@/services/realtime'
+import { getAuthToken, getStoredCandidate } from '@/utils/authStorage'
+
+const route = useRoute()
+const notify = useNotify()
+
+const loading = ref(false)
+const followSubmitting = ref(false)
+const company = ref(null)
+let followerChannelName = null
+
+const hasAuthToken = computed(() => Boolean(getAuthToken()))
+const currentUser = computed(() => getStoredCandidate())
+const isCandidate = computed(() => hasAuthToken.value && currentUser.value?.vai_tro === 0)
+
+const loadCompany = async () => {
+  loading.value = true
+  try {
+    const response = await jobService.getCompanyById(route.params.id)
+    company.value = response?.data || null
+  } catch (error) {
+    company.value = null
+    notify.apiError(error, 'Không tải được thông tin công ty.')
+  } finally {
+    loading.value = false
+  }
+}
+
+const formatSalary = (job) => {
+  const from = Number(job?.muc_luong_tu || 0)
+  const to = Number(job?.muc_luong_den || 0)
+
+  if (from && to) return `${from.toLocaleString('vi-VN')} - ${to.toLocaleString('vi-VN')} đ`
+  if (from) return `${from.toLocaleString('vi-VN')} đ`
+  return 'Thỏa thuận'
+}
+
+const companyJobs = computed(() => company.value?.tin_tuyen_dungs || [])
+const companyIndustry = computed(() => company.value?.nganh_nghe?.ten_nganh || 'Đang cập nhật')
+const companyAddress = computed(() => company.value?.dia_chi || 'Đang cập nhật')
+const companyWebsite = computed(() => company.value?.website || '')
+const companyEmail = computed(() => company.value?.email || company.value?.nguoi_dung?.email || '')
+const companyScale = computed(() => company.value?.quy_mo || 'Đang cập nhật')
+const openJobsCount = computed(() => company.value?.so_tin_dang_hoat_dong || companyJobs.value.length || 0)
+const followerCount = computed(() => Number(company.value?.so_nguoi_theo_doi || 0))
+const isFollowed = computed(() => Boolean(company.value?.da_theo_doi))
+
+const toggleFollowCompany = async () => {
+  if (!company.value?.id || followSubmitting.value) return
+
+  if (!isCandidate.value) {
+    notify.warning('Vui lòng đăng nhập bằng tài khoản ứng viên để theo dõi công ty.')
+    return
+  }
+
+  followSubmitting.value = true
+  try {
+    const response = await followCompanyService.toggleFollowCompany(company.value.id)
+    const payload = response?.data || {}
+    const followed = Boolean(payload?.trang_thai_theo_doi)
+
+    company.value = {
+      ...company.value,
+      da_theo_doi: followed,
+      so_nguoi_theo_doi: Number(payload?.so_nguoi_theo_doi || 0),
+    }
+
+    if (followed) {
+      notify.success('Đã theo dõi công ty. Bạn sẽ nhận thông báo khi có job mới.')
+    } else {
+      notify.info('Đã bỏ theo dõi công ty.')
+    }
+  } catch (error) {
+    notify.apiError(error, 'Không thể cập nhật trạng thái theo dõi công ty.')
+  } finally {
+    followSubmitting.value = false
+  }
+}
+
+const subscribeFollowerChannel = (companyId) => {
+  if (!companyId) return
+
+  followerChannelName = `company.public.${companyId}`
+
+  connectPublicChannel(followerChannelName)?.listen('.company.followers.updated', (payload) => {
+    const followerCount = Number(payload?.follower_count)
+
+    if (!Number.isFinite(followerCount) || !company.value) return
+
+    company.value = {
+      ...company.value,
+      so_nguoi_theo_doi: followerCount,
+    }
+  })
+}
+
+watch(() => route.params.id, loadCompany)
+onMounted(loadCompany)
+
+watch(
+  () => company.value?.id,
+  (nextCompanyId, previousCompanyId) => {
+    if (previousCompanyId) {
+      leaveRealtimeChannel(`company.public.${previousCompanyId}`)
+    }
+
+    followerChannelName = null
+
+    if (nextCompanyId) {
+      subscribeFollowerChannel(nextCompanyId)
+    }
+  },
+)
+
+onUnmounted(() => {
+  if (followerChannelName) {
+    leaveRealtimeChannel(followerChannelName)
+  }
+})
+</script>

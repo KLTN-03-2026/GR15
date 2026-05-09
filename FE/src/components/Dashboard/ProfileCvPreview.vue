@@ -1,96 +1,3 @@
-<script setup>
-import { computed } from 'vue'
-import {
-  cvSkillLevelLabel,
-  cvSkillLevelPercent,
-  formatCvPeriod,
-  getCvTemplateTheme,
-  resolveProfileCvAvatarUrl,
-  resolveCvTemplateLayout,
-} from '@/utils/profileCvBuilder'
-
-const props = defineProps({
-  profile: {
-    type: Object,
-    required: true,
-  },
-  owner: {
-    type: Object,
-    default: () => ({}),
-  },
-  compact: {
-    type: Boolean,
-    default: false,
-  },
-})
-
-const degreeOptions = {
-  trung_hoc: 'Trung học',
-  trung_cap: 'Trung cấp',
-  cao_dang: 'Cao đẳng',
-  dai_hoc: 'Đại học',
-  thac_si: 'Thạc sĩ',
-  tien_si: 'Tiến sĩ',
-  khac: 'Khác',
-}
-
-const template = computed(() =>
-  resolveCvTemplateLayout(props.profile?.mau_cv || 'executive_navy', props.profile?.bo_cuc_cv || ''),
-)
-const theme = computed(() => getCvTemplateTheme(template.value))
-const fullName = computed(() => props.owner?.ho_ten || 'Ứng viên')
-const email = computed(() => props.owner?.email || 'Chưa cập nhật email')
-const phone = computed(() => props.owner?.so_dien_thoai || 'Chưa cập nhật số điện thoại')
-const avatarUrl = computed(() => resolveProfileCvAvatarUrl(props.profile, props.owner))
-const avatarInitials = computed(() =>
-  String(fullName.value || 'U')
-    .trim()
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((part) => part.charAt(0).toUpperCase())
-    .join(''),
-)
-const title = computed(() => props.profile?.tieu_de_ho_so || 'Hồ sơ ứng tuyển trên hệ thống')
-const objective = computed(() => props.profile?.muc_tieu_nghe_nghiep || 'Chưa cập nhật mục tiêu nghề nghiệp.')
-const summary = computed(() => props.profile?.mo_ta_ban_than || 'Chưa cập nhật mô tả bản thân.')
-const degreeLabel = computed(() => degreeOptions[props.profile?.trinh_do] || props.profile?.trinh_do || 'Chưa cập nhật')
-const years = computed(() => `${props.profile?.kinh_nghiem_nam || 0} năm`)
-const targetPosition = computed(() => props.profile?.vi_tri_ung_tuyen_muc_tieu || 'Đa vị trí')
-const targetIndustry = computed(() => props.profile?.ten_nganh_nghe_muc_tieu || 'Đang cập nhật')
-const skills = computed(() => Array.isArray(props.profile?.ky_nang_json) ? props.profile.ky_nang_json.filter((item) => item?.ten) : [])
-const experiences = computed(() => Array.isArray(props.profile?.kinh_nghiem_json) ? props.profile.kinh_nghiem_json.filter((item) => item?.vi_tri) : [])
-const educations = computed(() => Array.isArray(props.profile?.hoc_van_json) ? props.profile.hoc_van_json.filter((item) => item?.truong) : [])
-const projects = computed(() => Array.isArray(props.profile?.du_an_json) ? props.profile.du_an_json.filter((item) => item?.ten) : [])
-const certificates = computed(() => Array.isArray(props.profile?.chung_chi_json) ? props.profile.chung_chi_json.filter((item) => item?.ten) : [])
-
-const limitedExperiences = computed(() => experiences.value.slice(0, props.compact ? 2 : 4))
-const limitedProjects = computed(() => projects.value.slice(0, props.compact ? 2 : 3))
-const limitedCertificates = computed(() => certificates.value.slice(0, props.compact ? 2 : 3))
-
-const getProjectDomain = (item) => item?.linh_vuc_hoac_cong_cu || item?.cong_nghe || ''
-const getProjectOrganization = (item) => item?.don_vi_hoac_khach_hang || ''
-const getProjectEvidenceTypeLabel = (value) => {
-  const labels = {
-    github: 'GitHub',
-    demo: 'Demo',
-    api_docs: 'API docs',
-    portfolio: 'Portfolio',
-    case_study: 'Case study',
-    report: 'Báo cáo',
-    dashboard: 'Dashboard',
-    behance: 'Behance',
-    figma: 'Figma',
-    dribbble: 'Dribbble',
-    campaign: 'Chiến dịch',
-    landing_page: 'Landing page',
-    reference: 'Minh chứng',
-  }
-
-  return labels[String(value || '').trim()] || ''
-}
-const getProjectEvidenceLink = (item) => item?.lien_ket_minh_chung || item?.link || ''
-</script>
-
 <template>
   <div class="cv-preview-root overflow-hidden bg-white shadow-sm" :style="{ color: theme.text }">
     <template v-if="template === 'executive_navy'">
@@ -204,6 +111,7 @@ const getProjectEvidenceLink = (item) => item?.lien_ket_minh_chung || item?.link
       </div>
     </template>
 
+
     <template v-else-if="template === 'topcv_maroon'">
       <div class="cv-preview-grid-maroon grid grid-cols-1 md:grid-cols-[320px_minmax(0,1fr)]">
         <aside class="cv-preview-sidebar bg-[#5b3133] text-white">
@@ -314,18 +222,18 @@ const getProjectEvidenceLink = (item) => item?.lien_ket_minh_chung || item?.link
         </header>
 
         <section class="mt-10">
-          <h4 class="text-2xl font-bold text-slate-950" style="font-family: Georgia, 'Times New Roman', serif;">Summary</h4>
+          <h4 class="text-2xl font-bold text-slate-950" style="font-family: Georgia, 'Times New Roman', serif;">Tóm tắt</h4>
           <div class="mt-3 h-px bg-slate-300" />
           <p class="mt-4 whitespace-pre-wrap text-[15px] leading-8 text-slate-900" style="font-family: Georgia, 'Times New Roman', serif;">{{ summary || objective }}</p>
         </section>
 
         <section class="mt-10">
-          <h4 class="text-2xl font-bold text-slate-950" style="font-family: Georgia, 'Times New Roman', serif;">Experience</h4>
+          <h4 class="text-2xl font-bold text-slate-950" style="font-family: Georgia, 'Times New Roman', serif;">Kinh nghiệm</h4>
           <div class="mt-3 h-px bg-slate-300" />
           <div v-if="limitedExperiences.length" class="mt-5 space-y-6">
             <article v-for="(item, index) in limitedExperiences" :key="`exp-ats-${index}`">
               <p class="text-[18px] font-bold text-slate-950" style="font-family: Georgia, 'Times New Roman', serif;">{{ item.vi_tri }}</p>
-              <p class="mt-1 text-[17px] font-bold text-slate-950" style="font-family: Georgia, 'Times New Roman', serif;">{{ item.cong_ty || 'Personal Projects' }}</p>
+              <p class="mt-1 text-[17px] font-bold text-slate-950" style="font-family: Georgia, 'Times New Roman', serif;">{{ item.cong_ty || 'Dự án cá nhân' }}</p>
               <p class="mt-1 text-[15px] text-slate-800" style="font-family: Georgia, 'Times New Roman', serif;">{{ formatCvPeriod(item.bat_dau, item.ket_thuc) }}</p>
               <p v-if="item.mo_ta" class="mt-2 whitespace-pre-wrap text-[15px] leading-8 text-slate-900" style="font-family: Georgia, 'Times New Roman', serif;">{{ item.mo_ta }}</p>
             </article>
@@ -334,7 +242,7 @@ const getProjectEvidenceLink = (item) => item?.lien_ket_minh_chung || item?.link
         </section>
 
         <section class="mt-10">
-          <h4 class="text-2xl font-bold text-slate-950" style="font-family: Georgia, 'Times New Roman', serif;">Skills</h4>
+          <h4 class="text-2xl font-bold text-slate-950" style="font-family: Georgia, 'Times New Roman', serif;">Kỹ năng</h4>
           <div class="mt-3 h-px bg-slate-300" />
           <p class="mt-4 text-[15px] leading-8 text-slate-900" style="font-family: Georgia, 'Times New Roman', serif;">
             {{ skills.map((item) => item.ten).join(', ') || 'Chưa cập nhật kỹ năng.' }}
@@ -342,7 +250,7 @@ const getProjectEvidenceLink = (item) => item?.lien_ket_minh_chung || item?.link
         </section>
 
         <section class="mt-10">
-          <h4 class="text-2xl font-bold text-slate-950" style="font-family: Georgia, 'Times New Roman', serif;">Education</h4>
+          <h4 class="text-2xl font-bold text-slate-950" style="font-family: Georgia, 'Times New Roman', serif;">Học vấn</h4>
           <div class="mt-3 h-px bg-slate-300" />
           <div v-if="educations.length" class="mt-5 space-y-4">
             <article v-for="(item, index) in educations" :key="`edu-ats-${index}`">
@@ -355,7 +263,7 @@ const getProjectEvidenceLink = (item) => item?.lien_ket_minh_chung || item?.link
         </section>
 
         <section class="mt-10">
-          <h4 class="text-2xl font-bold text-slate-950" style="font-family: Georgia, 'Times New Roman', serif;">Projects & Certifications</h4>
+          <h4 class="text-2xl font-bold text-slate-950" style="font-family: Georgia, 'Times New Roman', serif;">Dự án & Chứng chỉ</h4>
           <div class="mt-3 h-px bg-slate-300" />
           <div class="mt-5 space-y-4">
             <article v-for="(item, index) in limitedProjects" :key="`project-ats-${index}`">
@@ -388,6 +296,100 @@ const getProjectEvidenceLink = (item) => item?.lien_ket_minh_chung || item?.link
     </template>
   </div>
 </template>
+
+<script setup>
+import { computed } from 'vue'
+import {
+  cvSkillLevelLabel,
+  cvSkillLevelPercent,
+  formatCvPeriod,
+  getCvTemplateTheme,
+  resolveProfileCvAvatarUrl,
+  resolveCvTemplateLayout,
+} from '@/utils/profileCvBuilder'
+import { formatExperienceYears } from '@/utils/experience'
+
+const props = defineProps({
+  profile: {
+    type: Object,
+    required: true,
+  },
+  owner: {
+    type: Object,
+    default: () => ({}),
+  },
+  compact: {
+    type: Boolean,
+    default: false,
+  },
+})
+
+const degreeOptions = {
+  trung_hoc: 'Trung học',
+  trung_cap: 'Trung cấp',
+  cao_dang: 'Cao đẳng',
+  dai_hoc: 'Đại học',
+  thac_si: 'Thạc sĩ',
+  tien_si: 'Tiến sĩ',
+  khac: 'Khác',
+}
+
+const template = computed(() =>
+  resolveCvTemplateLayout(props.profile?.mau_cv || 'executive_navy', props.profile?.bo_cuc_cv || ''),
+)
+const theme = computed(() => getCvTemplateTheme(template.value))
+const fullName = computed(() => props.owner?.ho_ten || 'Ứng viên')
+const email = computed(() => props.owner?.email || 'Chưa cập nhật email')
+const phone = computed(() => props.owner?.so_dien_thoai || 'Chưa cập nhật số điện thoại')
+const avatarUrl = computed(() => resolveProfileCvAvatarUrl(props.profile, props.owner))
+const avatarInitials = computed(() =>
+  String(fullName.value || 'U')
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join(''),
+)
+const title = computed(() => props.profile?.tieu_de_ho_so || 'Hồ sơ ứng tuyển trên hệ thống')
+const objective = computed(() => props.profile?.muc_tieu_nghe_nghiep || 'Chưa cập nhật mục tiêu nghề nghiệp.')
+const summary = computed(() => props.profile?.mo_ta_ban_than || 'Chưa cập nhật mô tả bản thân.')
+const degreeLabel = computed(() => degreeOptions[props.profile?.trinh_do] || props.profile?.trinh_do || 'Chưa cập nhật')
+const years = computed(() => formatExperienceYears(props.profile?.kinh_nghiem_nam))
+const targetPosition = computed(() => props.profile?.vi_tri_ung_tuyen_muc_tieu || 'Đa vị trí')
+const targetIndustry = computed(() => props.profile?.ten_nganh_nghe_muc_tieu || 'Đang cập nhật')
+const skills = computed(() => Array.isArray(props.profile?.ky_nang_json) ? props.profile.ky_nang_json.filter((item) => item?.ten) : [])
+const experiences = computed(() => Array.isArray(props.profile?.kinh_nghiem_json) ? props.profile.kinh_nghiem_json.filter((item) => item?.vi_tri) : [])
+const educations = computed(() => Array.isArray(props.profile?.hoc_van_json) ? props.profile.hoc_van_json.filter((item) => item?.truong) : [])
+const projects = computed(() => Array.isArray(props.profile?.du_an_json) ? props.profile.du_an_json.filter((item) => item?.ten) : [])
+const certificates = computed(() => Array.isArray(props.profile?.chung_chi_json) ? props.profile.chung_chi_json.filter((item) => item?.ten) : [])
+
+const limitedExperiences = computed(() => experiences.value.slice(0, props.compact ? 2 : 4))
+const limitedProjects = computed(() => projects.value.slice(0, props.compact ? 2 : 3))
+const limitedCertificates = computed(() => certificates.value.slice(0, props.compact ? 2 : 3))
+
+const getProjectDomain = (item) => item?.linh_vuc_hoac_cong_cu || item?.cong_nghe || ''
+const getProjectOrganization = (item) => item?.don_vi_hoac_khach_hang || ''
+const getProjectEvidenceTypeLabel = (value) => {
+  const labels = {
+    github: 'GitHub',
+    demo: 'Demo',
+    api_docs: 'API docs',
+    portfolio: 'Portfolio',
+    case_study: 'Case study',
+    report: 'Báo cáo',
+    dashboard: 'Dashboard',
+    behance: 'Behance',
+    figma: 'Figma',
+    dribbble: 'Dribbble',
+    campaign: 'Chiến dịch',
+    landing_page: 'Landing page',
+    reference: 'Minh chứng',
+  }
+
+  return labels[String(value || '').trim()] || ''
+}
+const getProjectEvidenceLink = (item) => item?.lien_ket_minh_chung || item?.link || ''
+</script>
 
 <style scoped>
 @media print {

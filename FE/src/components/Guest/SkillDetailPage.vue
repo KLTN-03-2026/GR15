@@ -1,80 +1,3 @@
-<script setup>
-import { computed, onMounted, ref, watch } from 'vue'
-import { RouterLink, useRoute } from 'vue-router'
-import { jobService } from '@/services/api'
-import { useNotify } from '@/composables/useNotify'
-
-const route = useRoute()
-const notify = useNotify()
-
-const loading = ref(false)
-const skill = ref(null)
-const skillJobs = ref([])
-const relatedSkills = ref([])
-
-const extractList = (response) => {
-  const payload = response?.data
-  if (Array.isArray(payload?.data)) return payload.data
-  if (Array.isArray(payload)) return payload
-  return []
-}
-
-const loadSkillDetail = async () => {
-  loading.value = true
-
-  try {
-    const skillResponse = await jobService.getSkillById(route.params.id)
-    const skillPayload = skillResponse?.data || null
-    skill.value = skillPayload
-
-    if (!skillPayload) {
-      skillJobs.value = []
-      relatedSkills.value = []
-      return
-    }
-
-    const [jobsResponse, relatedSkillsResponse] = await Promise.all([
-      jobService.getJobs({
-        search: skillPayload.ten_ky_nang,
-        per_page: 6,
-      }),
-      jobService.getSkills({
-        search: skillPayload.ten_ky_nang.split(/\s+/).slice(0, 1).join(' '),
-        per_page: 8,
-      }),
-    ])
-
-    skillJobs.value = extractList(jobsResponse)
-    relatedSkills.value = extractList(relatedSkillsResponse)
-      .filter((item) => item.id !== skillPayload.id)
-      .slice(0, 6)
-  } catch (error) {
-    skill.value = null
-    skillJobs.value = []
-    relatedSkills.value = []
-    notify.apiError(error, 'Không tải được thông tin kỹ năng.')
-  } finally {
-    loading.value = false
-  }
-}
-
-const skillName = computed(() => skill.value?.ten_ky_nang || 'Kỹ năng')
-const skillDescription = computed(() => skill.value?.mo_ta || 'Kỹ năng này đang được cập nhật thêm mô tả và ngữ cảnh sử dụng trong tuyển dụng.')
-const openJobsCount = computed(() => skillJobs.value.length)
-
-const formatSalary = (job) => {
-  const from = Number(job?.muc_luong_tu || 0)
-  const to = Number(job?.muc_luong_den || 0)
-
-  if (from && to) return `${from.toLocaleString('vi-VN')} - ${to.toLocaleString('vi-VN')} đ`
-  if (from) return `${from.toLocaleString('vi-VN')} đ`
-  return 'Thỏa thuận'
-}
-
-watch(() => route.params.id, loadSkillDetail)
-onMounted(loadSkillDetail)
-</script>
-
 <template>
   <section class="py-14 lg:py-16">
     <div class="mx-auto max-w-7xl px-6">
@@ -250,3 +173,80 @@ onMounted(loadSkillDetail)
     </div>
   </section>
 </template>
+
+<script setup>
+import { computed, onMounted, ref, watch } from 'vue'
+import { RouterLink, useRoute } from 'vue-router'
+import { jobService } from '@/services/api'
+import { useNotify } from '@/composables/useNotify'
+
+const route = useRoute()
+const notify = useNotify()
+
+const loading = ref(false)
+const skill = ref(null)
+const skillJobs = ref([])
+const relatedSkills = ref([])
+
+const extractList = (response) => {
+  const payload = response?.data
+  if (Array.isArray(payload?.data)) return payload.data
+  if (Array.isArray(payload)) return payload
+  return []
+}
+
+const loadSkillDetail = async () => {
+  loading.value = true
+
+  try {
+    const skillResponse = await jobService.getSkillById(route.params.id)
+    const skillPayload = skillResponse?.data || null
+    skill.value = skillPayload
+
+    if (!skillPayload) {
+      skillJobs.value = []
+      relatedSkills.value = []
+      return
+    }
+
+    const [jobsResponse, relatedSkillsResponse] = await Promise.all([
+      jobService.getJobs({
+        search: skillPayload.ten_ky_nang,
+        per_page: 6,
+      }),
+      jobService.getSkills({
+        search: skillPayload.ten_ky_nang.split(/\s+/).slice(0, 1).join(' '),
+        per_page: 8,
+      }),
+    ])
+
+    skillJobs.value = extractList(jobsResponse)
+    relatedSkills.value = extractList(relatedSkillsResponse)
+      .filter((item) => item.id !== skillPayload.id)
+      .slice(0, 6)
+  } catch (error) {
+    skill.value = null
+    skillJobs.value = []
+    relatedSkills.value = []
+    notify.apiError(error, 'Không tải được thông tin kỹ năng.')
+  } finally {
+    loading.value = false
+  }
+}
+
+const skillName = computed(() => skill.value?.ten_ky_nang || 'Kỹ năng')
+const skillDescription = computed(() => skill.value?.mo_ta || 'Kỹ năng này đang được cập nhật thêm mô tả và ngữ cảnh sử dụng trong tuyển dụng.')
+const openJobsCount = computed(() => skillJobs.value.length)
+
+const formatSalary = (job) => {
+  const from = Number(job?.muc_luong_tu || 0)
+  const to = Number(job?.muc_luong_den || 0)
+
+  if (from && to) return `${from.toLocaleString('vi-VN')} - ${to.toLocaleString('vi-VN')} đ`
+  if (from) return `${from.toLocaleString('vi-VN')} đ`
+  return 'Thỏa thuận'
+}
+
+watch(() => route.params.id, loadSkillDetail)
+onMounted(loadSkillDetail)
+</script>

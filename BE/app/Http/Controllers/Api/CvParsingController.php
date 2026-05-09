@@ -95,7 +95,7 @@ class CvParsingController extends Controller
         }
 
         $kinhNghiemNam = $this->uocLuongKinhNghiemNam($data['parsed_experience_json'] ?? [], $data['raw_text'] ?? null);
-        if ((int) ($hoSo->kinh_nghiem_nam ?? 0) === 0 && $kinhNghiemNam > 0) {
+        if ((float) ($hoSo->kinh_nghiem_nam ?? 0) === 0.0 && $kinhNghiemNam > 0) {
             $hoSo->kinh_nghiem_nam = $kinhNghiemNam;
             $updatedFields[] = 'kinh_nghiem_nam';
         }

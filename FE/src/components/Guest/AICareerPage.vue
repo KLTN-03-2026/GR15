@@ -1,6 +1,3 @@
-<script setup>
-</script>
-
 <template>
   <div class="max-w-7xl mx-auto px-4 py-8">
     <div class="mb-12 flex flex-col items-center text-center">
@@ -122,3 +119,6 @@
     </div>
   </div>
 </template>
+
+<script setup>
+</script>

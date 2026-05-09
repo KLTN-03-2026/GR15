@@ -1,1213 +1,3 @@
-<script setup>
-import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import { employerApplicationService, employerBillingService, employerCandidateService, employerJobService } from '@/services/api'
-import { useEmployerCompanyPermissions } from '@/composables/useEmployerCompanyPermissions'
-import { useNotify } from '@/composables/useNotify'
-import { getAuthToken } from '@/utils/authStorage'
-import { connectPrivateChannel } from '@/services/realtime'
-import { formatDateTimeVN, formatHistoricalDateTimeVN, toDateTimeLocalInputVN } from '@/utils/dateTime'
-import {
-  APPLICATION_STATUS,
-  APPLICATION_STATUS_OPTIONS,
-  OFFER_STATUS,
-  getOfferStatusMeta,
-  getApplicationStatusMeta,
-  isFinalApplicationStatus as isFinalApplicationStatusValue,
-} from '@/utils/applicationStatus'
-
-const notify = useNotify()
-const route = useRoute()
-const router = useRouter()
-const {
-  company,
-  canProcessApplications,
-  currentInternalRoleLabel,
-  assignableMembers,
-  companyMembers,
-  ensurePermissionsLoaded,
-  currentEmployerId,
-  canManageAllAssignments,
-} = useEmployerCompanyPermissions()
-
-const loading = ref(false)
-const saving = ref(false)
-const resendingEmailId = ref(null)
-const sendingOfferId = ref(null)
-const roundSaving = ref(false)
-const roundDeletingId = ref(null)
-const onboardingLoading = ref(false)
-const onboardingSaving = ref(false)
-const onboardingTaskSavingId = ref(null)
-const exportingApplicationId = ref(null)
-const copilotGenerating = ref(false)
-const copilotEvaluating = ref(false)
-const applications = ref([])
-const applicationListRef = ref(null)
-const jobs = ref([])
-const pagination = ref(null)
-const modalOpen = ref(false)
-const modalBodyRef = ref(null)
-const modalFocusSection = ref('')
-const selectedApplication = ref(null)
-const selectedRoundId = ref('')
-const candidateDetailOpen = ref(false)
-const candidateDetailLoading = ref(false)
-const candidateDetail = ref(null)
-const notificationTemplates = ref({})
-const copilotSnapshot = ref(null)
-const copilotScores = reactive({})
-const billingLoading = ref(false)
-const billingWallet = ref(null)
-const billingPricing = ref([])
-const billingEntitlements = ref([])
-let applicationRealtimeChannel = null
-
-const cleanDeepLinkQueryKeys = [
-  'highlight_application_id',
-  'focus_section',
-  'interview_round_id',
-  'onboarding_plan_id',
-  'onboarding_task_id',
-]
-
-const filters = reactive({
-  tin_tuyen_dung_id: '',
-  trang_thai: '',
-  hr_phu_trach_id: '',
-  per_page: 10,
-  page: 1,
-})
-
-const formatCurrency = (value) => `${Number(value || 0).toLocaleString('vi-VN')} đ`
-
-const hrFilterOptions = computed(() => ([
-  { id: '', label: 'Tất cả HR phụ trách' },
-  { id: 'me', label: 'Tôi phụ trách' },
-  ...assignableMembers.value,
-]))
-
-const interviewerOptions = computed(() => {
-  const options = companyMembers.value.map((member) => ({
-    value: String(member?.ho_ten || '').trim(),
-    label: `${member?.ho_ten || 'HR'}${member?.ten_vai_tro_noi_bo ? ` (${member.ten_vai_tro_noi_bo})` : ''}`,
-  })).filter((item) => item.value)
-
-  const currentValue = String(form.nguoi_phong_van || '').trim()
-  if (currentValue && !options.some((item) => item.value === currentValue)) {
-    options.unshift({
-      value: currentValue,
-      label: `${currentValue} (dữ liệu cũ)`,
-    })
-  }
-
-  return options
-})
-
-const form = reactive({
-  trang_thai: 0,
-  ngay_hen_phong_van: '',
-  hinh_thuc_phong_van: '',
-  nguoi_phong_van: '',
-  link_phong_van: '',
-  ket_qua_phong_van: '',
-  hr_phu_trach_id: '',
-  ghi_chu: '',
-})
-
-const roundForm = reactive({
-  id: '',
-  thu_tu: '',
-  ten_vong: '',
-  loai_vong: 'hr',
-  trang_thai: 0,
-  ngay_hen_phong_van: '',
-  hinh_thuc_phong_van: '',
-  nguoi_phong_van: '',
-  interviewer_user_id: '',
-  link_phong_van: '',
-  ket_qua: '',
-  diem_so: '',
-  ghi_chu: '',
-})
-
-const offerForm = reactive({
-  ghi_chu_offer: '',
-  link_offer: '',
-  han_phan_hoi_offer: '',
-})
-
-const onboardingForm = reactive({
-  ngay_bat_dau: '',
-  dia_diem_lam_viec: '',
-  trang_thai: 'preparing',
-  loi_chao_mung: '',
-  ghi_chu_ung_vien: '',
-  ghi_chu_noi_bo: '',
-  tai_lieu_text: '',
-})
-
-const onboardingTaskForm = reactive({
-  tieu_de: '',
-  mo_ta: '',
-  han_hoan_tat: '',
-  nguoi_phu_trach: 'candidate',
-})
-
-const statusOptions = [
-  { value: '', label: 'Tất cả trạng thái' },
-  ...APPLICATION_STATUS_OPTIONS,
-]
-
-const activeTemplate = computed(() => notificationTemplates.value?.[Number(form.trang_thai)] || null)
-const copilotPreInterview = computed(() => copilotSnapshot.value?.pre_interview || null)
-const copilotPostInterview = computed(() => copilotSnapshot.value?.post_interview || null)
-const selectedInterviewRounds = computed(() =>
-  [...(selectedApplication.value?.interview_rounds || [])].sort((a, b) => Number(a.thu_tu || 0) - Number(b.thu_tu || 0))
-)
-const selectedRound = computed(() =>
-  selectedInterviewRounds.value.find((round) => Number(round.id) === Number(selectedRoundId.value)) || null
-)
-const selectedOnboardingPlan = computed(() => selectedApplication.value?.onboarding_plan || null)
-const canManageOnboarding = computed(() =>
-  Number(selectedApplication.value?.trang_thai_offer || OFFER_STATUS.NOT_SENT) === OFFER_STATUS.ACCEPTED
-)
-
-const stats = computed(() => {
-  const all = applications.value
-  const pending = all.filter((item) => Number(item.trang_thai) === APPLICATION_STATUS.PENDING).length
-  const reviewed = all.filter((item) => Number(item.trang_thai) === APPLICATION_STATUS.REVIEWED).length
-  const scheduled = all.filter((item) => Number(item.trang_thai) === APPLICATION_STATUS.INTERVIEW_SCHEDULED).length
-  const hired = all.filter((item) => Number(item.trang_thai) === APPLICATION_STATUS.HIRED).length
-
-  return [
-    {
-      label: 'Hồ sơ đang chờ',
-      value: pending,
-      hint: 'Nên xử lý sớm để giữ trải nghiệm ứng viên tốt.',
-      icon: 'hourglass_top',
-      tone: 'text-amber-300 bg-amber-500/10',
-    },
-    {
-      label: 'Đã xem',
-      value: reviewed,
-      hint: 'Các hồ sơ đã được mở và đánh giá sơ bộ.',
-      icon: 'visibility',
-      tone: 'text-sky-300 bg-sky-500/10',
-    },
-    {
-      label: 'Lịch đã hẹn',
-      value: scheduled,
-      hint: 'Đơn đang ở giai đoạn phỏng vấn đã được lên lịch.',
-      icon: 'calendar_month',
-      tone: 'text-violet-300 bg-violet-500/10',
-    },
-    {
-      label: 'Quá lịch cần cập nhật',
-      value: overdueInterviews.value.length,
-      hint: 'Lịch phỏng vấn đã qua nhưng chưa chốt trúng tuyển hoặc từ chối.',
-      icon: 'notification_important',
-      tone: 'text-rose-300 bg-rose-500/10',
-    },
-    {
-      label: 'Trúng tuyển',
-      value: hired,
-      hint: 'Các hồ sơ đã có kết quả tuyển dụng cuối cùng.',
-      icon: 'task_alt',
-      tone: 'text-emerald-300 bg-emerald-500/10',
-    },
-  ]
-})
-
-const paginationSummary = computed(() => {
-  if (!pagination.value) return 'Chưa có dữ liệu'
-  return `Hiển thị ${pagination.value.from || 0}-${pagination.value.to || 0} trên ${pagination.value.total || 0} đơn ứng tuyển`
-})
-
-const upcomingInterviews = computed(() =>
-  applications.value
-    .filter((item) => item.ngay_hen_phong_van && !isInterviewResultOverdue(item))
-    .sort((a, b) => new Date(a.ngay_hen_phong_van) - new Date(b.ngay_hen_phong_van))
-    .slice(0, 5)
-)
-
-const statusMeta = getApplicationStatusMeta
-const offerStatusMeta = getOfferStatusMeta
-
-const interviewModeLabel = (value) => {
-  const labels = {
-    online: 'Online',
-    offline: 'Trực tiếp',
-    phone: 'Điện thoại',
-  }
-
-  return labels[value] || 'Chưa cập nhật'
-}
-
-const interviewAttendanceMeta = (value) => {
-  const labels = {
-    0: {
-      label: 'Chờ xác nhận',
-      classes: 'border border-violet-300/60 bg-violet-50 text-violet-700 dark:border-violet-400/20 dark:bg-violet-500/10 dark:text-violet-300',
-    },
-    1: {
-      label: 'Đã xác nhận',
-      classes: 'border border-emerald-300/60 bg-emerald-50 text-emerald-700 dark:border-emerald-400/20 dark:bg-emerald-500/10 dark:text-emerald-300',
-    },
-    2: {
-      label: 'Không tham gia',
-      classes: 'border border-rose-300/60 bg-rose-50 text-rose-700 dark:border-rose-400/20 dark:bg-rose-500/10 dark:text-rose-300',
-    },
-  }
-
-  return labels[Number(value)] || {
-    label: 'Chưa phản hồi',
-    classes: 'border border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300',
-  }
-}
-
-const roundTypeLabel = (value) => ({
-  hr: 'HR screening',
-  technical: 'Technical',
-  manager: 'Manager',
-  final: 'Final',
-  culture: 'Culture fit',
-  other: 'Khác',
-}[value] || value || 'HR screening')
-
-const roundStatusMeta = (value) => {
-  switch (Number(value)) {
-    case 1:
-      return { label: 'Hoàn thành', classes: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' }
-    case 2:
-      return { label: 'Đã hủy', classes: 'bg-rose-500/10 text-rose-700 dark:text-rose-300' }
-    default:
-      return { label: 'Đã lên lịch', classes: 'bg-violet-500/10 text-violet-700 dark:text-violet-300' }
-  }
-}
-
-const isUrl = (value) => /^https?:\/\//i.test(String(value || '').trim())
-
-const degreeLabel = (value) => {
-  const labels = {
-    trung_hoc: 'Trung học',
-    trung_cap: 'Trung cấp',
-    cao_dang: 'Cao đẳng',
-    dai_hoc: 'Đại học',
-    thac_si: 'Thạc sĩ',
-    tien_si: 'Tiến sĩ',
-    khac: 'Khác',
-  }
-
-  return labels[value] || value || 'Chưa cập nhật'
-}
-
-const formatDateTime = (value) => {
-  return formatDateTimeVN(value, 'Chưa lên lịch')
-}
-
-const formatSubmittedDateTime = (value) => {
-  return formatHistoricalDateTimeVN(value, 'Chưa cập nhật')
-}
-
-const timelineDate = (item) =>
-  formatDateTimeVN(item?.occurred_at || item?.scheduled_at || item?.due_at, 'Chưa cập nhật')
-
-const timelineStatusClasses = (status) => ({
-  completed: 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300',
-  current: 'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300',
-  pending: 'border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300',
-  cancelled: 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300',
-}[status] || 'border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300')
-
-const timelineStatusLabel = (status) => ({
-  completed: 'Hoàn tất',
-  current: 'Đang xử lý',
-  pending: 'Sắp tới',
-  cancelled: 'Đã dừng',
-}[status] || 'Theo dõi')
-
-const formatDateTimeInput = (value) => {
-  return toDateTimeLocalInputVN(value)
-}
-
-const isFinalApplicationStatus = (application) => isFinalApplicationStatusValue(application?.trang_thai)
-
-const canEmployerUpdateApplication = (application) => !application?.da_rut_don
-const isOwnedApplication = (application) => {
-  const ownedByApplication = Number(application?.hr_phu_trach?.id || application?.hr_phu_trach_id || 0) === Number(currentEmployerId.value || 0)
-  const ownedByJob = Number(application?.tin_tuyen_dung?.hr_phu_trach?.id || application?.tin_tuyen_dung?.hr_phu_trach_id || 0) === Number(currentEmployerId.value || 0)
-  return ownedByApplication || ownedByJob
-}
-const canMutateApplication = (application) => Boolean(
-  canProcessApplications.value
-  && !application?.da_rut_don
-  && (canManageAllAssignments.value || isOwnedApplication(application)),
-)
-const canUseInterviewCopilotFor = (application) => Boolean(
-  canMutateApplication(application)
-  && !isFinalApplicationStatus(application),
-)
-const walletAvailable = computed(() => Number(billingWallet.value?.so_du_kha_dung || 0))
-const resolveBillingFeature = (featureCode) => {
-  const pricing = billingPricing.value.find((item) => item.feature_code === featureCode) || null
-  const entitlement = billingEntitlements.value.find((item) => item.feature_code === featureCode) || null
-  const hasIncludedQuota = Boolean(entitlement?.subscription_is_unlimited)
-    || Number(entitlement?.subscription_quota_remaining || 0) > 0
-    || Number(entitlement?.free_quota_remaining || 0) > 0
-  const walletPrice = Number(pricing?.don_gia || entitlement?.wallet_price || 0)
-  const walletUnit = pricing?.don_vi_tinh || entitlement?.wallet_unit || 'lượt'
-  const requiresWallet = !hasIncludedQuota && walletPrice > 0
-
-  return {
-    featureCode,
-    pricing,
-    entitlement,
-    hasIncludedQuota,
-    walletPrice,
-    walletUnit,
-    requiresWallet,
-    affordable: !requiresWallet || walletAvailable.value >= walletPrice,
-  }
-}
-const copilotGenerateFeature = computed(() => resolveBillingFeature('interview_copilot_generate'))
-const copilotEvaluateFeature = computed(() => resolveBillingFeature('interview_copilot_evaluate'))
-const formatFeaturePrice = (feature) => {
-  if (!feature?.walletPrice) return 'Chưa cấu hình giá'
-  return `${formatCurrency(feature.walletPrice)}/${feature.walletUnit || 'lượt'}`
-}
-const canRunPaidFeature = (feature) => {
-  if (!feature) return true
-  if (feature.hasIncludedQuota) return true
-  if (!feature.walletPrice) return true
-  return feature.affordable
-}
-const candidateName = (application) =>
-  application?.ho_so?.nguoi_dung?.ho_ten
-  || application?.ho_so?.tieu_de_ho_so
-  || application?.ho_so?.nguoi_dung?.email
-  || 'Ứng viên'
-
-const isInterviewResultOverdue = (application) => {
-  if (!application?.ngay_hen_phong_van || application?.da_rut_don || isFinalApplicationStatus(application)) {
-    return false
-  }
-
-  return Number(application.trang_thai) >= APPLICATION_STATUS.INTERVIEW_SCHEDULED
-    && new Date(application.ngay_hen_phong_van).getTime() < Date.now()
-}
-const ownershipHint = computed(() =>
-  canProcessApplications.value && !canManageAllAssignments.value
-    ? `Vai trò ${currentInternalRoleLabel.value} chỉ có thể xử lý các đơn ứng tuyển mình phụ trách.`
-    : ''
-)
-const canUseSelectedInterviewCopilot = computed(() => canUseInterviewCopilotFor(selectedApplication.value))
-const canGenerateSelectedInterviewCopilot = computed(() =>
-  canUseSelectedInterviewCopilot.value && canRunPaidFeature(copilotGenerateFeature.value)
-)
-const canEvaluateSelectedInterviewCopilot = computed(() =>
-  canUseSelectedInterviewCopilot.value && canRunPaidFeature(copilotEvaluateFeature.value)
-)
-const needsInterviewCopilotTopup = computed(() =>
-  canUseSelectedInterviewCopilot.value
-  && (!canRunPaidFeature(copilotGenerateFeature.value) || !canRunPaidFeature(copilotEvaluateFeature.value))
-)
-const selectedInterviewOverdue = computed(() => isInterviewResultOverdue(selectedApplication.value))
-const overdueInterviews = computed(() =>
-  applications.value
-    .filter(isInterviewResultOverdue)
-    .sort((a, b) => new Date(a.ngay_hen_phong_van) - new Date(b.ngay_hen_phong_van))
-)
-
-const canResendInterviewEmail = (application) =>
-  Boolean(application?.id)
-  && Boolean(application?.ngay_hen_phong_van)
-  && !application?.da_rut_don
-  && !isFinalApplicationStatus(application)
-
-const canSendOffer = (application) =>
-  Boolean(application?.id)
-  && canMutateApplication(application)
-  && !application?.da_rut_don
-  && Number(application?.trang_thai) !== APPLICATION_STATUS.REJECTED
-  && Number(application?.trang_thai_offer || OFFER_STATUS.NOT_SENT) !== OFFER_STATUS.ACCEPTED
-
-const canExportDocument = (application, document) => {
-  if (!application?.id) return false
-  if (document === 'offer') return Number(application.trang_thai_offer || OFFER_STATUS.NOT_SENT) > OFFER_STATUS.NOT_SENT
-  if (document === 'interview') return Boolean(
-    application.ngay_hen_phong_van
-    || application.interview_rounds?.length
-    || application.ket_qua_phong_van
-    || application.rubric_danh_gia_phong_van,
-  )
-  if (document === 'onboarding') return Boolean(application.onboarding_plan)
-  return true
-}
-
-const triggerDownload = (blob, filename) => {
-  const objectUrl = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = objectUrl
-  link.download = filename || `application-export-${Date.now()}.pdf`
-  document.body.appendChild(link)
-  link.click()
-  link.remove()
-  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 30_000)
-}
-
-const statusOptionsForSelectedApplication = computed(() => {
-  if (!selectedApplication.value) return statusOptions.slice(1)
-
-  if (isFinalApplicationStatus(selectedApplication.value)) {
-    return statusOptions
-      .slice(1)
-      .filter(status => Number(status.value) === Number(selectedApplication.value?.trang_thai))
-  }
-
-  return statusOptions.slice(1)
-})
-
-const fetchJobs = async () => {
-  try {
-    const response = await employerJobService.getJobs({ per_page: 100 })
-    jobs.value = response?.data?.data || []
-  } catch {
-    jobs.value = []
-  }
-}
-
-const fetchNotificationTemplates = async () => {
-  try {
-    const response = await employerApplicationService.getNotificationTemplates()
-    notificationTemplates.value = response?.data || {}
-  } catch {
-    notificationTemplates.value = {}
-  }
-}
-
-const loadBillingContext = async () => {
-  billingLoading.value = true
-  try {
-    const [walletResponse, pricingResponse, entitlementsResponse] = await Promise.all([
-      employerBillingService.getWallet(),
-      employerBillingService.getPricing(),
-      employerBillingService.getEntitlements(),
-    ])
-
-    billingWallet.value = walletResponse?.data?.wallet || null
-    billingPricing.value = pricingResponse?.data || []
-    billingEntitlements.value = entitlementsResponse?.data?.entitlements || []
-  } catch (error) {
-    billingWallet.value = null
-    billingPricing.value = []
-    billingEntitlements.value = []
-    notify.apiError(error, 'Không tải được dữ liệu billing employer.')
-  } finally {
-    billingLoading.value = false
-  }
-}
-
-const fetchApplications = async () => {
-  loading.value = true
-  try {
-    const response = await employerApplicationService.getApplications(filters)
-    const payload = response?.data || {}
-    applications.value = payload.data || []
-    pagination.value = payload
-  } catch (error) {
-    applications.value = []
-    pagination.value = null
-    notify.apiError(error, 'Không tải được danh sách ứng tuyển.')
-  } finally {
-    loading.value = false
-  }
-}
-
-const refreshApplicationsRealtime = async () => {
-  if (loading.value) return
-  await fetchApplications()
-}
-
-const handleApplicationHighlight = async () => {
-  const applicationId = typeof route.query.highlight_application_id === 'string'
-    ? route.query.highlight_application_id
-    : ''
-
-  if (!applicationId) return
-
-  await nextTick()
-  const target = applicationListRef.value?.querySelector(`[data-application-id="${applicationId}"]`)
-  const application = applications.value.find((item) => Number(item.id) === Number(applicationId))
-
-  if (target) {
-    target.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    target.classList.add('ring-2', 'ring-[#2463eb]', 'ring-offset-2', 'ring-offset-white', 'dark:ring-offset-slate-950')
-
-    window.setTimeout(() => {
-      target.classList.remove('ring-2', 'ring-[#2463eb]', 'ring-offset-2', 'ring-offset-white', 'dark:ring-offset-slate-950')
-    }, 2600)
-  } else {
-    notify.info('Đơn ứng tuyển cần xem không nằm trong trang hiện tại. Bạn có thể đổi bộ lọc hoặc tìm theo tin tuyển dụng.')
-  }
-
-  if (application && route.query.focus_section) {
-    if (route.query.interview_round_id) {
-      const round = (application.interview_rounds || []).find((item) => Number(item.id) === Number(route.query.interview_round_id))
-      if (round) selectRound(round)
-    }
-    openModal(application, {
-      focusSection: route.query.focus_section,
-      interviewRoundId: route.query.interview_round_id,
-    })
-    await nextTick()
-    scrollModalToFocus()
-  }
-
-  const query = { ...route.query }
-  cleanDeepLinkQueryKeys.forEach((key) => delete query[key])
-  router.replace({ query })
-}
-
-const applyFilters = async () => {
-  filters.page = 1
-  await fetchApplications()
-}
-
-const resetFilters = async () => {
-  filters.tin_tuyen_dung_id = ''
-  filters.trang_thai = ''
-  filters.hr_phu_trach_id = ''
-  filters.per_page = 10
-  filters.page = 1
-  await fetchApplications()
-}
-
-const goToPage = async (page) => {
-  if (!page || page === filters.page) return
-  filters.page = page
-  await fetchApplications()
-}
-
-const openModal = (application, options = {}) => {
-  if (!canMutateApplication(application)) {
-    notify.warning(canProcessApplications.value
-      ? 'Bạn chỉ có thể xử lý các đơn ứng tuyển mình phụ trách.'
-      : `Vai trò ${currentInternalRoleLabel.value} không thể cập nhật quy trình ứng tuyển.`)
-    return
-  }
-
-  selectedApplication.value = application
-  form.trang_thai = Number(application.trang_thai ?? 0)
-  form.ngay_hen_phong_van = formatDateTimeInput(application.ngay_hen_phong_van)
-  form.hinh_thuc_phong_van = application.hinh_thuc_phong_van || ''
-  form.nguoi_phong_van = application.nguoi_phong_van || ''
-  form.link_phong_van = application.link_phong_van || ''
-  form.ket_qua_phong_van = application.ket_qua_phong_van || ''
-  form.hr_phu_trach_id = application.hr_phu_trach?.id ? String(application.hr_phu_trach.id) : ''
-  form.ghi_chu = application.ghi_chu || ''
-  offerForm.ghi_chu_offer = application.ghi_chu_offer || ''
-  offerForm.link_offer = application.link_offer || ''
-  offerForm.han_phan_hoi_offer = formatDateTimeInput(application.han_phan_hoi_offer)
-  copilotSnapshot.value = parseCopilotSnapshot(application.rubric_danh_gia_phong_van)
-  resetCopilotScores(copilotPreInterview.value?.rubric || [])
-  const requestedRound = options.interviewRoundId
-    ? (application.interview_rounds || []).find((round) => Number(round.id) === Number(options.interviewRoundId))
-    : null
-  const latestRound = requestedRound || [...(application.interview_rounds || [])].sort((a, b) => Number(b.thu_tu || 0) - Number(a.thu_tu || 0))[0]
-  if (latestRound) {
-    selectRound(latestRound)
-  } else {
-    resetRoundForm()
-    roundForm.thu_tu = 1
-    roundForm.ten_vong = 'Vòng 1 - HR screening'
-  }
-  modalFocusSection.value = String(options.focusSection || '')
-  modalOpen.value = true
-  if (Number(application.trang_thai_offer || OFFER_STATUS.NOT_SENT) === OFFER_STATUS.ACCEPTED) {
-    fetchOnboardingPlan()
-  }
-}
-
-const scrollModalToFocus = () => {
-  const section = modalFocusSection.value
-  if (!section || !modalBodyRef.value) return
-  const target = modalBodyRef.value.querySelector(`[data-modal-section="${section}"]`)
-  if (!target) return
-  target.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  target.classList.add('ring-2', 'ring-[#2463eb]', 'ring-offset-2', 'ring-offset-white', 'dark:ring-offset-slate-950')
-  window.setTimeout(() => {
-    target.classList.remove('ring-2', 'ring-[#2463eb]', 'ring-offset-2', 'ring-offset-white', 'dark:ring-offset-slate-950')
-  }, 2800)
-}
-
-const scrollModalToSection = (section) => {
-  modalFocusSection.value = section
-  nextTick(() => scrollModalToFocus())
-}
-
-const openInterviewCopilotWorkspace = (application) => {
-  openModal(application)
-  if (!canUseInterviewCopilotFor(application) && isFinalApplicationStatus(application)) {
-    notify.info('Đơn đã có kết quả cuối. Interview Copilot chỉ còn ở chế độ xem lại.')
-  }
-}
-
-const closeModal = () => {
-  modalOpen.value = false
-  selectedApplication.value = null
-  form.trang_thai = 0
-  form.ngay_hen_phong_van = ''
-  form.hinh_thuc_phong_van = ''
-  form.nguoi_phong_van = ''
-  form.link_phong_van = ''
-  form.ket_qua_phong_van = ''
-  form.hr_phu_trach_id = ''
-  form.ghi_chu = ''
-  offerForm.ghi_chu_offer = ''
-  offerForm.link_offer = ''
-  offerForm.han_phan_hoi_offer = ''
-  modalFocusSection.value = ''
-  resetOnboardingForm()
-  copilotSnapshot.value = null
-  resetCopilotScores([])
-  resetRoundForm()
-}
-
-const resetOnboardingForm = () => {
-  onboardingForm.ngay_bat_dau = ''
-  onboardingForm.dia_diem_lam_viec = ''
-  onboardingForm.trang_thai = 'preparing'
-  onboardingForm.loi_chao_mung = ''
-  onboardingForm.ghi_chu_ung_vien = ''
-  onboardingForm.ghi_chu_noi_bo = ''
-  onboardingForm.tai_lieu_text = ''
-  onboardingTaskForm.tieu_de = ''
-  onboardingTaskForm.mo_ta = ''
-  onboardingTaskForm.han_hoan_tat = ''
-  onboardingTaskForm.nguoi_phu_trach = 'candidate'
-}
-
-const fillOnboardingForm = (plan) => {
-  onboardingForm.ngay_bat_dau = plan?.ngay_bat_dau || ''
-  onboardingForm.dia_diem_lam_viec = plan?.dia_diem_lam_viec || ''
-  onboardingForm.trang_thai = plan?.trang_thai || 'preparing'
-  onboardingForm.loi_chao_mung = plan?.loi_chao_mung || ''
-  onboardingForm.ghi_chu_ung_vien = plan?.ghi_chu_ung_vien || ''
-  onboardingForm.ghi_chu_noi_bo = plan?.ghi_chu_noi_bo || ''
-  onboardingForm.tai_lieu_text = (plan?.tai_lieu_can_chuan_bi || plan?.tai_lieu_can_chuan_bi_json || []).join('\n')
-}
-
-const setSelectedOnboardingPlan = (plan) => {
-  if (!selectedApplication.value) return
-  selectedApplication.value = {
-    ...selectedApplication.value,
-    onboarding_plan: plan,
-  }
-  applications.value = applications.value.map((item) =>
-    Number(item.id) === Number(selectedApplication.value.id)
-      ? { ...item, onboarding_plan: plan }
-      : item
-  )
-  fillOnboardingForm(plan)
-}
-
-const resetRoundForm = () => {
-  selectedRoundId.value = ''
-  roundForm.id = ''
-  roundForm.thu_tu = ''
-  roundForm.ten_vong = ''
-  roundForm.loai_vong = 'hr'
-  roundForm.trang_thai = 0
-  roundForm.ngay_hen_phong_van = ''
-  roundForm.hinh_thuc_phong_van = ''
-  roundForm.nguoi_phong_van = ''
-  roundForm.interviewer_user_id = ''
-  roundForm.link_phong_van = ''
-  roundForm.ket_qua = ''
-  roundForm.diem_so = ''
-  roundForm.ghi_chu = ''
-}
-
-const selectRound = (round) => {
-  selectedRoundId.value = String(round?.id || '')
-  roundForm.id = round?.id || ''
-  roundForm.thu_tu = round?.thu_tu || ''
-  roundForm.ten_vong = round?.ten_vong || ''
-  roundForm.loai_vong = round?.loai_vong || 'hr'
-  roundForm.trang_thai = Number(round?.trang_thai || 0)
-  roundForm.ngay_hen_phong_van = formatDateTimeInput(round?.ngay_hen_phong_van)
-  roundForm.hinh_thuc_phong_van = round?.hinh_thuc_phong_van || ''
-  roundForm.nguoi_phong_van = round?.nguoi_phong_van || ''
-  roundForm.interviewer_user_id = round?.interviewer_user_id ? String(round.interviewer_user_id) : ''
-  roundForm.link_phong_van = round?.link_phong_van || ''
-  roundForm.ket_qua = round?.ket_qua || ''
-  roundForm.diem_so = round?.diem_so ?? ''
-  roundForm.ghi_chu = round?.ghi_chu || ''
-  copilotSnapshot.value = parseCopilotSnapshot(round?.rubric_danh_gia_json)
-  resetCopilotScores(copilotPreInterview.value?.rubric || [])
-}
-
-const parseCopilotSnapshot = (value) => {
-  if (!value) return null
-  if (typeof value === 'object') return value
-
-  try {
-    const parsed = JSON.parse(value)
-    return parsed && typeof parsed === 'object' ? parsed : null
-  } catch {
-    return null
-  }
-}
-
-const resetCopilotScores = (rubric = []) => {
-  Object.keys(copilotScores).forEach((key) => delete copilotScores[key])
-  rubric.forEach((item, index) => {
-    const key = item.criterion || `criterion_${index}`
-    copilotScores[key] = ''
-  })
-}
-
-const syncCopilotFromResponse = (payload) => {
-  copilotSnapshot.value = payload?.copilot || null
-  if (payload?.interview_round?.id) {
-    selectedRoundId.value = String(payload.interview_round.id)
-    const updatedRound = payload.interview_round
-    selectedApplication.value = {
-      ...selectedApplication.value,
-      interview_rounds: (selectedApplication.value?.interview_rounds || []).map((round) =>
-        Number(round.id) === Number(updatedRound.id) ? updatedRound : round
-      ),
-    }
-    selectRound(updatedRound)
-  }
-  if (payload?.ket_qua_phong_van !== undefined) form.ket_qua_phong_van = payload.ket_qua_phong_van || form.ket_qua_phong_van
-  if (payload?.ghi_chu !== undefined) form.ghi_chu = payload.ghi_chu || form.ghi_chu
-  resetCopilotScores(copilotPreInterview.value?.rubric || [])
-}
-
-const closeCandidateDetail = () => {
-  candidateDetailOpen.value = false
-  candidateDetailLoading.value = false
-  candidateDetail.value = null
-}
-
-const fetchProtectedFile = async (url) => {
-  const token = getAuthToken()
-
-  if (!token) {
-    notify.warning('Vui lòng đăng nhập lại để xem file CV.')
-    return null
-  }
-
-  const response = await fetch(encodeURI(url), {
-    method: 'GET',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: 'application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,*/*',
-    },
-  })
-
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}`)
-  }
-
-  return response.blob()
-}
-
-const openCv = async (candidate) => {
-  const cvUrl = candidate?.file_cv_url
-  if (!cvUrl) {
-    notify.info('Ứng viên này chưa có file CV đính kèm.')
-    return
-  }
-
-  try {
-    const blob = await fetchProtectedFile(cvUrl)
-    if (!blob) return
-
-    const objectUrl = URL.createObjectURL(blob)
-    window.open(objectUrl, '_blank', 'noopener')
-    setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000)
-  } catch {
-    notify.error('Không mở được file CV. Vui lòng thử lại.')
-  }
-}
-
-const openCandidateDetail = async (application) => {
-  const candidateId = application?.ho_so?.id
-  if (!candidateId) {
-    notify.info('Không tìm thấy hồ sơ chi tiết của ứng viên này.')
-    return
-  }
-
-  candidateDetailOpen.value = true
-  candidateDetailLoading.value = true
-  candidateDetail.value = null
-
-  try {
-    const response = await employerCandidateService.getCandidateById(candidateId)
-    candidateDetail.value = response?.data || null
-  } catch (error) {
-    notify.apiError(error, 'Không tải được chi tiết hồ sơ ứng viên.')
-    closeCandidateDetail()
-  } finally {
-    candidateDetailLoading.value = false
-  }
-}
-
-const saveApplication = async () => {
-  if (!selectedApplication.value) return
-  if (!canMutateApplication(selectedApplication.value)) {
-    notify.warning(canProcessApplications.value
-      ? 'Bạn chỉ có thể xử lý các đơn ứng tuyển mình phụ trách.'
-      : `Vai trò ${currentInternalRoleLabel.value} không thể cập nhật trạng thái ứng tuyển.`)
-    return
-  }
-
-  saving.value = true
-  try {
-    await employerApplicationService.updateStatus(selectedApplication.value.id, {
-      trang_thai: Number(form.trang_thai),
-      ngay_hen_phong_van: form.ngay_hen_phong_van || null,
-      hinh_thuc_phong_van: form.hinh_thuc_phong_van || null,
-      nguoi_phong_van: form.nguoi_phong_van || null,
-      link_phong_van: form.link_phong_van || null,
-      ket_qua_phong_van: form.ket_qua_phong_van || null,
-      hr_phu_trach_id: form.hr_phu_trach_id ? Number(form.hr_phu_trach_id) : null,
-      ghi_chu: form.ghi_chu || null,
-    })
-
-    notify.success('Đã cập nhật ứng tuyển và gửi email khi cần.')
-    closeModal()
-    await fetchApplications()
-  } catch (error) {
-    notify.apiError(error, 'Không cập nhật được trạng thái ứng tuyển.')
-  } finally {
-    saving.value = false
-  }
-}
-
-const refreshSelectedApplicationRounds = async () => {
-  if (!selectedApplication.value?.id) return
-  try {
-    const response = await employerApplicationService.getInterviewRounds(selectedApplication.value.id)
-    selectedApplication.value = {
-      ...selectedApplication.value,
-      interview_rounds: response?.data || [],
-    }
-  } catch (error) {
-    notify.apiError(error, 'Không tải lại được timeline phỏng vấn.')
-  }
-}
-
-const saveInterviewRound = async () => {
-  if (!selectedApplication.value?.id || !roundForm.ten_vong || roundSaving.value) return
-
-  roundSaving.value = true
-  const payload = {
-    thu_tu: roundForm.thu_tu ? Number(roundForm.thu_tu) : null,
-    ten_vong: roundForm.ten_vong,
-    loai_vong: roundForm.loai_vong || 'hr',
-    trang_thai: Number(roundForm.trang_thai || 0),
-    ngay_hen_phong_van: roundForm.ngay_hen_phong_van || null,
-    hinh_thuc_phong_van: roundForm.hinh_thuc_phong_van || null,
-    nguoi_phong_van: roundForm.nguoi_phong_van || null,
-    interviewer_user_id: roundForm.interviewer_user_id ? Number(roundForm.interviewer_user_id) : null,
-    link_phong_van: roundForm.link_phong_van || null,
-    ket_qua: roundForm.ket_qua || null,
-    diem_so: roundForm.diem_so !== '' ? Number(roundForm.diem_so) : null,
-    ghi_chu: roundForm.ghi_chu || null,
-  }
-
-  try {
-    const response = roundForm.id
-      ? await employerApplicationService.updateInterviewRound(selectedApplication.value.id, roundForm.id, payload)
-      : await employerApplicationService.createInterviewRound(selectedApplication.value.id, payload)
-    const savedRound = response?.data
-    notify.success(response?.message || 'Đã lưu vòng phỏng vấn.')
-    await refreshSelectedApplicationRounds()
-    await fetchApplications()
-    if (savedRound?.id) {
-      const freshRound = (selectedApplication.value?.interview_rounds || []).find((round) => Number(round.id) === Number(savedRound.id)) || savedRound
-      selectRound(freshRound)
-    }
-  } catch (error) {
-    notify.apiError(error, 'Không lưu được vòng phỏng vấn.')
-  } finally {
-    roundSaving.value = false
-  }
-}
-
-const deleteInterviewRound = async (round) => {
-  if (!selectedApplication.value?.id || !round?.id || roundDeletingId.value) return
-
-  roundDeletingId.value = round.id
-  try {
-    await employerApplicationService.deleteInterviewRound(selectedApplication.value.id, round.id)
-    notify.success('Đã xóa vòng phỏng vấn.')
-    await refreshSelectedApplicationRounds()
-    await fetchApplications()
-    resetRoundForm()
-  } catch (error) {
-    notify.apiError(error, 'Không xóa được vòng phỏng vấn.')
-  } finally {
-    roundDeletingId.value = null
-  }
-}
-
-const generateInterviewCopilot = async () => {
-  if (!selectedApplication.value) return
-  if (!canUseInterviewCopilotFor(selectedApplication.value)) {
-    notify.warning(isFinalApplicationStatus(selectedApplication.value)
-      ? 'Đơn đã có kết quả cuối nên không thể tạo lại Interview Copilot.'
-      : 'Bạn không có quyền tạo Interview Copilot cho đơn ứng tuyển này.')
-    return
-  }
-  if (!canRunPaidFeature(copilotGenerateFeature.value)) {
-    notify.info('Ví employer không đủ để tạo Interview Copilot. Vui lòng nạp thêm ví trước khi tiếp tục.')
-    return
-  }
-
-  copilotGenerating.value = true
-  try {
-    const response = await employerApplicationService.generateInterviewCopilot(selectedApplication.value.id, {
-      interview_round_id: selectedRoundId.value ? Number(selectedRoundId.value) : undefined,
-    })
-    syncCopilotFromResponse(response?.data)
-    notify.success(response?.message || 'Đã tạo Interview Copilot.')
-    await Promise.all([fetchApplications(), loadBillingContext()])
-  } catch (error) {
-    notify.apiError(error, 'Không tạo được Interview Copilot.')
-  } finally {
-    copilotGenerating.value = false
-  }
-}
-
-const evaluateInterviewCopilot = async () => {
-  if (!selectedApplication.value) return
-  if (!canUseInterviewCopilotFor(selectedApplication.value)) {
-    notify.warning(isFinalApplicationStatus(selectedApplication.value)
-      ? 'Đơn đã có kết quả cuối nên không thể đánh giá lại bằng Interview Copilot.'
-      : 'Bạn không có quyền đánh giá Interview Copilot cho đơn ứng tuyển này.')
-    return
-  }
-  if (!canRunPaidFeature(copilotEvaluateFeature.value)) {
-    notify.info('Ví employer không đủ để đánh giá sau phỏng vấn. Vui lòng nạp thêm ví trước khi tiếp tục.')
-    return
-  }
-
-  copilotEvaluating.value = true
-  try {
-    const response = await employerApplicationService.evaluateInterviewCopilot(selectedApplication.value.id, {
-      notes: form.ghi_chu || '',
-      decision: form.ket_qua_phong_van || '',
-      scores: { ...copilotScores },
-      interview_round_id: selectedRoundId.value ? Number(selectedRoundId.value) : undefined,
-    })
-    syncCopilotFromResponse(response?.data)
-    notify.success(response?.message || 'Đã tạo đánh giá sau phỏng vấn.')
-    await Promise.all([fetchApplications(), loadBillingContext()])
-  } catch (error) {
-    notify.apiError(error, 'Không tạo được đánh giá sau phỏng vấn.')
-  } finally {
-    copilotEvaluating.value = false
-  }
-}
-
-const resendInterviewEmail = async (application) => {
-  if (!canMutateApplication(application)) {
-    notify.warning(canProcessApplications.value
-      ? 'Bạn chỉ có thể gửi lại email cho các đơn ứng tuyển mình phụ trách.'
-      : `Vai trò ${currentInternalRoleLabel.value} không thể gửi lại email lịch phỏng vấn.`)
-    return
-  }
-
-  if (!canResendInterviewEmail(application)) {
-    notify.info('Đơn này hiện không thể gửi lại email lịch phỏng vấn.')
-    return
-  }
-
-  resendingEmailId.value = application.id
-  try {
-    await employerApplicationService.resendInterviewEmail(application.id)
-    notify.success('Đã gửi lại email lịch phỏng vấn cho ứng viên.')
-  } catch (error) {
-    notify.apiError(error, 'Không gửi lại được email lịch phỏng vấn.')
-  } finally {
-    resendingEmailId.value = null
-  }
-}
-
-const sendOffer = async () => {
-  if (!selectedApplication.value || sendingOfferId.value) return
-
-  if (!canSendOffer(selectedApplication.value)) {
-    notify.warning('Đơn này hiện không thể gửi offer.')
-    return
-  }
-
-  sendingOfferId.value = selectedApplication.value.id
-  try {
-    const response = await employerApplicationService.sendOffer(selectedApplication.value.id, {
-      ghi_chu_offer: offerForm.ghi_chu_offer || null,
-      link_offer: offerForm.link_offer || null,
-      han_phan_hoi_offer: offerForm.han_phan_hoi_offer || null,
-    })
-    const updated = response?.data || null
-    if (updated?.id) {
-      selectedApplication.value = updated
-      applications.value = applications.value.map((item) =>
-        Number(item.id) === Number(updated.id) ? updated : item
-      )
-    }
-    notify.success(response?.message || 'Đã gửi offer cho ứng viên.')
-    await fetchApplications()
-  } catch (error) {
-    notify.apiError(error, 'Không gửi được offer cho ứng viên.')
-  } finally {
-    sendingOfferId.value = null
-  }
-}
-
-const fetchOnboardingPlan = async () => {
-  if (!selectedApplication.value?.id || !canManageOnboarding.value) return
-  onboardingLoading.value = true
-  try {
-    const response = await employerApplicationService.getOnboarding(selectedApplication.value.id)
-    if (response?.data) {
-      setSelectedOnboardingPlan(response.data)
-    }
-  } catch (error) {
-    notify.apiError(error, 'Không tải được onboarding cho ứng viên.')
-  } finally {
-    onboardingLoading.value = false
-  }
-}
-
-const saveOnboardingPlan = async () => {
-  if (!selectedApplication.value?.id || !canManageOnboarding.value || onboardingSaving.value) return
-  onboardingSaving.value = true
-  try {
-    const response = await employerApplicationService.updateOnboarding(selectedApplication.value.id, {
-      ngay_bat_dau: onboardingForm.ngay_bat_dau || null,
-      dia_diem_lam_viec: onboardingForm.dia_diem_lam_viec || null,
-      trang_thai: onboardingForm.trang_thai,
-      loi_chao_mung: onboardingForm.loi_chao_mung || null,
-      ghi_chu_ung_vien: onboardingForm.ghi_chu_ung_vien || null,
-      ghi_chu_noi_bo: onboardingForm.ghi_chu_noi_bo || null,
-      tai_lieu_can_chuan_bi: onboardingForm.tai_lieu_text
-        .split('\n')
-        .map((item) => item.trim())
-        .filter(Boolean),
-    })
-    setSelectedOnboardingPlan(response?.data)
-    notify.success(response?.message || 'Đã lưu onboarding.')
-  } catch (error) {
-    notify.apiError(error, 'Không lưu được onboarding.')
-  } finally {
-    onboardingSaving.value = false
-  }
-}
-
-const createOnboardingTask = async () => {
-  if (!selectedApplication.value?.id || !onboardingTaskForm.tieu_de || onboardingTaskSavingId.value) return
-  onboardingTaskSavingId.value = 'new'
-  try {
-    const response = await employerApplicationService.createOnboardingTask(selectedApplication.value.id, {
-      tieu_de: onboardingTaskForm.tieu_de,
-      mo_ta: onboardingTaskForm.mo_ta || null,
-      han_hoan_tat: onboardingTaskForm.han_hoan_tat || null,
-      nguoi_phu_trach: onboardingTaskForm.nguoi_phu_trach,
-    })
-    setSelectedOnboardingPlan(response?.data)
-    onboardingTaskForm.tieu_de = ''
-    onboardingTaskForm.mo_ta = ''
-    onboardingTaskForm.han_hoan_tat = ''
-    onboardingTaskForm.nguoi_phu_trach = 'candidate'
-    notify.success('Đã thêm checklist onboarding.')
-  } catch (error) {
-    notify.apiError(error, 'Không thêm được checklist onboarding.')
-  } finally {
-    onboardingTaskSavingId.value = null
-  }
-}
-
-const updateOnboardingTaskStatus = async (task, status) => {
-  if (!selectedApplication.value?.id || !task?.id || onboardingTaskSavingId.value) return
-  onboardingTaskSavingId.value = task.id
-  try {
-    const response = await employerApplicationService.updateOnboardingTask(selectedApplication.value.id, task.id, {
-      trang_thai: status,
-    })
-    setSelectedOnboardingPlan(response?.data)
-  } catch (error) {
-    notify.apiError(error, 'Không cập nhật được checklist.')
-  } finally {
-    onboardingTaskSavingId.value = null
-  }
-}
-
-const deleteOnboardingTask = async (task) => {
-  if (!selectedApplication.value?.id || !task?.id || onboardingTaskSavingId.value) return
-  onboardingTaskSavingId.value = task.id
-  try {
-    const response = await employerApplicationService.deleteOnboardingTask(selectedApplication.value.id, task.id)
-    setSelectedOnboardingPlan(response?.data)
-    notify.info('Đã xóa checklist onboarding.')
-  } catch (error) {
-    notify.apiError(error, 'Không xóa được checklist.')
-  } finally {
-    onboardingTaskSavingId.value = null
-  }
-}
-
-const downloadApplicationExport = async (application, document = 'full') => {
-  if (!application?.id || exportingApplicationId.value) return
-  exportingApplicationId.value = `${application.id}:${document}`
-  try {
-    const response = await employerApplicationService.downloadExport(application.id, document)
-    triggerDownload(response.blob, response.filename)
-    notify.success('Đã tạo file PDF từ server.')
-  } catch (error) {
-    notify.apiError(error, 'Không tải được file PDF.')
-  } finally {
-    exportingApplicationId.value = null
-  }
-}
-
-onMounted(async () => {
-  await Promise.all([ensurePermissionsLoaded(), fetchJobs(), fetchApplications(), fetchNotificationTemplates(), loadBillingContext()])
-  await handleApplicationHighlight()
-
-  const companyId = company.value?.id
-  if (companyId) {
-    applicationRealtimeChannel = connectPrivateChannel(`company.${companyId}`)
-    applicationRealtimeChannel?.listen('.application.changed', (event) => {
-      const title = event?.payload?.tin_tuyen_dung_tieu_de
-      notify.info(title ? `Pipeline "${title}" vừa có cập nhật realtime.` : 'Pipeline ứng tuyển vừa có cập nhật realtime.')
-      void refreshApplicationsRealtime()
-    })
-  }
-})
-
-onUnmounted(() => {
-  if (applicationRealtimeChannel) {
-    applicationRealtimeChannel.stopListening('.application.changed')
-    applicationRealtimeChannel = null
-  }
-})
-
-watch(() => form.hr_phu_trach_id, (value) => {
-  if (!value || form.nguoi_phong_van) return
-
-  const selectedMember = companyMembers.value.find((member) => String(member?.id) === String(value))
-  if (selectedMember?.ho_ten) {
-    form.nguoi_phong_van = selectedMember.ho_ten
-  }
-})
-</script>
-
 <template>
   <div class="mx-auto max-w-7xl">
     <div class="mb-8 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -2537,7 +1327,7 @@ watch(() => form.hr_phu_trach_id, (value) => {
 
           <div class="rounded-2xl border border-slate-200 bg-slate-50 p-5 dark:border-slate-800 dark:bg-slate-900/60">
             <p class="text-xs font-bold uppercase tracking-[0.22em] text-slate-400">Kinh nghiệm</p>
-            <p class="mt-3 text-lg font-bold text-slate-900 dark:text-white">{{ candidateDetail.kinh_nghiem_nam || 0 }} năm</p>
+            <p class="mt-3 text-lg font-bold text-slate-900 dark:text-white">{{ formatExperienceYears(candidateDetail.kinh_nghiem_nam) }}</p>
           </div>
 
           <div class="rounded-2xl border border-slate-200 bg-slate-50 p-5 dark:border-slate-800 dark:bg-slate-900/60">
@@ -2588,3 +1378,1214 @@ watch(() => form.hr_phu_trach_id, (value) => {
     </div>
   </div>
 </template>
+
+<script setup>
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { employerApplicationService, employerBillingService, employerCandidateService, employerJobService } from '@/services/api'
+import { useEmployerCompanyPermissions } from '@/composables/useEmployerCompanyPermissions'
+import { useNotify } from '@/composables/useNotify'
+import { getAuthToken } from '@/utils/authStorage'
+import { connectPrivateChannel } from '@/services/realtime'
+import { formatDateTimeVN, formatHistoricalDateTimeVN, toDateTimeLocalInputVN } from '@/utils/dateTime'
+import { formatExperienceYears } from '@/utils/experience'
+import {
+  APPLICATION_STATUS,
+  APPLICATION_STATUS_OPTIONS,
+  OFFER_STATUS,
+  getOfferStatusMeta,
+  getApplicationStatusMeta,
+  isFinalApplicationStatus as isFinalApplicationStatusValue,
+} from '@/utils/applicationStatus'
+
+const notify = useNotify()
+const route = useRoute()
+const router = useRouter()
+const {
+  company,
+  canProcessApplications,
+  currentInternalRoleLabel,
+  assignableMembers,
+  companyMembers,
+  ensurePermissionsLoaded,
+  currentEmployerId,
+  canManageAllAssignments,
+} = useEmployerCompanyPermissions()
+
+const loading = ref(false)
+const saving = ref(false)
+const resendingEmailId = ref(null)
+const sendingOfferId = ref(null)
+const roundSaving = ref(false)
+const roundDeletingId = ref(null)
+const onboardingLoading = ref(false)
+const onboardingSaving = ref(false)
+const onboardingTaskSavingId = ref(null)
+const exportingApplicationId = ref(null)
+const copilotGenerating = ref(false)
+const copilotEvaluating = ref(false)
+const applications = ref([])
+const applicationListRef = ref(null)
+const jobs = ref([])
+const pagination = ref(null)
+const modalOpen = ref(false)
+const modalBodyRef = ref(null)
+const modalFocusSection = ref('')
+const selectedApplication = ref(null)
+const selectedRoundId = ref('')
+const candidateDetailOpen = ref(false)
+const candidateDetailLoading = ref(false)
+const candidateDetail = ref(null)
+const notificationTemplates = ref({})
+const copilotSnapshot = ref(null)
+const copilotScores = reactive({})
+const billingLoading = ref(false)
+const billingWallet = ref(null)
+const billingPricing = ref([])
+const billingEntitlements = ref([])
+let applicationRealtimeChannel = null
+
+const cleanDeepLinkQueryKeys = [
+  'highlight_application_id',
+  'focus_section',
+  'interview_round_id',
+  'onboarding_plan_id',
+  'onboarding_task_id',
+]
+
+const filters = reactive({
+  tin_tuyen_dung_id: '',
+  trang_thai: '',
+  hr_phu_trach_id: '',
+  per_page: 10,
+  page: 1,
+})
+
+const formatCurrency = (value) => `${Number(value || 0).toLocaleString('vi-VN')} đ`
+
+const hrFilterOptions = computed(() => ([
+  { id: '', label: 'Tất cả HR phụ trách' },
+  { id: 'me', label: 'Tôi phụ trách' },
+  ...assignableMembers.value,
+]))
+
+const interviewerOptions = computed(() => {
+  const options = companyMembers.value.map((member) => ({
+    value: String(member?.ho_ten || '').trim(),
+    label: `${member?.ho_ten || 'HR'}${member?.ten_vai_tro_noi_bo ? ` (${member.ten_vai_tro_noi_bo})` : ''}`,
+  })).filter((item) => item.value)
+
+  const currentValue = String(form.nguoi_phong_van || '').trim()
+  if (currentValue && !options.some((item) => item.value === currentValue)) {
+    options.unshift({
+      value: currentValue,
+      label: `${currentValue} (dữ liệu cũ)`,
+    })
+  }
+
+  return options
+})
+
+const form = reactive({
+  trang_thai: 0,
+  ngay_hen_phong_van: '',
+  hinh_thuc_phong_van: '',
+  nguoi_phong_van: '',
+  link_phong_van: '',
+  ket_qua_phong_van: '',
+  hr_phu_trach_id: '',
+  ghi_chu: '',
+})
+
+const roundForm = reactive({
+  id: '',
+  thu_tu: '',
+  ten_vong: '',
+  loai_vong: 'hr',
+  trang_thai: 0,
+  ngay_hen_phong_van: '',
+  hinh_thuc_phong_van: '',
+  nguoi_phong_van: '',
+  interviewer_user_id: '',
+  link_phong_van: '',
+  ket_qua: '',
+  diem_so: '',
+  ghi_chu: '',
+})
+
+const offerForm = reactive({
+  ghi_chu_offer: '',
+  link_offer: '',
+  han_phan_hoi_offer: '',
+})
+
+const onboardingForm = reactive({
+  ngay_bat_dau: '',
+  dia_diem_lam_viec: '',
+  trang_thai: 'preparing',
+  loi_chao_mung: '',
+  ghi_chu_ung_vien: '',
+  ghi_chu_noi_bo: '',
+  tai_lieu_text: '',
+})
+
+const onboardingTaskForm = reactive({
+  tieu_de: '',
+  mo_ta: '',
+  han_hoan_tat: '',
+  nguoi_phu_trach: 'candidate',
+})
+
+const statusOptions = [
+  { value: '', label: 'Tất cả trạng thái' },
+  ...APPLICATION_STATUS_OPTIONS,
+]
+
+const activeTemplate = computed(() => notificationTemplates.value?.[Number(form.trang_thai)] || null)
+const copilotPreInterview = computed(() => copilotSnapshot.value?.pre_interview || null)
+const copilotPostInterview = computed(() => copilotSnapshot.value?.post_interview || null)
+const selectedInterviewRounds = computed(() =>
+  [...(selectedApplication.value?.interview_rounds || [])].sort((a, b) => Number(a.thu_tu || 0) - Number(b.thu_tu || 0))
+)
+const selectedRound = computed(() =>
+  selectedInterviewRounds.value.find((round) => Number(round.id) === Number(selectedRoundId.value)) || null
+)
+const selectedOnboardingPlan = computed(() => selectedApplication.value?.onboarding_plan || null)
+const canManageOnboarding = computed(() =>
+  Number(selectedApplication.value?.trang_thai_offer || OFFER_STATUS.NOT_SENT) === OFFER_STATUS.ACCEPTED
+)
+
+const stats = computed(() => {
+  const all = applications.value
+  const pending = all.filter((item) => Number(item.trang_thai) === APPLICATION_STATUS.PENDING).length
+  const reviewed = all.filter((item) => Number(item.trang_thai) === APPLICATION_STATUS.REVIEWED).length
+  const scheduled = all.filter((item) => Number(item.trang_thai) === APPLICATION_STATUS.INTERVIEW_SCHEDULED).length
+  const hired = all.filter((item) => Number(item.trang_thai) === APPLICATION_STATUS.HIRED).length
+
+  return [
+    {
+      label: 'Hồ sơ đang chờ',
+      value: pending,
+      hint: 'Nên xử lý sớm để giữ trải nghiệm ứng viên tốt.',
+      icon: 'hourglass_top',
+      tone: 'text-amber-300 bg-amber-500/10',
+    },
+    {
+      label: 'Đã xem',
+      value: reviewed,
+      hint: 'Các hồ sơ đã được mở và đánh giá sơ bộ.',
+      icon: 'visibility',
+      tone: 'text-sky-300 bg-sky-500/10',
+    },
+    {
+      label: 'Lịch đã hẹn',
+      value: scheduled,
+      hint: 'Đơn đang ở giai đoạn phỏng vấn đã được lên lịch.',
+      icon: 'calendar_month',
+      tone: 'text-violet-300 bg-violet-500/10',
+    },
+    {
+      label: 'Quá lịch cần cập nhật',
+      value: overdueInterviews.value.length,
+      hint: 'Lịch phỏng vấn đã qua nhưng chưa chốt trúng tuyển hoặc từ chối.',
+      icon: 'notification_important',
+      tone: 'text-rose-300 bg-rose-500/10',
+    },
+    {
+      label: 'Trúng tuyển',
+      value: hired,
+      hint: 'Các hồ sơ đã có kết quả tuyển dụng cuối cùng.',
+      icon: 'task_alt',
+      tone: 'text-emerald-300 bg-emerald-500/10',
+    },
+  ]
+})
+
+const paginationSummary = computed(() => {
+  if (!pagination.value) return 'Chưa có dữ liệu'
+  return `Hiển thị ${pagination.value.from || 0}-${pagination.value.to || 0} trên ${pagination.value.total || 0} đơn ứng tuyển`
+})
+
+const upcomingInterviews = computed(() =>
+  applications.value
+    .filter((item) => item.ngay_hen_phong_van && !isInterviewResultOverdue(item))
+    .sort((a, b) => new Date(a.ngay_hen_phong_van) - new Date(b.ngay_hen_phong_van))
+    .slice(0, 5)
+)
+
+const statusMeta = getApplicationStatusMeta
+const offerStatusMeta = getOfferStatusMeta
+
+const interviewModeLabel = (value) => {
+  const labels = {
+    online: 'Online',
+    offline: 'Trực tiếp',
+    phone: 'Điện thoại',
+  }
+
+  return labels[value] || 'Chưa cập nhật'
+}
+
+const interviewAttendanceMeta = (value) => {
+  const labels = {
+    0: {
+      label: 'Chờ xác nhận',
+      classes: 'border border-violet-300/60 bg-violet-50 text-violet-700 dark:border-violet-400/20 dark:bg-violet-500/10 dark:text-violet-300',
+    },
+    1: {
+      label: 'Đã xác nhận',
+      classes: 'border border-emerald-300/60 bg-emerald-50 text-emerald-700 dark:border-emerald-400/20 dark:bg-emerald-500/10 dark:text-emerald-300',
+    },
+    2: {
+      label: 'Không tham gia',
+      classes: 'border border-rose-300/60 bg-rose-50 text-rose-700 dark:border-rose-400/20 dark:bg-rose-500/10 dark:text-rose-300',
+    },
+  }
+
+  return labels[Number(value)] || {
+    label: 'Chưa phản hồi',
+    classes: 'border border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300',
+  }
+}
+
+const roundTypeLabel = (value) => ({
+  hr: 'HR screening',
+  technical: 'Technical',
+  manager: 'Manager',
+  final: 'Final',
+  culture: 'Culture fit',
+  other: 'Khác',
+}[value] || value || 'HR screening')
+
+const roundStatusMeta = (value) => {
+  switch (Number(value)) {
+    case 1:
+      return { label: 'Hoàn thành', classes: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' }
+    case 2:
+      return { label: 'Đã hủy', classes: 'bg-rose-500/10 text-rose-700 dark:text-rose-300' }
+    default:
+      return { label: 'Đã lên lịch', classes: 'bg-violet-500/10 text-violet-700 dark:text-violet-300' }
+  }
+}
+
+const isUrl = (value) => /^https?:\/\//i.test(String(value || '').trim())
+
+const degreeLabel = (value) => {
+  const labels = {
+    trung_hoc: 'Trung học',
+    trung_cap: 'Trung cấp',
+    cao_dang: 'Cao đẳng',
+    dai_hoc: 'Đại học',
+    thac_si: 'Thạc sĩ',
+    tien_si: 'Tiến sĩ',
+    khac: 'Khác',
+  }
+
+  return labels[value] || value || 'Chưa cập nhật'
+}
+
+const formatDateTime = (value) => {
+  return formatDateTimeVN(value, 'Chưa lên lịch')
+}
+
+const formatSubmittedDateTime = (value) => {
+  return formatHistoricalDateTimeVN(value, 'Chưa cập nhật')
+}
+
+const timelineDate = (item) =>
+  formatDateTimeVN(item?.occurred_at || item?.scheduled_at || item?.due_at, 'Chưa cập nhật')
+
+const timelineStatusClasses = (status) => ({
+  completed: 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300',
+  current: 'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300',
+  pending: 'border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300',
+  cancelled: 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300',
+}[status] || 'border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300')
+
+const timelineStatusLabel = (status) => ({
+  completed: 'Hoàn tất',
+  current: 'Đang xử lý',
+  pending: 'Sắp tới',
+  cancelled: 'Đã dừng',
+}[status] || 'Theo dõi')
+
+const formatDateTimeInput = (value) => {
+  return toDateTimeLocalInputVN(value)
+}
+
+const isFinalApplicationStatus = (application) => isFinalApplicationStatusValue(application?.trang_thai)
+
+const canEmployerUpdateApplication = (application) => !application?.da_rut_don
+const isOwnedApplication = (application) => {
+  const ownedByApplication = Number(application?.hr_phu_trach?.id || application?.hr_phu_trach_id || 0) === Number(currentEmployerId.value || 0)
+  const ownedByJob = Number(application?.tin_tuyen_dung?.hr_phu_trach?.id || application?.tin_tuyen_dung?.hr_phu_trach_id || 0) === Number(currentEmployerId.value || 0)
+  return ownedByApplication || ownedByJob
+}
+const canMutateApplication = (application) => Boolean(
+  canProcessApplications.value
+  && !application?.da_rut_don
+  && (canManageAllAssignments.value || isOwnedApplication(application)),
+)
+const canUseInterviewCopilotFor = (application) => Boolean(
+  canMutateApplication(application)
+  && !isFinalApplicationStatus(application),
+)
+const walletAvailable = computed(() => Number(billingWallet.value?.so_du_kha_dung || 0))
+const resolveBillingFeature = (featureCode) => {
+  const pricing = billingPricing.value.find((item) => item.feature_code === featureCode) || null
+  const entitlement = billingEntitlements.value.find((item) => item.feature_code === featureCode) || null
+  const hasIncludedQuota = Boolean(entitlement?.subscription_is_unlimited)
+    || Number(entitlement?.subscription_quota_remaining || 0) > 0
+    || Number(entitlement?.free_quota_remaining || 0) > 0
+  const walletPrice = Number(pricing?.don_gia || entitlement?.wallet_price || 0)
+  const walletUnit = pricing?.don_vi_tinh || entitlement?.wallet_unit || 'lượt'
+  const requiresWallet = !hasIncludedQuota && walletPrice > 0
+
+  return {
+    featureCode,
+    pricing,
+    entitlement,
+    hasIncludedQuota,
+    walletPrice,
+    walletUnit,
+    requiresWallet,
+    affordable: !requiresWallet || walletAvailable.value >= walletPrice,
+  }
+}
+const copilotGenerateFeature = computed(() => resolveBillingFeature('interview_copilot_generate'))
+const copilotEvaluateFeature = computed(() => resolveBillingFeature('interview_copilot_evaluate'))
+const formatFeaturePrice = (feature) => {
+  if (!feature?.walletPrice) return 'Chưa cấu hình giá'
+  return `${formatCurrency(feature.walletPrice)}/${feature.walletUnit || 'lượt'}`
+}
+const canRunPaidFeature = (feature) => {
+  if (!feature) return true
+  if (feature.hasIncludedQuota) return true
+  if (!feature.walletPrice) return true
+  return feature.affordable
+}
+const candidateName = (application) =>
+  application?.ho_so?.nguoi_dung?.ho_ten
+  || application?.ho_so?.tieu_de_ho_so
+  || application?.ho_so?.nguoi_dung?.email
+  || 'Ứng viên'
+
+const isInterviewResultOverdue = (application) => {
+  if (!application?.ngay_hen_phong_van || application?.da_rut_don || isFinalApplicationStatus(application)) {
+    return false
+  }
+
+  return Number(application.trang_thai) >= APPLICATION_STATUS.INTERVIEW_SCHEDULED
+    && new Date(application.ngay_hen_phong_van).getTime() < Date.now()
+}
+const ownershipHint = computed(() =>
+  canProcessApplications.value && !canManageAllAssignments.value
+    ? `Vai trò ${currentInternalRoleLabel.value} chỉ có thể xử lý các đơn ứng tuyển mình phụ trách.`
+    : ''
+)
+const canUseSelectedInterviewCopilot = computed(() => canUseInterviewCopilotFor(selectedApplication.value))
+const canGenerateSelectedInterviewCopilot = computed(() =>
+  canUseSelectedInterviewCopilot.value && canRunPaidFeature(copilotGenerateFeature.value)
+)
+const canEvaluateSelectedInterviewCopilot = computed(() =>
+  canUseSelectedInterviewCopilot.value && canRunPaidFeature(copilotEvaluateFeature.value)
+)
+const needsInterviewCopilotTopup = computed(() =>
+  canUseSelectedInterviewCopilot.value
+  && (!canRunPaidFeature(copilotGenerateFeature.value) || !canRunPaidFeature(copilotEvaluateFeature.value))
+)
+const selectedInterviewOverdue = computed(() => isInterviewResultOverdue(selectedApplication.value))
+const overdueInterviews = computed(() =>
+  applications.value
+    .filter(isInterviewResultOverdue)
+    .sort((a, b) => new Date(a.ngay_hen_phong_van) - new Date(b.ngay_hen_phong_van))
+)
+
+const canResendInterviewEmail = (application) =>
+  Boolean(application?.id)
+  && Boolean(application?.ngay_hen_phong_van)
+  && !application?.da_rut_don
+  && !isFinalApplicationStatus(application)
+
+const canSendOffer = (application) =>
+  Boolean(application?.id)
+  && canMutateApplication(application)
+  && !application?.da_rut_don
+  && Number(application?.trang_thai) !== APPLICATION_STATUS.REJECTED
+  && Number(application?.trang_thai_offer || OFFER_STATUS.NOT_SENT) !== OFFER_STATUS.ACCEPTED
+
+const canExportDocument = (application, document) => {
+  if (!application?.id) return false
+  if (document === 'offer') return Number(application.trang_thai_offer || OFFER_STATUS.NOT_SENT) > OFFER_STATUS.NOT_SENT
+  if (document === 'interview') return Boolean(
+    application.ngay_hen_phong_van
+    || application.interview_rounds?.length
+    || application.ket_qua_phong_van
+    || application.rubric_danh_gia_phong_van,
+  )
+  if (document === 'onboarding') return Boolean(application.onboarding_plan)
+  return true
+}
+
+const triggerDownload = (blob, filename) => {
+  const objectUrl = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = objectUrl
+  link.download = filename || `application-export-${Date.now()}.pdf`
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 30_000)
+}
+
+const statusOptionsForSelectedApplication = computed(() => {
+  if (!selectedApplication.value) return statusOptions.slice(1)
+
+  if (isFinalApplicationStatus(selectedApplication.value)) {
+    return statusOptions
+      .slice(1)
+      .filter(status => Number(status.value) === Number(selectedApplication.value?.trang_thai))
+  }
+
+  return statusOptions.slice(1)
+})
+
+const fetchJobs = async () => {
+  try {
+    const response = await employerJobService.getJobs({ per_page: 100 })
+    jobs.value = response?.data?.data || []
+  } catch {
+    jobs.value = []
+  }
+}
+
+const fetchNotificationTemplates = async () => {
+  try {
+    const response = await employerApplicationService.getNotificationTemplates()
+    notificationTemplates.value = response?.data || {}
+  } catch {
+    notificationTemplates.value = {}
+  }
+}
+
+const loadBillingContext = async () => {
+  billingLoading.value = true
+  try {
+    const [walletResponse, pricingResponse, entitlementsResponse] = await Promise.all([
+      employerBillingService.getWallet(),
+      employerBillingService.getPricing(),
+      employerBillingService.getEntitlements(),
+    ])
+
+    billingWallet.value = walletResponse?.data?.wallet || null
+    billingPricing.value = pricingResponse?.data || []
+    billingEntitlements.value = entitlementsResponse?.data?.entitlements || []
+  } catch (error) {
+    billingWallet.value = null
+    billingPricing.value = []
+    billingEntitlements.value = []
+    notify.apiError(error, 'Không tải được dữ liệu billing employer.')
+  } finally {
+    billingLoading.value = false
+  }
+}
+
+const fetchApplications = async () => {
+  loading.value = true
+  try {
+    const response = await employerApplicationService.getApplications(filters)
+    const payload = response?.data || {}
+    applications.value = payload.data || []
+    pagination.value = payload
+  } catch (error) {
+    applications.value = []
+    pagination.value = null
+    notify.apiError(error, 'Không tải được danh sách ứng tuyển.')
+  } finally {
+    loading.value = false
+  }
+}
+
+const refreshApplicationsRealtime = async () => {
+  if (loading.value) return
+  await fetchApplications()
+}
+
+const handleApplicationHighlight = async () => {
+  const applicationId = typeof route.query.highlight_application_id === 'string'
+    ? route.query.highlight_application_id
+    : ''
+
+  if (!applicationId) return
+
+  await nextTick()
+  const target = applicationListRef.value?.querySelector(`[data-application-id="${applicationId}"]`)
+  const application = applications.value.find((item) => Number(item.id) === Number(applicationId))
+
+  if (target) {
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    target.classList.add('ring-2', 'ring-[#2463eb]', 'ring-offset-2', 'ring-offset-white', 'dark:ring-offset-slate-950')
+
+    window.setTimeout(() => {
+      target.classList.remove('ring-2', 'ring-[#2463eb]', 'ring-offset-2', 'ring-offset-white', 'dark:ring-offset-slate-950')
+    }, 2600)
+  } else {
+    notify.info('Đơn ứng tuyển cần xem không nằm trong trang hiện tại. Bạn có thể đổi bộ lọc hoặc tìm theo tin tuyển dụng.')
+  }
+
+  if (application && route.query.focus_section) {
+    if (route.query.interview_round_id) {
+      const round = (application.interview_rounds || []).find((item) => Number(item.id) === Number(route.query.interview_round_id))
+      if (round) selectRound(round)
+    }
+    openModal(application, {
+      focusSection: route.query.focus_section,
+      interviewRoundId: route.query.interview_round_id,
+    })
+    await nextTick()
+    scrollModalToFocus()
+  }
+
+  const query = { ...route.query }
+  cleanDeepLinkQueryKeys.forEach((key) => delete query[key])
+  router.replace({ query })
+}
+
+const applyFilters = async () => {
+  filters.page = 1
+  await fetchApplications()
+}
+
+const resetFilters = async () => {
+  filters.tin_tuyen_dung_id = ''
+  filters.trang_thai = ''
+  filters.hr_phu_trach_id = ''
+  filters.per_page = 10
+  filters.page = 1
+  await fetchApplications()
+}
+
+const goToPage = async (page) => {
+  if (!page || page === filters.page) return
+  filters.page = page
+  await fetchApplications()
+}
+
+const openModal = (application, options = {}) => {
+  if (!canMutateApplication(application)) {
+    notify.warning(canProcessApplications.value
+      ? 'Bạn chỉ có thể xử lý các đơn ứng tuyển mình phụ trách.'
+      : `Vai trò ${currentInternalRoleLabel.value} không thể cập nhật quy trình ứng tuyển.`)
+    return
+  }
+
+  selectedApplication.value = application
+  form.trang_thai = Number(application.trang_thai ?? 0)
+  form.ngay_hen_phong_van = formatDateTimeInput(application.ngay_hen_phong_van)
+  form.hinh_thuc_phong_van = application.hinh_thuc_phong_van || ''
+  form.nguoi_phong_van = application.nguoi_phong_van || ''
+  form.link_phong_van = application.link_phong_van || ''
+  form.ket_qua_phong_van = application.ket_qua_phong_van || ''
+  form.hr_phu_trach_id = application.hr_phu_trach?.id ? String(application.hr_phu_trach.id) : ''
+  form.ghi_chu = application.ghi_chu || ''
+  offerForm.ghi_chu_offer = application.ghi_chu_offer || ''
+  offerForm.link_offer = application.link_offer || ''
+  offerForm.han_phan_hoi_offer = formatDateTimeInput(application.han_phan_hoi_offer)
+  copilotSnapshot.value = parseCopilotSnapshot(application.rubric_danh_gia_phong_van)
+  resetCopilotScores(copilotPreInterview.value?.rubric || [])
+  const requestedRound = options.interviewRoundId
+    ? (application.interview_rounds || []).find((round) => Number(round.id) === Number(options.interviewRoundId))
+    : null
+  const latestRound = requestedRound || [...(application.interview_rounds || [])].sort((a, b) => Number(b.thu_tu || 0) - Number(a.thu_tu || 0))[0]
+  if (latestRound) {
+    selectRound(latestRound)
+  } else {
+    resetRoundForm()
+    roundForm.thu_tu = 1
+    roundForm.ten_vong = 'Vòng 1 - HR screening'
+  }
+  modalFocusSection.value = String(options.focusSection || '')
+  modalOpen.value = true
+  if (Number(application.trang_thai_offer || OFFER_STATUS.NOT_SENT) === OFFER_STATUS.ACCEPTED) {
+    fetchOnboardingPlan()
+  }
+}
+
+const scrollModalToFocus = () => {
+  const section = modalFocusSection.value
+  if (!section || !modalBodyRef.value) return
+  const target = modalBodyRef.value.querySelector(`[data-modal-section="${section}"]`)
+  if (!target) return
+  target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  target.classList.add('ring-2', 'ring-[#2463eb]', 'ring-offset-2', 'ring-offset-white', 'dark:ring-offset-slate-950')
+  window.setTimeout(() => {
+    target.classList.remove('ring-2', 'ring-[#2463eb]', 'ring-offset-2', 'ring-offset-white', 'dark:ring-offset-slate-950')
+  }, 2800)
+}
+
+const scrollModalToSection = (section) => {
+  modalFocusSection.value = section
+  nextTick(() => scrollModalToFocus())
+}
+
+const openInterviewCopilotWorkspace = (application) => {
+  openModal(application)
+  if (!canUseInterviewCopilotFor(application) && isFinalApplicationStatus(application)) {
+    notify.info('Đơn đã có kết quả cuối. Interview Copilot chỉ còn ở chế độ xem lại.')
+  }
+}
+
+const closeModal = () => {
+  modalOpen.value = false
+  selectedApplication.value = null
+  form.trang_thai = 0
+  form.ngay_hen_phong_van = ''
+  form.hinh_thuc_phong_van = ''
+  form.nguoi_phong_van = ''
+  form.link_phong_van = ''
+  form.ket_qua_phong_van = ''
+  form.hr_phu_trach_id = ''
+  form.ghi_chu = ''
+  offerForm.ghi_chu_offer = ''
+  offerForm.link_offer = ''
+  offerForm.han_phan_hoi_offer = ''
+  modalFocusSection.value = ''
+  resetOnboardingForm()
+  copilotSnapshot.value = null
+  resetCopilotScores([])
+  resetRoundForm()
+}
+
+const resetOnboardingForm = () => {
+  onboardingForm.ngay_bat_dau = ''
+  onboardingForm.dia_diem_lam_viec = ''
+  onboardingForm.trang_thai = 'preparing'
+  onboardingForm.loi_chao_mung = ''
+  onboardingForm.ghi_chu_ung_vien = ''
+  onboardingForm.ghi_chu_noi_bo = ''
+  onboardingForm.tai_lieu_text = ''
+  onboardingTaskForm.tieu_de = ''
+  onboardingTaskForm.mo_ta = ''
+  onboardingTaskForm.han_hoan_tat = ''
+  onboardingTaskForm.nguoi_phu_trach = 'candidate'
+}
+
+const fillOnboardingForm = (plan) => {
+  onboardingForm.ngay_bat_dau = plan?.ngay_bat_dau || ''
+  onboardingForm.dia_diem_lam_viec = plan?.dia_diem_lam_viec || ''
+  onboardingForm.trang_thai = plan?.trang_thai || 'preparing'
+  onboardingForm.loi_chao_mung = plan?.loi_chao_mung || ''
+  onboardingForm.ghi_chu_ung_vien = plan?.ghi_chu_ung_vien || ''
+  onboardingForm.ghi_chu_noi_bo = plan?.ghi_chu_noi_bo || ''
+  onboardingForm.tai_lieu_text = (plan?.tai_lieu_can_chuan_bi || plan?.tai_lieu_can_chuan_bi_json || []).join('\n')
+}
+
+const setSelectedOnboardingPlan = (plan) => {
+  if (!selectedApplication.value) return
+  selectedApplication.value = {
+    ...selectedApplication.value,
+    onboarding_plan: plan,
+  }
+  applications.value = applications.value.map((item) =>
+    Number(item.id) === Number(selectedApplication.value.id)
+      ? { ...item, onboarding_plan: plan }
+      : item
+  )
+  fillOnboardingForm(plan)
+}
+
+const resetRoundForm = () => {
+  selectedRoundId.value = ''
+  roundForm.id = ''
+  roundForm.thu_tu = ''
+  roundForm.ten_vong = ''
+  roundForm.loai_vong = 'hr'
+  roundForm.trang_thai = 0
+  roundForm.ngay_hen_phong_van = ''
+  roundForm.hinh_thuc_phong_van = ''
+  roundForm.nguoi_phong_van = ''
+  roundForm.interviewer_user_id = ''
+  roundForm.link_phong_van = ''
+  roundForm.ket_qua = ''
+  roundForm.diem_so = ''
+  roundForm.ghi_chu = ''
+}
+
+const selectRound = (round) => {
+  selectedRoundId.value = String(round?.id || '')
+  roundForm.id = round?.id || ''
+  roundForm.thu_tu = round?.thu_tu || ''
+  roundForm.ten_vong = round?.ten_vong || ''
+  roundForm.loai_vong = round?.loai_vong || 'hr'
+  roundForm.trang_thai = Number(round?.trang_thai || 0)
+  roundForm.ngay_hen_phong_van = formatDateTimeInput(round?.ngay_hen_phong_van)
+  roundForm.hinh_thuc_phong_van = round?.hinh_thuc_phong_van || ''
+  roundForm.nguoi_phong_van = round?.nguoi_phong_van || ''
+  roundForm.interviewer_user_id = round?.interviewer_user_id ? String(round.interviewer_user_id) : ''
+  roundForm.link_phong_van = round?.link_phong_van || ''
+  roundForm.ket_qua = round?.ket_qua || ''
+  roundForm.diem_so = round?.diem_so ?? ''
+  roundForm.ghi_chu = round?.ghi_chu || ''
+  copilotSnapshot.value = parseCopilotSnapshot(round?.rubric_danh_gia_json)
+  resetCopilotScores(copilotPreInterview.value?.rubric || [])
+}
+
+const parseCopilotSnapshot = (value) => {
+  if (!value) return null
+  if (typeof value === 'object') return value
+
+  try {
+    const parsed = JSON.parse(value)
+    return parsed && typeof parsed === 'object' ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+const resetCopilotScores = (rubric = []) => {
+  Object.keys(copilotScores).forEach((key) => delete copilotScores[key])
+  rubric.forEach((item, index) => {
+    const key = item.criterion || `criterion_${index}`
+    copilotScores[key] = ''
+  })
+}
+
+const syncCopilotFromResponse = (payload) => {
+  copilotSnapshot.value = payload?.copilot || null
+  if (payload?.interview_round?.id) {
+    selectedRoundId.value = String(payload.interview_round.id)
+    const updatedRound = payload.interview_round
+    selectedApplication.value = {
+      ...selectedApplication.value,
+      interview_rounds: (selectedApplication.value?.interview_rounds || []).map((round) =>
+        Number(round.id) === Number(updatedRound.id) ? updatedRound : round
+      ),
+    }
+    selectRound(updatedRound)
+  }
+  if (payload?.ket_qua_phong_van !== undefined) form.ket_qua_phong_van = payload.ket_qua_phong_van || form.ket_qua_phong_van
+  if (payload?.ghi_chu !== undefined) form.ghi_chu = payload.ghi_chu || form.ghi_chu
+  resetCopilotScores(copilotPreInterview.value?.rubric || [])
+}
+
+const closeCandidateDetail = () => {
+  candidateDetailOpen.value = false
+  candidateDetailLoading.value = false
+  candidateDetail.value = null
+}
+
+const fetchProtectedFile = async (url) => {
+  const token = getAuthToken()
+
+  if (!token) {
+    notify.warning('Vui lòng đăng nhập lại để xem file CV.')
+    return null
+  }
+
+  const response = await fetch(encodeURI(url), {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,*/*',
+    },
+  })
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`)
+  }
+
+  return response.blob()
+}
+
+const openCv = async (candidate) => {
+  const cvUrl = candidate?.file_cv_url
+  if (!cvUrl) {
+    notify.info('Ứng viên này chưa có file CV đính kèm.')
+    return
+  }
+
+  try {
+    const blob = await fetchProtectedFile(cvUrl)
+    if (!blob) return
+
+    const objectUrl = URL.createObjectURL(blob)
+    window.open(objectUrl, '_blank', 'noopener')
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000)
+  } catch {
+    notify.error('Không mở được file CV. Vui lòng thử lại.')
+  }
+}
+
+const openCandidateDetail = async (application) => {
+  const candidateId = application?.ho_so?.id
+  if (!candidateId) {
+    notify.info('Không tìm thấy hồ sơ chi tiết của ứng viên này.')
+    return
+  }
+
+  candidateDetailOpen.value = true
+  candidateDetailLoading.value = true
+  candidateDetail.value = null
+
+  try {
+    const response = await employerCandidateService.getCandidateById(candidateId)
+    candidateDetail.value = response?.data || null
+  } catch (error) {
+    notify.apiError(error, 'Không tải được chi tiết hồ sơ ứng viên.')
+    closeCandidateDetail()
+  } finally {
+    candidateDetailLoading.value = false
+  }
+}
+
+const saveApplication = async () => {
+  if (!selectedApplication.value) return
+  if (!canMutateApplication(selectedApplication.value)) {
+    notify.warning(canProcessApplications.value
+      ? 'Bạn chỉ có thể xử lý các đơn ứng tuyển mình phụ trách.'
+      : `Vai trò ${currentInternalRoleLabel.value} không thể cập nhật trạng thái ứng tuyển.`)
+    return
+  }
+
+  saving.value = true
+  try {
+    await employerApplicationService.updateStatus(selectedApplication.value.id, {
+      trang_thai: Number(form.trang_thai),
+      ngay_hen_phong_van: form.ngay_hen_phong_van || null,
+      hinh_thuc_phong_van: form.hinh_thuc_phong_van || null,
+      nguoi_phong_van: form.nguoi_phong_van || null,
+      link_phong_van: form.link_phong_van || null,
+      ket_qua_phong_van: form.ket_qua_phong_van || null,
+      hr_phu_trach_id: form.hr_phu_trach_id ? Number(form.hr_phu_trach_id) : null,
+      ghi_chu: form.ghi_chu || null,
+    })
+
+    notify.success('Đã cập nhật ứng tuyển và gửi email khi cần.')
+    closeModal()
+    await fetchApplications()
+  } catch (error) {
+    notify.apiError(error, 'Không cập nhật được trạng thái ứng tuyển.')
+  } finally {
+    saving.value = false
+  }
+}
+
+const refreshSelectedApplicationRounds = async () => {
+  if (!selectedApplication.value?.id) return
+  try {
+    const response = await employerApplicationService.getInterviewRounds(selectedApplication.value.id)
+    selectedApplication.value = {
+      ...selectedApplication.value,
+      interview_rounds: response?.data || [],
+    }
+  } catch (error) {
+    notify.apiError(error, 'Không tải lại được timeline phỏng vấn.')
+  }
+}
+
+const saveInterviewRound = async () => {
+  if (!selectedApplication.value?.id || !roundForm.ten_vong || roundSaving.value) return
+
+  roundSaving.value = true
+  const payload = {
+    thu_tu: roundForm.thu_tu ? Number(roundForm.thu_tu) : null,
+    ten_vong: roundForm.ten_vong,
+    loai_vong: roundForm.loai_vong || 'hr',
+    trang_thai: Number(roundForm.trang_thai || 0),
+    ngay_hen_phong_van: roundForm.ngay_hen_phong_van || null,
+    hinh_thuc_phong_van: roundForm.hinh_thuc_phong_van || null,
+    nguoi_phong_van: roundForm.nguoi_phong_van || null,
+    interviewer_user_id: roundForm.interviewer_user_id ? Number(roundForm.interviewer_user_id) : null,
+    link_phong_van: roundForm.link_phong_van || null,
+    ket_qua: roundForm.ket_qua || null,
+    diem_so: roundForm.diem_so !== '' ? Number(roundForm.diem_so) : null,
+    ghi_chu: roundForm.ghi_chu || null,
+  }
+
+  try {
+    const response = roundForm.id
+      ? await employerApplicationService.updateInterviewRound(selectedApplication.value.id, roundForm.id, payload)
+      : await employerApplicationService.createInterviewRound(selectedApplication.value.id, payload)
+    const savedRound = response?.data
+    notify.success(response?.message || 'Đã lưu vòng phỏng vấn.')
+    await refreshSelectedApplicationRounds()
+    await fetchApplications()
+    if (savedRound?.id) {
+      const freshRound = (selectedApplication.value?.interview_rounds || []).find((round) => Number(round.id) === Number(savedRound.id)) || savedRound
+      selectRound(freshRound)
+    }
+  } catch (error) {
+    notify.apiError(error, 'Không lưu được vòng phỏng vấn.')
+  } finally {
+    roundSaving.value = false
+  }
+}
+
+const deleteInterviewRound = async (round) => {
+  if (!selectedApplication.value?.id || !round?.id || roundDeletingId.value) return
+
+  roundDeletingId.value = round.id
+  try {
+    await employerApplicationService.deleteInterviewRound(selectedApplication.value.id, round.id)
+    notify.success('Đã xóa vòng phỏng vấn.')
+    await refreshSelectedApplicationRounds()
+    await fetchApplications()
+    resetRoundForm()
+  } catch (error) {
+    notify.apiError(error, 'Không xóa được vòng phỏng vấn.')
+  } finally {
+    roundDeletingId.value = null
+  }
+}
+
+const generateInterviewCopilot = async () => {
+  if (!selectedApplication.value) return
+  if (!canUseInterviewCopilotFor(selectedApplication.value)) {
+    notify.warning(isFinalApplicationStatus(selectedApplication.value)
+      ? 'Đơn đã có kết quả cuối nên không thể tạo lại Interview Copilot.'
+      : 'Bạn không có quyền tạo Interview Copilot cho đơn ứng tuyển này.')
+    return
+  }
+  if (!canRunPaidFeature(copilotGenerateFeature.value)) {
+    notify.info('Ví employer không đủ để tạo Interview Copilot. Vui lòng nạp thêm ví trước khi tiếp tục.')
+    return
+  }
+
+  copilotGenerating.value = true
+  try {
+    const response = await employerApplicationService.generateInterviewCopilot(selectedApplication.value.id, {
+      interview_round_id: selectedRoundId.value ? Number(selectedRoundId.value) : undefined,
+    })
+    syncCopilotFromResponse(response?.data)
+    notify.success(response?.message || 'Đã tạo Interview Copilot.')
+    await Promise.all([fetchApplications(), loadBillingContext()])
+  } catch (error) {
+    notify.apiError(error, 'Không tạo được Interview Copilot.')
+  } finally {
+    copilotGenerating.value = false
+  }
+}
+
+const evaluateInterviewCopilot = async () => {
+  if (!selectedApplication.value) return
+  if (!canUseInterviewCopilotFor(selectedApplication.value)) {
+    notify.warning(isFinalApplicationStatus(selectedApplication.value)
+      ? 'Đơn đã có kết quả cuối nên không thể đánh giá lại bằng Interview Copilot.'
+      : 'Bạn không có quyền đánh giá Interview Copilot cho đơn ứng tuyển này.')
+    return
+  }
+  if (!canRunPaidFeature(copilotEvaluateFeature.value)) {
+    notify.info('Ví employer không đủ để đánh giá sau phỏng vấn. Vui lòng nạp thêm ví trước khi tiếp tục.')
+    return
+  }
+
+  copilotEvaluating.value = true
+  try {
+    const response = await employerApplicationService.evaluateInterviewCopilot(selectedApplication.value.id, {
+      notes: form.ghi_chu || '',
+      decision: form.ket_qua_phong_van || '',
+      scores: { ...copilotScores },
+      interview_round_id: selectedRoundId.value ? Number(selectedRoundId.value) : undefined,
+    })
+    syncCopilotFromResponse(response?.data)
+    notify.success(response?.message || 'Đã tạo đánh giá sau phỏng vấn.')
+    await Promise.all([fetchApplications(), loadBillingContext()])
+  } catch (error) {
+    notify.apiError(error, 'Không tạo được đánh giá sau phỏng vấn.')
+  } finally {
+    copilotEvaluating.value = false
+  }
+}
+
+const resendInterviewEmail = async (application) => {
+  if (!canMutateApplication(application)) {
+    notify.warning(canProcessApplications.value
+      ? 'Bạn chỉ có thể gửi lại email cho các đơn ứng tuyển mình phụ trách.'
+      : `Vai trò ${currentInternalRoleLabel.value} không thể gửi lại email lịch phỏng vấn.`)
+    return
+  }
+
+  if (!canResendInterviewEmail(application)) {
+    notify.info('Đơn này hiện không thể gửi lại email lịch phỏng vấn.')
+    return
+  }
+
+  resendingEmailId.value = application.id
+  try {
+    await employerApplicationService.resendInterviewEmail(application.id)
+    notify.success('Đã gửi lại email lịch phỏng vấn cho ứng viên.')
+  } catch (error) {
+    notify.apiError(error, 'Không gửi lại được email lịch phỏng vấn.')
+  } finally {
+    resendingEmailId.value = null
+  }
+}
+
+const sendOffer = async () => {
+  if (!selectedApplication.value || sendingOfferId.value) return
+
+  if (!canSendOffer(selectedApplication.value)) {
+    notify.warning('Đơn này hiện không thể gửi offer.')
+    return
+  }
+
+  sendingOfferId.value = selectedApplication.value.id
+  try {
+    const response = await employerApplicationService.sendOffer(selectedApplication.value.id, {
+      ghi_chu_offer: offerForm.ghi_chu_offer || null,
+      link_offer: offerForm.link_offer || null,
+      han_phan_hoi_offer: offerForm.han_phan_hoi_offer || null,
+    })
+    const updated = response?.data || null
+    if (updated?.id) {
+      selectedApplication.value = updated
+      applications.value = applications.value.map((item) =>
+        Number(item.id) === Number(updated.id) ? updated : item
+      )
+    }
+    notify.success(response?.message || 'Đã gửi offer cho ứng viên.')
+    await fetchApplications()
+  } catch (error) {
+    notify.apiError(error, 'Không gửi được offer cho ứng viên.')
+  } finally {
+    sendingOfferId.value = null
+  }
+}
+
+const fetchOnboardingPlan = async () => {
+  if (!selectedApplication.value?.id || !canManageOnboarding.value) return
+  onboardingLoading.value = true
+  try {
+    const response = await employerApplicationService.getOnboarding(selectedApplication.value.id)
+    if (response?.data) {
+      setSelectedOnboardingPlan(response.data)
+    }
+  } catch (error) {
+    notify.apiError(error, 'Không tải được onboarding cho ứng viên.')
+  } finally {
+    onboardingLoading.value = false
+  }
+}
+
+const saveOnboardingPlan = async () => {
+  if (!selectedApplication.value?.id || !canManageOnboarding.value || onboardingSaving.value) return
+  onboardingSaving.value = true
+  try {
+    const response = await employerApplicationService.updateOnboarding(selectedApplication.value.id, {
+      ngay_bat_dau: onboardingForm.ngay_bat_dau || null,
+      dia_diem_lam_viec: onboardingForm.dia_diem_lam_viec || null,
+      trang_thai: onboardingForm.trang_thai,
+      loi_chao_mung: onboardingForm.loi_chao_mung || null,
+      ghi_chu_ung_vien: onboardingForm.ghi_chu_ung_vien || null,
+      ghi_chu_noi_bo: onboardingForm.ghi_chu_noi_bo || null,
+      tai_lieu_can_chuan_bi: onboardingForm.tai_lieu_text
+        .split('\n')
+        .map((item) => item.trim())
+        .filter(Boolean),
+    })
+    setSelectedOnboardingPlan(response?.data)
+    notify.success(response?.message || 'Đã lưu onboarding.')
+  } catch (error) {
+    notify.apiError(error, 'Không lưu được onboarding.')
+  } finally {
+    onboardingSaving.value = false
+  }
+}
+
+const createOnboardingTask = async () => {
+  if (!selectedApplication.value?.id || !onboardingTaskForm.tieu_de || onboardingTaskSavingId.value) return
+  onboardingTaskSavingId.value = 'new'
+  try {
+    const response = await employerApplicationService.createOnboardingTask(selectedApplication.value.id, {
+      tieu_de: onboardingTaskForm.tieu_de,
+      mo_ta: onboardingTaskForm.mo_ta || null,
+      han_hoan_tat: onboardingTaskForm.han_hoan_tat || null,
+      nguoi_phu_trach: onboardingTaskForm.nguoi_phu_trach,
+    })
+    setSelectedOnboardingPlan(response?.data)
+    onboardingTaskForm.tieu_de = ''
+    onboardingTaskForm.mo_ta = ''
+    onboardingTaskForm.han_hoan_tat = ''
+    onboardingTaskForm.nguoi_phu_trach = 'candidate'
+    notify.success('Đã thêm checklist onboarding.')
+  } catch (error) {
+    notify.apiError(error, 'Không thêm được checklist onboarding.')
+  } finally {
+    onboardingTaskSavingId.value = null
+  }
+}
+
+const updateOnboardingTaskStatus = async (task, status) => {
+  if (!selectedApplication.value?.id || !task?.id || onboardingTaskSavingId.value) return
+  onboardingTaskSavingId.value = task.id
+  try {
+    const response = await employerApplicationService.updateOnboardingTask(selectedApplication.value.id, task.id, {
+      trang_thai: status,
+    })
+    setSelectedOnboardingPlan(response?.data)
+  } catch (error) {
+    notify.apiError(error, 'Không cập nhật được checklist.')
+  } finally {
+    onboardingTaskSavingId.value = null
+  }
+}
+
+const deleteOnboardingTask = async (task) => {
+  if (!selectedApplication.value?.id || !task?.id || onboardingTaskSavingId.value) return
+  onboardingTaskSavingId.value = task.id
+  try {
+    const response = await employerApplicationService.deleteOnboardingTask(selectedApplication.value.id, task.id)
+    setSelectedOnboardingPlan(response?.data)
+    notify.info('Đã xóa checklist onboarding.')
+  } catch (error) {
+    notify.apiError(error, 'Không xóa được checklist.')
+  } finally {
+    onboardingTaskSavingId.value = null
+  }
+}
+
+const downloadApplicationExport = async (application, document = 'full') => {
+  if (!application?.id || exportingApplicationId.value) return
+  exportingApplicationId.value = `${application.id}:${document}`
+  try {
+    const response = await employerApplicationService.downloadExport(application.id, document)
+    triggerDownload(response.blob, response.filename)
+    notify.success('Đã tạo file PDF từ server.')
+  } catch (error) {
+    notify.apiError(error, 'Không tải được file PDF.')
+  } finally {
+    exportingApplicationId.value = null
+  }
+}
+
+onMounted(async () => {
+  await Promise.all([ensurePermissionsLoaded(), fetchJobs(), fetchApplications(), fetchNotificationTemplates(), loadBillingContext()])
+  await handleApplicationHighlight()
+
+  const companyId = company.value?.id
+  if (companyId) {
+    applicationRealtimeChannel = connectPrivateChannel(`company.${companyId}`)
+    applicationRealtimeChannel?.listen('.application.changed', (event) => {
+      const title = event?.payload?.tin_tuyen_dung_tieu_de
+      notify.info(title ? `Pipeline "${title}" vừa có cập nhật realtime.` : 'Pipeline ứng tuyển vừa có cập nhật realtime.')
+      void refreshApplicationsRealtime()
+    })
+  }
+})
+
+onUnmounted(() => {
+  if (applicationRealtimeChannel) {
+    applicationRealtimeChannel.stopListening('.application.changed')
+    applicationRealtimeChannel = null
+  }
+})
+
+watch(() => form.hr_phu_trach_id, (value) => {
+  if (!value || form.nguoi_phong_van) return
+
+  const selectedMember = companyMembers.value.find((member) => String(member?.id) === String(value))
+  if (selectedMember?.ho_ten) {
+    form.nguoi_phong_van = selectedMember.ho_ten
+  }
+})
+</script>

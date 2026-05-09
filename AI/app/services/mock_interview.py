@@ -5,6 +5,7 @@ import re
 
 from app.core.config import settings
 from app.core.logger import get_logger
+from app.providers.mock_interview_gemini_provider import GeminiMockInterviewProvider
 from app.providers.mock_interview_ollama_provider import OllamaMockInterviewProvider
 from app.services.skill_catalog import extract_skills_from_text, normalize_search_text
 from app.services.vietnamese_text import (
@@ -15,10 +16,14 @@ from app.services.vietnamese_text import (
 
 logger = get_logger(__name__)
 
-MODEL_VERSION = f"mock_interview_v3.0::{settings.mock_interview_provider}::{settings.local_llm_model}"
+MODEL_VERSION = (
+    f"mock_interview_v3.0::{settings.mock_interview_provider}::"
+    f"{settings.gemini_model if (settings.mock_interview_provider or '').strip().lower() == 'gemini' else settings.local_llm_model}"
+)
 DEFAULT_MAX_QUESTIONS = 5
 MIN_MAX_QUESTIONS = 2
 ollama_provider = OllamaMockInterviewProvider()
+gemini_provider = GeminiMockInterviewProvider()
 
 
 def generate_mock_interview_question(
@@ -432,10 +437,17 @@ def _resolve_max_questions(max_questions: int) -> int:
 
 def _resolve_generation_provider() -> str:
     provider = (settings.mock_interview_provider or "ollama").strip().lower()
-    if provider == "ollama":
+    if provider in {"ollama", "gemini"}:
         return provider
     logger.warning("Unknown or non-LLM MOCK_INTERVIEW_PROVIDER=%s, forcing ollama LLM provider.", settings.mock_interview_provider)
     return "ollama"
+
+
+def _resolve_mock_interview_provider():
+    provider = _resolve_generation_provider()
+    if provider == "gemini":
+        return provider, gemini_provider
+    return "ollama", ollama_provider
 
 
 def _refine_question_payload(question_payload: dict, interview_context: dict, transcript: list[dict]) -> dict:
@@ -443,18 +455,14 @@ def _refine_question_payload(question_payload: dict, interview_context: dict, tr
     provider = _resolve_generation_provider()
     asked_questions = _asked_question_texts(transcript)
 
-    if provider != "ollama":
-        refined["question_text"] = _sanitize_interview_question_text(refined.get("question_text") or "")
-        refined["generation_provider"] = "rule_based"
-        return refined
-
     try:
-        refined_text = ollama_provider.refine_question(refined, interview_context, transcript)
+        provider, llm_provider = _resolve_mock_interview_provider()
+        refined_text = llm_provider.refine_question(refined, interview_context, transcript)
         if refined_text:
             sanitized_text = _sanitize_interview_question_text(refined_text)
             if _is_valid_refined_question(sanitized_text, refined, interview_context) and not _is_duplicate_question(sanitized_text, asked_questions):
                 refined["question_text"] = sanitized_text
-                refined["generation_provider"] = "ollama"
+                refined["generation_provider"] = provider
                 return refined
             logger.warning(
                 "Fallback to guarded question because refined question is invalid or duplicated: %s",
@@ -471,12 +479,9 @@ def _refine_question_payload(question_payload: dict, interview_context: dict, tr
 
 
 def _refine_report_text(report_payload: dict, interview_context: dict) -> str:
-    provider = _resolve_generation_provider()
-    if provider != "ollama":
-        return report_payload.get("de_xuat_cai_thien") or ""
-
     try:
-        refined_text = ollama_provider.refine_report(report_payload, interview_context)
+        _provider, llm_provider = _resolve_mock_interview_provider()
+        refined_text = llm_provider.refine_report(report_payload, interview_context)
         if refined_text:
             return refined_text
     except Exception as exc:

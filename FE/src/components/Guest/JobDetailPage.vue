@@ -1,9 +1,367 @@
+<template>
+  <div class="max-w-7xl mx-auto px-4 py-8">
+    <div class="mb-6">
+      <RouterLink
+        :to="{ name: 'JobSearch' }"
+        class="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 transition hover:text-blue-600"
+      >
+        <span class="material-symbols-outlined text-base">arrow_back</span>
+        Quay lại danh sách việc làm
+      </RouterLink>
+    </div>
+
+    <div v-if="loading" class="grid grid-cols-1 gap-8 lg:grid-cols-12">
+      <div class="lg:col-span-8 space-y-6">
+        <div class="h-80 animate-pulse rounded-[28px] border border-slate-200 bg-white"></div>
+        <div class="h-96 animate-pulse rounded-[28px] border border-slate-200 bg-white"></div>
+      </div>
+      <div class="lg:col-span-4">
+        <div class="h-[520px] animate-pulse rounded-[28px] border border-slate-200 bg-white"></div>
+      </div>
+    </div>
+
+    <div
+      v-else-if="!job"
+      class="rounded-[28px] border border-dashed border-slate-300 bg-white px-6 py-14 text-center shadow-sm"
+    >
+      <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-slate-100">
+        <span class="material-symbols-outlined text-3xl text-slate-500">description_off</span>
+      </div>
+      <h1 class="mt-5 text-2xl font-bold text-slate-900">Không tìm thấy tin tuyển dụng</h1>
+      <p class="mx-auto mt-3 max-w-xl text-sm leading-7 text-slate-500">
+        Tin tuyển dụng có thể đã hết hạn, bị ẩn hoặc không còn khả dụng trong hệ thống.
+      </p>
+    </div>
+
+    <div v-else class="grid grid-cols-1 gap-8 lg:grid-cols-12">
+      <div class="space-y-6 lg:col-span-8">
+        <section class="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
+          <div class="bg-gradient-to-r from-slate-900 via-blue-900 to-blue-600 px-6 py-8 text-white md:px-8">
+            <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+              <div class="max-w-3xl">
+                <p class="text-xs font-semibold uppercase tracking-[0.32em] text-blue-100/80">Chi tiết việc làm</p>
+                <span
+                  v-if="job.is_featured"
+                  class="mt-4 inline-flex items-center gap-1.5 rounded-full bg-amber-400/15 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-amber-100"
+                >
+                  <span class="material-symbols-outlined text-[14px]">rocket_launch</span>
+                  Featured Listing
+                </span>
+                <h1 class="mt-3 text-3xl font-bold md:text-4xl">{{ job.tieu_de }}</h1>
+                <p class="mt-4 text-sm font-semibold text-blue-100">
+                  {{ job.cong_ty?.ten_cong_ty || 'Công ty đang cập nhật' }}
+                </p>
+              </div>
+              <div class="rounded-2xl border border-white/15 bg-white/10 px-5 py-4 backdrop-blur">
+                <p class="text-sm text-blue-100/80">Mức lương</p>
+                <p class="mt-2 text-2xl font-bold">{{ formatSalary }}</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid gap-4 px-6 py-6 md:grid-cols-4 md:px-8">
+            <div class="rounded-2xl bg-slate-50 px-4 py-4">
+              <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Địa điểm</p>
+              <p class="mt-2 text-sm font-semibold text-slate-800">{{ job.dia_diem_lam_viec || 'Đang cập nhật' }}</p>
+            </div>
+            <div class="rounded-2xl bg-slate-50 px-4 py-4">
+              <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Hình thức</p>
+              <p class="mt-2 text-sm font-semibold text-slate-800">{{ job.hinh_thuc_lam_viec || 'Đang cập nhật' }}</p>
+            </div>
+            <div class="rounded-2xl bg-slate-50 px-4 py-4">
+              <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Cấp bậc</p>
+              <p class="mt-2 text-sm font-semibold text-slate-800">{{ job.cap_bac || 'Đang cập nhật' }}</p>
+            </div>
+            <div class="rounded-2xl bg-slate-50 px-4 py-4">
+              <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Hạn nộp</p>
+              <p class="mt-2 text-sm font-semibold text-slate-800">{{ deadlineText }}</p>
+            </div>
+            <div class="rounded-2xl bg-slate-50 px-4 py-4">
+              <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Chỉ tiêu</p>
+              <p class="mt-2 text-sm font-semibold text-slate-800">
+                {{ acceptedCount }}/{{ totalSlots || '0' }} đã nhận
+              </p>
+            </div>
+            <div
+              class="rounded-2xl px-4 py-4"
+              :class="isQuotaFull ? 'bg-rose-50' : 'bg-emerald-50'"
+            >
+              <p
+                class="text-xs font-semibold uppercase tracking-wide"
+                :class="isQuotaFull ? 'text-rose-400' : 'text-emerald-500'"
+              >
+                Còn lại
+              </p>
+              <p
+                class="mt-2 text-sm font-semibold"
+                :class="isQuotaFull ? 'text-rose-700' : 'text-emerald-700'"
+              >
+                {{ isQuotaFull ? 'Đã tuyển đủ' : `${remainingSlots} vị trí` }}
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section class="rounded-[28px] border border-slate-200 bg-white px-6 py-6 shadow-sm md:px-8">
+          <h2 class="text-2xl font-bold text-slate-900">Mô tả công việc</h2>
+          <p class="mt-4 whitespace-pre-line text-sm leading-8 text-slate-600">
+            {{ job.mo_ta_cong_viec || 'Nội dung mô tả đang được cập nhật.' }}
+          </p>
+        </section>
+
+        <section class="rounded-[28px] border border-slate-200 bg-white px-6 py-6 shadow-sm md:px-8">
+          <h2 class="text-2xl font-bold text-slate-900">Ngành nghề liên quan</h2>
+          <div class="mt-4 flex flex-wrap gap-2">
+            <span
+              v-for="industry in industries"
+              :key="industry.id"
+              class="rounded-full bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700"
+            >
+              {{ industry.ten_nganh }}
+            </span>
+            <span
+              v-if="!industries.length"
+              class="rounded-full bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-600"
+            >
+              Chưa có dữ liệu ngành nghề
+            </span>
+          </div>
+        </section>
+
+        <section class="rounded-[28px] border border-slate-200 bg-white px-6 py-6 shadow-sm md:px-8">
+          <h2 class="text-2xl font-bold text-slate-900">Thông tin công ty</h2>
+          <div class="mt-4 grid gap-4 md:grid-cols-2">
+            <div class="rounded-2xl bg-slate-50 px-4 py-4">
+              <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Tên công ty</p>
+              <p class="mt-2 text-sm font-semibold text-slate-800">{{ job.cong_ty?.ten_cong_ty || 'Đang cập nhật' }}</p>
+            </div>
+            <div class="rounded-2xl bg-slate-50 px-4 py-4">
+              <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Website</p>
+              <p class="mt-2 text-sm font-semibold text-slate-800">{{ job.cong_ty?.website || 'Đang cập nhật' }}</p>
+            </div>
+            <div class="rounded-2xl bg-slate-50 px-4 py-4">
+              <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Địa chỉ</p>
+              <p class="mt-2 text-sm font-semibold text-slate-800">{{ job.cong_ty?.dia_chi || 'Đang cập nhật' }}</p>
+            </div>
+            <div class="rounded-2xl bg-slate-50 px-4 py-4">
+              <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Quy mô</p>
+              <p class="mt-2 text-sm font-semibold text-slate-800">{{ job.cong_ty?.quy_mo || 'Đang cập nhật' }}</p>
+            </div>
+          </div>
+          <p class="mt-4 whitespace-pre-line text-sm leading-7 text-slate-600">
+            {{ job.cong_ty?.mo_ta || 'Mô tả công ty đang được cập nhật.' }}
+          </p>
+        </section>
+      </div>
+
+      <aside class="lg:col-span-4">
+        <div class="sticky top-6 space-y-5">
+          <section class="overflow-hidden rounded-[28px] border border-blue-100 bg-white shadow-lg shadow-blue-100/70">
+            <div class="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-6 text-white">
+              <p class="text-xs font-semibold uppercase tracking-[0.3em] text-blue-100/80">Ứng tuyển nhanh</p>
+              <h2 class="mt-2 text-2xl font-bold">Sẵn sàng cho vị trí này?</h2>
+              <p class="mt-3 text-sm leading-7 text-blue-50/85">
+                Bạn có thể xem chi tiết, lưu tin hoặc chuẩn bị CV trước khi nối luồng ứng tuyển chính thức.
+              </p>
+            </div>
+
+            <div class="space-y-4 px-6 py-6">
+              <div class="rounded-2xl bg-slate-50 px-4 py-4">
+                <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Yêu cầu kinh nghiệm</p>
+                <p class="mt-2 text-sm font-semibold text-slate-800">{{ job.kinh_nghiem_yeu_cau || 'Đang cập nhật' }}</p>
+              </div>
+              <div class="rounded-2xl bg-slate-50 px-4 py-4">
+                <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Trình độ</p>
+                <p class="mt-2 text-sm font-semibold text-slate-800">{{ job.trinh_do_yeu_cau || 'Đang cập nhật' }}</p>
+              </div>
+              <div class="rounded-2xl bg-slate-50 px-4 py-4">
+                <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Lượt xem</p>
+                <p class="mt-2 text-sm font-semibold text-slate-800">{{ job.luot_xem ?? 0 }}</p>
+              </div>
+              <div
+                class="rounded-2xl px-4 py-4"
+                :class="isQuotaFull ? 'bg-rose-50' : 'bg-emerald-50'"
+              >
+                <p
+                  class="text-xs font-semibold uppercase tracking-wide"
+                  :class="isQuotaFull ? 'text-rose-400' : 'text-emerald-500'"
+                >
+                  Chỉ tiêu tuyển dụng
+                </p>
+                <p
+                  class="mt-2 text-sm font-semibold"
+                  :class="isQuotaFull ? 'text-rose-700' : 'text-emerald-700'"
+                >
+                  {{ acceptedCount }}/{{ totalSlots || '0' }} đã nhận · {{ isQuotaFull ? 'Đã đủ' : `${remainingSlots} còn lại` }}
+                </p>
+              </div>
+
+              <div class="grid gap-3">
+                <button
+                  class="rounded-2xl px-5 py-3 text-sm font-bold text-white transition"
+                  :class="isQuotaFull ? 'cursor-not-allowed bg-slate-400' : 'bg-blue-600 hover:bg-blue-700'"
+                  :disabled="isQuotaFull"
+                  type="button"
+                  @click="openApplyModal"
+                >
+                  {{ isQuotaFull ? 'Đã tuyển đủ chỉ tiêu' : 'Ứng tuyển ngay' }}
+                </button>
+                <button
+                  class="rounded-2xl border px-5 py-3 text-sm font-semibold transition"
+                  :class="isSaved
+                    ? 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                    : 'border-slate-200 text-slate-700 hover:bg-slate-50'"
+                  type="button"
+                  @click="handleSaveJob"
+                >
+                  {{ saving ? 'Đang xử lý...' : isSaved ? 'Đã lưu tin' : 'Lưu tin tuyển dụng' }}
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>
+      </aside>
+    </div>
+
+    <div
+      v-if="applyModalOpen"
+      class="fixed inset-0 z-50 overflow-y-auto bg-slate-950/55 px-4 py-6 backdrop-blur-sm"
+      @click.self="closeApplyModal"
+    >
+      <div class="mx-auto w-full max-w-4xl rounded-[28px] border border-slate-200 bg-white shadow-2xl">
+        <div class="flex items-start justify-between border-b border-slate-100 px-6 py-5">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-[0.28em] text-blue-500">Ứng tuyển</p>
+            <h3 class="mt-2 text-2xl font-bold text-slate-900">{{ job?.tieu_de }}</h3>
+            <p class="mt-2 text-sm text-slate-500">
+              Chọn hồ sơ phù hợp nhất và thêm vài dòng giới thiệu nếu bạn muốn.
+            </p>
+          </div>
+          <button
+            class="rounded-full p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+            type="button"
+            @click="closeApplyModal"
+          >
+            <span class="material-symbols-outlined">close</span>
+          </button>
+        </div>
+
+        <div class="max-h-[calc(100vh-12rem)] space-y-5 overflow-y-auto px-6 py-6">
+          <div v-if="loadingProfiles" class="rounded-2xl bg-slate-50 px-4 py-5 text-sm text-slate-500">
+            Đang tải danh sách hồ sơ...
+          </div>
+
+          <template v-else>
+            <div>
+              <label class="mb-2 block text-sm font-semibold text-slate-700">Chọn hồ sơ ứng tuyển</label>
+              <select
+                v-model="selectedProfileId"
+                class="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+              >
+                <option value="" disabled>Chọn hồ sơ của bạn</option>
+                <option v-for="profile in profiles" :key="profile.id" :value="String(profile.id)">
+                  {{ profile.tieu_de_ho_so || `Hồ sơ #${profile.id}` }}
+                </option>
+              </select>
+            </div>
+
+            <div v-if="selectedProfile" class="rounded-2xl bg-slate-50 px-4 py-4 text-sm text-slate-600">
+              <p class="font-semibold text-slate-800">{{ selectedProfile.tieu_de_ho_so || `Hồ sơ #${selectedProfile.id}` }}</p>
+              <p class="mt-1">
+                Kinh nghiệm: {{ formatExperienceYears(selectedProfile.kinh_nghiem_nam) }}
+                <span v-if="selectedProfile.vi_tri_mong_muon">• Mục tiêu: {{ selectedProfile.vi_tri_mong_muon }}</span>
+              </p>
+            </div>
+
+            <div class="rounded-2xl border border-emerald-100 bg-emerald-50/70 px-4 py-4 text-sm text-slate-700">
+              <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p class="text-xs font-black uppercase tracking-[0.22em] text-emerald-700">AI Wallet</p>
+                  <p class="mt-2 font-semibold text-slate-900">
+                    {{ loadingBillingContext ? 'Đang tải số dư ví...' : `Khả dụng ${formatCurrency(walletAvailable)}` }}
+                  </p>
+                  <p class="mt-1 text-xs text-slate-500">
+                    {{ coverLetterWalletNote }}
+                  </p>
+                </div>
+                <RouterLink
+                  :to="{ name: 'Wallet' }"
+                  class="inline-flex items-center justify-center rounded-xl border border-emerald-200 bg-white px-4 py-2 text-sm font-bold text-emerald-700 transition hover:bg-emerald-50"
+                >
+                  Nạp ví AI
+                </RouterLink>
+              </div>
+            </div>
+
+            <div>
+              <div class="mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <label class="block text-sm font-semibold text-slate-700">Thư giới thiệu / Cover Letter</label>
+                <button
+                  class="inline-flex items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700 transition hover:border-blue-300 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
+                  :disabled="!selectedProfileId || generatingCoverLetter || applying"
+                  type="button"
+                  @click="generateCoverLetter"
+                >
+                  <span class="material-symbols-outlined text-[18px]">auto_awesome</span>
+                  {{ generatingCoverLetter ? 'Đang sinh thư AI...' : coverLetterBillingLabel }}
+                </button>
+              </div>
+              <textarea
+                v-model="coverLetter"
+                rows="10"
+                maxlength="5000"
+                class="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                placeholder="Ví dụ: Tôi đã có kinh nghiệm phù hợp với vị trí này và mong muốn được trao đổi thêm về dự án của công ty..."
+              />
+              <div class="mt-2 flex flex-col gap-2 text-xs text-slate-400 sm:flex-row sm:items-center sm:justify-between">
+                <p v-if="generatedCoverLetterId" class="font-medium text-blue-600">
+                  Đã có nháp AI. Bạn có thể chỉnh sửa nội dung trước khi nộp hồ sơ.
+                </p>
+                <p v-else>Thêm vài dòng giới thiệu để nhà tuyển dụng hiểu rõ hơn về bạn.</p>
+                <div class="text-right">{{ coverLetter.length }}/5000</div>
+              </div>
+            </div>
+          </template>
+
+
+</div>
+
+        <div class="flex flex-col gap-3 border-t border-slate-100 px-6 py-5 sm:flex-row sm:justify-end">
+          <RouterLink
+            v-if="!hasProfiles"
+            :to="{ name: 'MyCv' }"
+            class="inline-flex items-center justify-center rounded-2xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+          >
+            Tạo hồ sơ trước
+          </RouterLink>
+          <button
+            class="rounded-2xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+            type="button"
+            @click="closeApplyModal"
+          >
+            Để sau
+          </button>
+          <button
+            class="rounded-2xl bg-blue-600 px-5 py-3 text-sm font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+            :disabled="!selectedProfileId || applying || loadingProfiles || generatingCoverLetter"
+            type="button"
+            @click="submitApplication"
+          >
+            {{ applying ? 'Đang nộp hồ sơ...' : generatedCoverLetterId ? 'Xác nhận thư và ứng tuyển' : 'Xác nhận ứng tuyển' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { applicationService, jobService, profileService, savedJobService, walletService } from '@/services/api'
 import { useNotify } from '@/composables/useNotify'
 import { getAuthToken, getStoredCandidate } from '@/utils/authStorage'
+import { formatExperienceYears } from '@/utils/experience'
 import {
   getBillingFeatureLabel,
   getEntitlementActionLabel,
@@ -347,358 +705,3 @@ watch(selectedProfileId, (nextValue, previousValue) => {
   }
 })
 </script>
-
-<template>
-  <div class="max-w-7xl mx-auto px-4 py-8">
-    <div class="mb-6">
-      <RouterLink
-        :to="{ name: 'JobSearch' }"
-        class="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 transition hover:text-blue-600"
-      >
-        <span class="material-symbols-outlined text-base">arrow_back</span>
-        Quay lại danh sách việc làm
-      </RouterLink>
-    </div>
-
-    <div v-if="loading" class="grid grid-cols-1 gap-8 lg:grid-cols-12">
-      <div class="lg:col-span-8 space-y-6">
-        <div class="h-80 animate-pulse rounded-[28px] border border-slate-200 bg-white"></div>
-        <div class="h-96 animate-pulse rounded-[28px] border border-slate-200 bg-white"></div>
-      </div>
-      <div class="lg:col-span-4">
-        <div class="h-[520px] animate-pulse rounded-[28px] border border-slate-200 bg-white"></div>
-      </div>
-    </div>
-
-    <div
-      v-else-if="!job"
-      class="rounded-[28px] border border-dashed border-slate-300 bg-white px-6 py-14 text-center shadow-sm"
-    >
-      <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-slate-100">
-        <span class="material-symbols-outlined text-3xl text-slate-500">description_off</span>
-      </div>
-      <h1 class="mt-5 text-2xl font-bold text-slate-900">Không tìm thấy tin tuyển dụng</h1>
-      <p class="mx-auto mt-3 max-w-xl text-sm leading-7 text-slate-500">
-        Tin tuyển dụng có thể đã hết hạn, bị ẩn hoặc không còn khả dụng trong hệ thống.
-      </p>
-    </div>
-
-    <div v-else class="grid grid-cols-1 gap-8 lg:grid-cols-12">
-      <div class="space-y-6 lg:col-span-8">
-        <section class="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
-          <div class="bg-gradient-to-r from-slate-900 via-blue-900 to-blue-600 px-6 py-8 text-white md:px-8">
-            <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-              <div class="max-w-3xl">
-                <p class="text-xs font-semibold uppercase tracking-[0.32em] text-blue-100/80">Chi tiết việc làm</p>
-                <span
-                  v-if="job.is_featured"
-                  class="mt-4 inline-flex items-center gap-1.5 rounded-full bg-amber-400/15 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-amber-100"
-                >
-                  <span class="material-symbols-outlined text-[14px]">rocket_launch</span>
-                  Featured Listing
-                </span>
-                <h1 class="mt-3 text-3xl font-bold md:text-4xl">{{ job.tieu_de }}</h1>
-                <p class="mt-4 text-sm font-semibold text-blue-100">
-                  {{ job.cong_ty?.ten_cong_ty || 'Công ty đang cập nhật' }}
-                </p>
-              </div>
-              <div class="rounded-2xl border border-white/15 bg-white/10 px-5 py-4 backdrop-blur">
-                <p class="text-sm text-blue-100/80">Mức lương</p>
-                <p class="mt-2 text-2xl font-bold">{{ formatSalary }}</p>
-              </div>
-            </div>
-          </div>
-
-          <div class="grid gap-4 px-6 py-6 md:grid-cols-4 md:px-8">
-            <div class="rounded-2xl bg-slate-50 px-4 py-4">
-              <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Địa điểm</p>
-              <p class="mt-2 text-sm font-semibold text-slate-800">{{ job.dia_diem_lam_viec || 'Đang cập nhật' }}</p>
-            </div>
-            <div class="rounded-2xl bg-slate-50 px-4 py-4">
-              <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Hình thức</p>
-              <p class="mt-2 text-sm font-semibold text-slate-800">{{ job.hinh_thuc_lam_viec || 'Đang cập nhật' }}</p>
-            </div>
-            <div class="rounded-2xl bg-slate-50 px-4 py-4">
-              <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Cấp bậc</p>
-              <p class="mt-2 text-sm font-semibold text-slate-800">{{ job.cap_bac || 'Đang cập nhật' }}</p>
-            </div>
-            <div class="rounded-2xl bg-slate-50 px-4 py-4">
-              <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Hạn nộp</p>
-              <p class="mt-2 text-sm font-semibold text-slate-800">{{ deadlineText }}</p>
-            </div>
-            <div class="rounded-2xl bg-slate-50 px-4 py-4">
-              <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Chỉ tiêu</p>
-              <p class="mt-2 text-sm font-semibold text-slate-800">
-                {{ acceptedCount }}/{{ totalSlots || '0' }} đã nhận
-              </p>
-            </div>
-            <div
-              class="rounded-2xl px-4 py-4"
-              :class="isQuotaFull ? 'bg-rose-50' : 'bg-emerald-50'"
-            >
-              <p
-                class="text-xs font-semibold uppercase tracking-wide"
-                :class="isQuotaFull ? 'text-rose-400' : 'text-emerald-500'"
-              >
-                Còn lại
-              </p>
-              <p
-                class="mt-2 text-sm font-semibold"
-                :class="isQuotaFull ? 'text-rose-700' : 'text-emerald-700'"
-              >
-                {{ isQuotaFull ? 'Đã tuyển đủ' : `${remainingSlots} vị trí` }}
-              </p>
-            </div>
-          </div>
-        </section>
-
-        <section class="rounded-[28px] border border-slate-200 bg-white px-6 py-6 shadow-sm md:px-8">
-          <h2 class="text-2xl font-bold text-slate-900">Mô tả công việc</h2>
-          <p class="mt-4 whitespace-pre-line text-sm leading-8 text-slate-600">
-            {{ job.mo_ta_cong_viec || 'Nội dung mô tả đang được cập nhật.' }}
-          </p>
-        </section>
-
-        <section class="rounded-[28px] border border-slate-200 bg-white px-6 py-6 shadow-sm md:px-8">
-          <h2 class="text-2xl font-bold text-slate-900">Ngành nghề liên quan</h2>
-          <div class="mt-4 flex flex-wrap gap-2">
-            <span
-              v-for="industry in industries"
-              :key="industry.id"
-              class="rounded-full bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700"
-            >
-              {{ industry.ten_nganh }}
-            </span>
-            <span
-              v-if="!industries.length"
-              class="rounded-full bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-600"
-            >
-              Chưa có dữ liệu ngành nghề
-            </span>
-          </div>
-        </section>
-
-        <section class="rounded-[28px] border border-slate-200 bg-white px-6 py-6 shadow-sm md:px-8">
-          <h2 class="text-2xl font-bold text-slate-900">Thông tin công ty</h2>
-          <div class="mt-4 grid gap-4 md:grid-cols-2">
-            <div class="rounded-2xl bg-slate-50 px-4 py-4">
-              <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Tên công ty</p>
-              <p class="mt-2 text-sm font-semibold text-slate-800">{{ job.cong_ty?.ten_cong_ty || 'Đang cập nhật' }}</p>
-            </div>
-            <div class="rounded-2xl bg-slate-50 px-4 py-4">
-              <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Website</p>
-              <p class="mt-2 text-sm font-semibold text-slate-800">{{ job.cong_ty?.website || 'Đang cập nhật' }}</p>
-            </div>
-            <div class="rounded-2xl bg-slate-50 px-4 py-4">
-              <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Địa chỉ</p>
-              <p class="mt-2 text-sm font-semibold text-slate-800">{{ job.cong_ty?.dia_chi || 'Đang cập nhật' }}</p>
-            </div>
-            <div class="rounded-2xl bg-slate-50 px-4 py-4">
-              <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Quy mô</p>
-              <p class="mt-2 text-sm font-semibold text-slate-800">{{ job.cong_ty?.quy_mo || 'Đang cập nhật' }}</p>
-            </div>
-          </div>
-          <p class="mt-4 whitespace-pre-line text-sm leading-7 text-slate-600">
-            {{ job.cong_ty?.mo_ta || 'Mô tả công ty đang được cập nhật.' }}
-          </p>
-        </section>
-      </div>
-
-      <aside class="lg:col-span-4">
-        <div class="sticky top-6 space-y-5">
-          <section class="overflow-hidden rounded-[28px] border border-blue-100 bg-white shadow-lg shadow-blue-100/70">
-            <div class="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-6 text-white">
-              <p class="text-xs font-semibold uppercase tracking-[0.3em] text-blue-100/80">Ứng tuyển nhanh</p>
-              <h2 class="mt-2 text-2xl font-bold">Sẵn sàng cho vị trí này?</h2>
-              <p class="mt-3 text-sm leading-7 text-blue-50/85">
-                Bạn có thể xem chi tiết, lưu tin hoặc chuẩn bị CV trước khi nối luồng ứng tuyển chính thức.
-              </p>
-            </div>
-
-            <div class="space-y-4 px-6 py-6">
-              <div class="rounded-2xl bg-slate-50 px-4 py-4">
-                <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Yêu cầu kinh nghiệm</p>
-                <p class="mt-2 text-sm font-semibold text-slate-800">{{ job.kinh_nghiem_yeu_cau || 'Đang cập nhật' }}</p>
-              </div>
-              <div class="rounded-2xl bg-slate-50 px-4 py-4">
-                <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Trình độ</p>
-                <p class="mt-2 text-sm font-semibold text-slate-800">{{ job.trinh_do_yeu_cau || 'Đang cập nhật' }}</p>
-              </div>
-              <div class="rounded-2xl bg-slate-50 px-4 py-4">
-                <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Lượt xem</p>
-                <p class="mt-2 text-sm font-semibold text-slate-800">{{ job.luot_xem ?? 0 }}</p>
-              </div>
-              <div
-                class="rounded-2xl px-4 py-4"
-                :class="isQuotaFull ? 'bg-rose-50' : 'bg-emerald-50'"
-              >
-                <p
-                  class="text-xs font-semibold uppercase tracking-wide"
-                  :class="isQuotaFull ? 'text-rose-400' : 'text-emerald-500'"
-                >
-                  Chỉ tiêu tuyển dụng
-                </p>
-                <p
-                  class="mt-2 text-sm font-semibold"
-                  :class="isQuotaFull ? 'text-rose-700' : 'text-emerald-700'"
-                >
-                  {{ acceptedCount }}/{{ totalSlots || '0' }} đã nhận · {{ isQuotaFull ? 'Đã đủ' : `${remainingSlots} còn lại` }}
-                </p>
-              </div>
-
-              <div class="grid gap-3">
-                <button
-                  class="rounded-2xl px-5 py-3 text-sm font-bold text-white transition"
-                  :class="isQuotaFull ? 'cursor-not-allowed bg-slate-400' : 'bg-blue-600 hover:bg-blue-700'"
-                  :disabled="isQuotaFull"
-                  type="button"
-                  @click="openApplyModal"
-                >
-                  {{ isQuotaFull ? 'Đã tuyển đủ chỉ tiêu' : 'Ứng tuyển ngay' }}
-                </button>
-                <button
-                  class="rounded-2xl border px-5 py-3 text-sm font-semibold transition"
-                  :class="isSaved
-                    ? 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
-                    : 'border-slate-200 text-slate-700 hover:bg-slate-50'"
-                  type="button"
-                  @click="handleSaveJob"
-                >
-                  {{ saving ? 'Đang xử lý...' : isSaved ? 'Đã lưu tin' : 'Lưu tin tuyển dụng' }}
-                </button>
-              </div>
-            </div>
-          </section>
-        </div>
-      </aside>
-    </div>
-
-    <div
-      v-if="applyModalOpen"
-      class="fixed inset-0 z-50 overflow-y-auto bg-slate-950/55 px-4 py-6 backdrop-blur-sm"
-      @click.self="closeApplyModal"
-    >
-      <div class="mx-auto w-full max-w-4xl rounded-[28px] border border-slate-200 bg-white shadow-2xl">
-        <div class="flex items-start justify-between border-b border-slate-100 px-6 py-5">
-          <div>
-            <p class="text-xs font-semibold uppercase tracking-[0.28em] text-blue-500">Ứng tuyển</p>
-            <h3 class="mt-2 text-2xl font-bold text-slate-900">{{ job?.tieu_de }}</h3>
-            <p class="mt-2 text-sm text-slate-500">
-              Chọn hồ sơ phù hợp nhất và thêm vài dòng giới thiệu nếu bạn muốn.
-            </p>
-          </div>
-          <button
-            class="rounded-full p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
-            type="button"
-            @click="closeApplyModal"
-          >
-            <span class="material-symbols-outlined">close</span>
-          </button>
-        </div>
-
-        <div class="max-h-[calc(100vh-12rem)] space-y-5 overflow-y-auto px-6 py-6">
-          <div v-if="loadingProfiles" class="rounded-2xl bg-slate-50 px-4 py-5 text-sm text-slate-500">
-            Đang tải danh sách hồ sơ...
-          </div>
-
-          <template v-else>
-            <div>
-              <label class="mb-2 block text-sm font-semibold text-slate-700">Chọn hồ sơ ứng tuyển</label>
-              <select
-                v-model="selectedProfileId"
-                class="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-              >
-                <option value="" disabled>Chọn hồ sơ của bạn</option>
-                <option v-for="profile in profiles" :key="profile.id" :value="String(profile.id)">
-                  {{ profile.tieu_de_ho_so || `Hồ sơ #${profile.id}` }}
-                </option>
-              </select>
-            </div>
-
-            <div v-if="selectedProfile" class="rounded-2xl bg-slate-50 px-4 py-4 text-sm text-slate-600">
-              <p class="font-semibold text-slate-800">{{ selectedProfile.tieu_de_ho_so || `Hồ sơ #${selectedProfile.id}` }}</p>
-              <p class="mt-1">
-                Kinh nghiệm: {{ selectedProfile.kinh_nghiem_nam || 0 }} năm
-                <span v-if="selectedProfile.vi_tri_mong_muon">• Mục tiêu: {{ selectedProfile.vi_tri_mong_muon }}</span>
-              </p>
-            </div>
-
-            <div class="rounded-2xl border border-emerald-100 bg-emerald-50/70 px-4 py-4 text-sm text-slate-700">
-              <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p class="text-xs font-black uppercase tracking-[0.22em] text-emerald-700">AI Wallet</p>
-                  <p class="mt-2 font-semibold text-slate-900">
-                    {{ loadingBillingContext ? 'Đang tải số dư ví...' : `Khả dụng ${formatCurrency(walletAvailable)}` }}
-                  </p>
-                  <p class="mt-1 text-xs text-slate-500">
-                    {{ coverLetterWalletNote }}
-                  </p>
-                </div>
-                <RouterLink
-                  :to="{ name: 'Wallet' }"
-                  class="inline-flex items-center justify-center rounded-xl border border-emerald-200 bg-white px-4 py-2 text-sm font-bold text-emerald-700 transition hover:bg-emerald-50"
-                >
-                  Nạp ví AI
-                </RouterLink>
-              </div>
-            </div>
-
-            <div>
-              <div class="mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <label class="block text-sm font-semibold text-slate-700">Thư giới thiệu / Cover Letter</label>
-                <button
-                  class="inline-flex items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700 transition hover:border-blue-300 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
-                  :disabled="!selectedProfileId || generatingCoverLetter || applying"
-                  type="button"
-                  @click="generateCoverLetter"
-                >
-                  <span class="material-symbols-outlined text-[18px]">auto_awesome</span>
-                  {{ generatingCoverLetter ? 'Đang sinh thư AI...' : coverLetterBillingLabel }}
-                </button>
-              </div>
-              <textarea
-                v-model="coverLetter"
-                rows="10"
-                maxlength="5000"
-                class="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-                placeholder="Ví dụ: Tôi đã có kinh nghiệm phù hợp với vị trí này và mong muốn được trao đổi thêm về dự án của công ty..."
-              />
-              <div class="mt-2 flex flex-col gap-2 text-xs text-slate-400 sm:flex-row sm:items-center sm:justify-between">
-                <p v-if="generatedCoverLetterId" class="font-medium text-blue-600">
-                  Đã có nháp AI. Bạn có thể chỉnh sửa nội dung trước khi nộp hồ sơ.
-                </p>
-                <p v-else>Thêm vài dòng giới thiệu để nhà tuyển dụng hiểu rõ hơn về bạn.</p>
-                <div class="text-right">{{ coverLetter.length }}/5000</div>
-              </div>
-            </div>
-          </template>
-        </div>
-
-        <div class="flex flex-col gap-3 border-t border-slate-100 px-6 py-5 sm:flex-row sm:justify-end">
-          <RouterLink
-            v-if="!hasProfiles"
-            :to="{ name: 'MyCv' }"
-            class="inline-flex items-center justify-center rounded-2xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-          >
-            Tạo hồ sơ trước
-          </RouterLink>
-          <button
-            class="rounded-2xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-            type="button"
-            @click="closeApplyModal"
-          >
-            Để sau
-          </button>
-          <button
-            class="rounded-2xl bg-blue-600 px-5 py-3 text-sm font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
-            :disabled="!selectedProfileId || applying || loadingProfiles || generatingCoverLetter"
-            type="button"
-            @click="submitApplication"
-          >
-            {{ applying ? 'Đang nộp hồ sơ...' : generatedCoverLetterId ? 'Xác nhận thư và ứng tuyển' : 'Xác nhận ứng tuyển' }}
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-</template>

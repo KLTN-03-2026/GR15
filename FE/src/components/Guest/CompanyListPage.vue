@@ -1,91 +1,3 @@
-<script setup>
-import { computed, onMounted, ref, watch } from 'vue'
-import { RouterLink, useRoute, useRouter } from 'vue-router'
-import { jobService } from '@/services/api'
-import { useNotify } from '@/composables/useNotify'
-
-const route = useRoute()
-const router = useRouter()
-const notify = useNotify()
-
-const loading = ref(false)
-const companies = ref([])
-const totalCompanies = ref(0)
-const filters = ref({
-  search: route.query.search || '',
-  page: Number(route.query.page || 1),
-  perPage: Number(route.query.per_page || 9),
-})
-
-const extractList = (response) => {
-  const payload = response?.data
-  if (Array.isArray(payload?.data)) return payload.data
-  if (Array.isArray(payload)) return payload
-  return []
-}
-
-const totalPages = computed(() => Math.max(1, Math.ceil(totalCompanies.value / filters.value.perPage)))
-const summaryText = computed(() => {
-  if (!totalCompanies.value) return 'Chưa có công ty nào để hiển thị'
-  return `Hiển thị ${companies.value.length} / ${totalCompanies.value} công ty`
-})
-
-const syncRoute = () => {
-  router.replace({
-    path: '/companies',
-    query: {
-      ...(filters.value.search ? { search: filters.value.search } : {}),
-      ...(filters.value.page > 1 ? { page: filters.value.page } : {}),
-      per_page: filters.value.perPage,
-    },
-  })
-}
-
-const loadCompanies = async () => {
-  loading.value = true
-  try {
-    const response = await jobService.getCompanies({
-      search: filters.value.search.trim() || undefined,
-      page: filters.value.page,
-      per_page: filters.value.perPage,
-    })
-
-    companies.value = extractList(response)
-    totalCompanies.value = Number(response?.data?.total || companies.value.length || 0)
-  } catch (error) {
-    companies.value = []
-    totalCompanies.value = 0
-    notify.apiError(error, 'Không thể tải danh sách công ty.')
-  } finally {
-    loading.value = false
-  }
-}
-
-const applyFilters = () => {
-  filters.value.page = 1
-  syncRoute()
-  loadCompanies()
-}
-
-const setPage = (page) => {
-  if (page < 1 || page > totalPages.value || page === filters.value.page) return
-  filters.value.page = page
-  syncRoute()
-  loadCompanies()
-}
-
-watch(
-  () => route.query,
-  (query) => {
-    filters.value.search = query.search || ''
-    filters.value.page = Number(query.page || 1)
-    filters.value.perPage = Number(query.per_page || 9)
-  },
-)
-
-onMounted(loadCompanies)
-</script>
-
 <template>
   <section class="py-14 lg:py-16">
     <div class="mx-auto max-w-7xl px-6">
@@ -238,3 +150,91 @@ onMounted(loadCompanies)
     </div>
   </section>
 </template>
+
+<script setup>
+import { computed, onMounted, ref, watch } from 'vue'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
+import { jobService } from '@/services/api'
+import { useNotify } from '@/composables/useNotify'
+
+const route = useRoute()
+const router = useRouter()
+const notify = useNotify()
+
+const loading = ref(false)
+const companies = ref([])
+const totalCompanies = ref(0)
+const filters = ref({
+  search: route.query.search || '',
+  page: Number(route.query.page || 1),
+  perPage: Number(route.query.per_page || 9),
+})
+
+const extractList = (response) => {
+  const payload = response?.data
+  if (Array.isArray(payload?.data)) return payload.data
+  if (Array.isArray(payload)) return payload
+  return []
+}
+
+const totalPages = computed(() => Math.max(1, Math.ceil(totalCompanies.value / filters.value.perPage)))
+const summaryText = computed(() => {
+  if (!totalCompanies.value) return 'Chưa có công ty nào để hiển thị'
+  return `Hiển thị ${companies.value.length} / ${totalCompanies.value} công ty`
+})
+
+const syncRoute = () => {
+  router.replace({
+    path: '/companies',
+    query: {
+      ...(filters.value.search ? { search: filters.value.search } : {}),
+      ...(filters.value.page > 1 ? { page: filters.value.page } : {}),
+      per_page: filters.value.perPage,
+    },
+  })
+}
+
+const loadCompanies = async () => {
+  loading.value = true
+  try {
+    const response = await jobService.getCompanies({
+      search: filters.value.search.trim() || undefined,
+      page: filters.value.page,
+      per_page: filters.value.perPage,
+    })
+
+    companies.value = extractList(response)
+    totalCompanies.value = Number(response?.data?.total || companies.value.length || 0)
+  } catch (error) {
+    companies.value = []
+    totalCompanies.value = 0
+    notify.apiError(error, 'Không thể tải danh sách công ty.')
+  } finally {
+    loading.value = false
+  }
+}
+
+const applyFilters = () => {
+  filters.value.page = 1
+  syncRoute()
+  loadCompanies()
+}
+
+const setPage = (page) => {
+  if (page < 1 || page > totalPages.value || page === filters.value.page) return
+  filters.value.page = page
+  syncRoute()
+  loadCompanies()
+}
+
+watch(
+  () => route.query,
+  (query) => {
+    filters.value.search = query.search || ''
+    filters.value.page = Number(query.page || 1)
+    filters.value.perPage = Number(query.per_page || 9)
+  },
+)
+
+onMounted(loadCompanies)
+</script>

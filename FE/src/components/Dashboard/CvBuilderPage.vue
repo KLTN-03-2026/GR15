@@ -1,741 +1,3 @@
-<script setup>
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import { cvBuilderAiService, cvTemplateService, jobService, profileService } from '@/services/api'
-import { useNotify } from '@/composables/useNotify'
-import { getStoredCandidate } from '@/utils/authStorage'
-import ProfileCvPreview from '@/components/Dashboard/ProfileCvPreview.vue'
-import MonthYearPicker from '@/components/MonthYearPicker.vue'
-import {
-  buildCvPresetByMode,
-  cvStyleFamilyOptions,
-  cvSkillLevelOptions,
-  cvTargetPositionOptions,
-  cvTemplateModeOptions,
-  cvStylePreferenceOptions,
-  getCvTemplateMeta,
-  getCvProjectFieldConfig,
-  cvTemplateLabel,
-  getCvTemplatesForMode,
-  inferCvStyleFamily,
-  openCvPrintPreview,
-  resolveProfileCvAvatarUrl,
-  setRuntimeCvTemplateOptions,
-  suggestCvTemplateByMode,
-  templateUsesCvPhoto,
-} from '@/utils/profileCvBuilder'
-
-const route = useRoute()
-const router = useRouter()
-const notify = useNotify()
-
-const loading = ref(false)
-const saving = ref(false)
-const loadingIndustries = ref(false)
-const loadingTemplates = ref(false)
-const previewModalOpen = ref(false)
-const aiWritingPanelOpen = ref(false)
-const aiWritingLoadingKey = ref('')
-const aiWritingSection = ref('summary')
-const aiWritingTone = ref('professional')
-const aiWritingSuggestions = ref([])
-const aiWritingSkillSuggestions = ref([])
-const aiWritingTargetIndex = ref(null)
-const currentCandidate = ref(getStoredCandidate())
-const industryOptions = ref([])
-const selectedIndustryId = ref('')
-const templateMode = ref('style')
-const styleFamily = ref('executive_navy')
-const targetPosition = ref('')
-const stylePreference = ref('balanced')
-const cvPhotoObjectUrl = ref('')
-
-const educationOptions = [
-  { value: 'Trung học', label: 'Trung học' },
-  { value: 'Trung cấp', label: 'Trung cấp' },
-  { value: 'Cao đẳng', label: 'Cao đẳng' },
-  { value: 'Đại học', label: 'Đại học' },
-  { value: 'Thạc sĩ', label: 'Thạc sĩ' },
-  { value: 'Tiến sĩ', label: 'Tiến sĩ' },
-  { value: 'Khác', label: 'Khác' },
-]
-
-const cvAiWritingSections = [
-  { value: 'summary', label: 'Mô tả bản thân' },
-  { value: 'career_goal', label: 'Mục tiêu nghề nghiệp' },
-  { value: 'experience', label: 'Mô tả kinh nghiệm' },
-  { value: 'project', label: 'Mô tả dự án/thành tựu' },
-  { value: 'skills', label: 'Gợi ý kỹ năng' },
-]
-
-const cvAiWritingTones = [
-  { value: 'professional', label: 'Chuyên nghiệp' },
-  { value: 'concise', label: 'Ngắn gọn' },
-  { value: 'impact', label: 'Nhấn mạnh thành tựu' },
-  { value: 'fresher', label: 'Fresher/Junior' },
-]
-
-const createSkillItem = (ten = '', muc_do = 'kha') => ({ ten, muc_do })
-const createExperienceItem = () => ({ vi_tri: '', cong_ty: '', bat_dau: '', ket_thuc: '', mo_ta: '' })
-const createEducationItem = () => ({ truong: '', chuyen_nganh: '', bat_dau: '', ket_thuc: '', mo_ta: '' })
-const createProjectItem = () => ({
-  ten: '',
-  vai_tro: '',
-  don_vi_hoac_khach_hang: '',
-  linh_vuc_hoac_cong_cu: '',
-  mo_ta: '',
-  ket_qua_noi_bat: '',
-  loai_minh_chung: '',
-  lien_ket_minh_chung: '',
-})
-const createCertificateItem = () => ({ ten: '', don_vi: '', nam: '' })
-
-const form = reactive({
-  tieu_de_ho_so: '',
-  muc_tieu_nghe_nghiep: '',
-  trinh_do: '',
-  kinh_nghiem_nam: '',
-  mo_ta_ban_than: '',
-  nguon_ho_so: 'builder',
-  mau_cv: 'executive_navy',
-  bo_cuc_cv: 'executive_navy',
-  ten_template_cv: 'Executive Navy',
-  che_do_mau_cv: 'style',
-  vi_tri_ung_tuyen_muc_tieu: '',
-  ten_nganh_nghe_muc_tieu: '',
-  che_do_anh_cv: 'profile',
-  anh_cv: null,
-  anh_cv_url: '',
-  ky_nang_json: [createSkillItem()],
-  kinh_nghiem_json: [createExperienceItem()],
-  hoc_van_json: [createEducationItem()],
-  du_an_json: [],
-  chung_chi_json: [],
-  trang_thai: 1,
-})
-
-const extractList = (response) => {
-  const payload = response?.data
-  if (Array.isArray(payload?.data)) return payload.data
-  if (Array.isArray(payload)) return payload
-  return []
-}
-
-const normalizeItems = (items, requiredKeys = []) => {
-  if (!Array.isArray(items)) return []
-
-  return items
-    .map((item) => {
-      if (!item || typeof item !== 'object') return null
-      const normalized = Object.fromEntries(
-        Object.entries(item).map(([key, value]) => [key, String(value ?? '').trim()]),
-      )
-
-      const hasRequired = requiredKeys.length
-        ? requiredKeys.some((key) => normalized[key])
-        : Object.values(normalized).some(Boolean)
-
-      return hasRequired ? normalized : null
-    })
-    .filter(Boolean)
-}
-
-const editingProfileId = computed(() => {
-  const raw = String(route.query.id || '').trim()
-  return raw ? Number(raw) || null : null
-})
-
-const pageTitle = computed(() => (editingProfileId.value ? 'Chỉnh sửa CV hệ thống' : 'Tạo CV trên hệ thống'))
-const pageDescription = computed(() =>
-  editingProfileId.value
-    ? 'Cập nhật CV builder với các mẫu bám theo layout tham chiếu bạn đã chọn.'
-    : 'Dựng CV trực tiếp trên hệ thống với các mẫu bám theo layout tham chiếu thực tế, có thể chọn theo phong cách hoặc theo vị trí ứng tuyển.',
-)
-
-const selectedIndustry = computed(() =>
-  industryOptions.value.find((item) => String(item.id) === String(selectedIndustryId.value)) || null,
-)
-
-const selectedIndustryName = computed(
-  () => selectedIndustry.value?.ten_nganh || selectedIndustry.value?.ten_nganh_nghe || '',
-)
-const projectFieldConfig = computed(() => getCvProjectFieldConfig({
-  industryName: selectedIndustryName.value,
-  positionValue: targetPosition.value,
-}))
-
-const recommendedTemplate = computed(() => suggestCvTemplateByMode({
-  mode: templateMode.value,
-  industryName: selectedIndustryName.value,
-  styleFamily: styleFamily.value,
-  positionValue: targetPosition.value,
-  preference: stylePreference.value,
-}))
-const selectedTemplateMeta = computed(() =>
-  getCvTemplateMeta(form.mau_cv) || getCvTemplateMeta(recommendedTemplate.value),
-)
-const selectedTemplateUsesPhoto = computed(() =>
-  templateUsesCvPhoto(form.mau_cv, selectedTemplateMeta.value?.layout || form.bo_cuc_cv || ''),
-)
-const aiWritingSectionLabel = computed(
-  () => cvAiWritingSections.find((item) => item.value === aiWritingSection.value)?.label || 'AI Writing',
-)
-const candidateAvatarUrl = computed(() =>
-  currentCandidate.value?.avatar_url ||
-  currentCandidate.value?.anh_dai_dien_url ||
-  currentCandidate.value?.anh_dai_dien ||
-  '',
-)
-const cvPhotoPreviewUrl = computed(() => {
-  if (form.che_do_anh_cv !== 'upload') {
-    return ''
-  }
-
-  return cvPhotoObjectUrl.value || form.anh_cv_url || ''
-})
-const availableTemplates = computed(() => getCvTemplatesForMode(templateMode.value, styleFamily.value))
-const previewProfile = computed(() => ({
-  ...form,
-  bo_cuc_cv: selectedTemplateMeta.value?.layout || form.bo_cuc_cv || 'executive_navy',
-  ten_template_cv: selectedTemplateMeta.value?.label || form.ten_template_cv || cvTemplateLabel(form.mau_cv),
-  che_do_mau_cv: templateMode.value,
-  vi_tri_ung_tuyen_muc_tieu: targetPosition.value,
-  ten_nganh_nghe_muc_tieu: selectedIndustryName.value,
-  che_do_anh_cv: form.che_do_anh_cv,
-  anh_cv_preview_url: cvPhotoPreviewUrl.value,
-  ky_nang_json: normalizeItems(form.ky_nang_json, ['ten']),
-  kinh_nghiem_json: normalizeItems(form.kinh_nghiem_json, ['vi_tri']),
-  hoc_van_json: normalizeItems(form.hoc_van_json, ['truong']),
-  du_an_json: normalizeItems(form.du_an_json, ['ten']),
-  chung_chi_json: normalizeItems(form.chung_chi_json, ['ten']),
-}))
-
-const templatePreviewBase = computed(() => ({
-  ...previewProfile.value,
-  tieu_de_ho_so: previewProfile.value.tieu_de_ho_so || 'Senior Product Manager',
-  muc_tieu_nghe_nghiep:
-    previewProfile.value.muc_tieu_nghe_nghiep ||
-    'Tập trung vào kinh nghiệm nổi bật, kỹ năng cốt lõi và cách trình bày phù hợp với vai trò mục tiêu.',
-  mo_ta_ban_than:
-    previewProfile.value.mo_ta_ban_than ||
-    'Ứng viên có kinh nghiệm thực tế, định hướng rõ ràng và muốn thể hiện hồ sơ theo bố cục dễ quét cho nhà tuyển dụng.',
-  vi_tri_ung_tuyen_muc_tieu: previewProfile.value.vi_tri_ung_tuyen_muc_tieu || 'Product Manager',
-  ten_nganh_nghe_muc_tieu: previewProfile.value.ten_nganh_nghe_muc_tieu || 'Công nghệ thông tin',
-  ky_nang_json: previewProfile.value.ky_nang_json.length
-    ? previewProfile.value.ky_nang_json
-    : [
-        { ten: 'Stakeholder Management', muc_do: 'tot' },
-        { ten: 'Product Strategy', muc_do: 'tot' },
-        { ten: 'Agile', muc_do: 'kha' },
-      ],
-  kinh_nghiem_json: previewProfile.value.kinh_nghiem_json.length
-    ? previewProfile.value.kinh_nghiem_json
-    : [
-        {
-          vi_tri: 'Product Manager',
-          cong_ty: 'Tech Company',
-          bat_dau: '03/2022',
-          ket_thuc: 'Hiện tại',
-          mo_ta: 'Dẫn dắt roadmap sản phẩm, phối hợp team đa chức năng và tối ưu trải nghiệm người dùng.',
-        },
-      ],
-  hoc_van_json: previewProfile.value.hoc_van_json.length
-    ? previewProfile.value.hoc_van_json
-    : [
-        {
-          truong: 'Đại học Duy Tân',
-          chuyen_nganh: 'Quản trị / Công nghệ',
-          bat_dau: '09/2018',
-          ket_thuc: '06/2022',
-          mo_ta: '',
-        },
-      ],
-}))
-
-const getTemplatePreviewProfile = (templateValue) => ({
-  ...templatePreviewBase.value,
-  mau_cv: templateValue,
-})
-
-const resetForm = () => {
-  if (cvPhotoObjectUrl.value) {
-    URL.revokeObjectURL(cvPhotoObjectUrl.value)
-    cvPhotoObjectUrl.value = ''
-  }
-  form.tieu_de_ho_so = ''
-  form.muc_tieu_nghe_nghiep = ''
-  form.trinh_do = ''
-  form.kinh_nghiem_nam = ''
-  form.mo_ta_ban_than = ''
-  form.nguon_ho_so = 'builder'
-  form.mau_cv = 'executive_navy'
-  form.bo_cuc_cv = 'executive_navy'
-  form.ten_template_cv = 'Executive Navy'
-  form.che_do_mau_cv = 'style'
-  form.vi_tri_ung_tuyen_muc_tieu = ''
-  form.ten_nganh_nghe_muc_tieu = ''
-  form.che_do_anh_cv = 'profile'
-  form.anh_cv = null
-  form.anh_cv_url = ''
-  form.ky_nang_json = [createSkillItem()]
-  form.kinh_nghiem_json = [createExperienceItem()]
-  form.hoc_van_json = [createEducationItem()]
-  form.du_an_json = []
-  form.chung_chi_json = []
-  form.trang_thai = 1
-  selectedIndustryId.value = ''
-  templateMode.value = 'style'
-  styleFamily.value = 'executive_navy'
-  targetPosition.value = ''
-  stylePreference.value = 'balanced'
-}
-
-const fillForm = (profile) => {
-  if (cvPhotoObjectUrl.value) {
-    URL.revokeObjectURL(cvPhotoObjectUrl.value)
-    cvPhotoObjectUrl.value = ''
-  }
-  form.tieu_de_ho_so = profile?.tieu_de_ho_so || ''
-  form.muc_tieu_nghe_nghiep = profile?.muc_tieu_nghe_nghiep || ''
-  form.trinh_do = profile?.trinh_do || ''
-  form.kinh_nghiem_nam = profile?.kinh_nghiem_nam ?? ''
-  form.mo_ta_ban_than = profile?.mo_ta_ban_than || ''
-  form.nguon_ho_so = 'builder'
-  form.mau_cv = profile?.mau_cv || 'executive_navy'
-  form.bo_cuc_cv = profile?.bo_cuc_cv || getCvTemplateMeta(profile?.mau_cv || 'executive_navy')?.layout || 'executive_navy'
-  form.ten_template_cv = profile?.ten_template_cv || cvTemplateLabel(profile?.mau_cv || 'executive_navy')
-  form.che_do_mau_cv = profile?.che_do_mau_cv || 'style'
-  form.vi_tri_ung_tuyen_muc_tieu = profile?.vi_tri_ung_tuyen_muc_tieu || ''
-  form.ten_nganh_nghe_muc_tieu = profile?.ten_nganh_nghe_muc_tieu || ''
-  form.che_do_anh_cv = profile?.che_do_anh_cv || 'profile'
-  form.anh_cv = null
-  form.anh_cv_url = profile?.anh_cv_url || ''
-  form.ky_nang_json = Array.isArray(profile?.ky_nang_json) && profile.ky_nang_json.length
-    ? profile.ky_nang_json.map((item) => ({ ten: item?.ten || '', muc_do: item?.muc_do || 'kha' }))
-    : [createSkillItem()]
-  form.kinh_nghiem_json = Array.isArray(profile?.kinh_nghiem_json) && profile.kinh_nghiem_json.length
-    ? profile.kinh_nghiem_json.map((item) => ({ vi_tri: item?.vi_tri || '', cong_ty: item?.cong_ty || '', bat_dau: item?.bat_dau || '', ket_thuc: item?.ket_thuc || '', mo_ta: item?.mo_ta || '' }))
-    : [createExperienceItem()]
-  form.hoc_van_json = Array.isArray(profile?.hoc_van_json) && profile.hoc_van_json.length
-    ? profile.hoc_van_json.map((item) => ({ truong: item?.truong || '', chuyen_nganh: item?.chuyen_nganh || '', bat_dau: item?.bat_dau || '', ket_thuc: item?.ket_thuc || '', mo_ta: item?.mo_ta || '' }))
-    : [createEducationItem()]
-  form.du_an_json = Array.isArray(profile?.du_an_json)
-    ? profile.du_an_json.map((item) => ({
-        ten: item?.ten || '',
-        vai_tro: item?.vai_tro || '',
-        don_vi_hoac_khach_hang: item?.don_vi_hoac_khach_hang || item?.don_vi || item?.khach_hang || '',
-        linh_vuc_hoac_cong_cu: item?.linh_vuc_hoac_cong_cu || item?.cong_nghe || '',
-        mo_ta: item?.mo_ta || '',
-        ket_qua_noi_bat: item?.ket_qua_noi_bat || '',
-        loai_minh_chung: item?.loai_minh_chung || '',
-        lien_ket_minh_chung: item?.lien_ket_minh_chung || item?.link || '',
-      }))
-    : []
-  form.chung_chi_json = Array.isArray(profile?.chung_chi_json)
-    ? profile.chung_chi_json.map((item) => ({ ten: item?.ten || '', don_vi: item?.don_vi || '', nam: item?.nam || '' }))
-    : []
-  form.trang_thai = Number(profile?.trang_thai ?? 1)
-  templateMode.value = form.che_do_mau_cv || 'style'
-  targetPosition.value = form.vi_tri_ung_tuyen_muc_tieu || ''
-  styleFamily.value = inferCvStyleFamily(form.mau_cv)
-}
-
-const handleCvPhotoChange = (event) => {
-  const [file] = Array.from(event?.target?.files || [])
-  form.anh_cv = file || null
-
-  if (cvPhotoObjectUrl.value) {
-    URL.revokeObjectURL(cvPhotoObjectUrl.value)
-    cvPhotoObjectUrl.value = ''
-  }
-
-  if (!file) {
-    return
-  }
-
-  cvPhotoObjectUrl.value = URL.createObjectURL(file)
-}
-
-const clearCvPhotoUpload = () => {
-  form.anh_cv = null
-  form.anh_cv_url = ''
-
-  if (cvPhotoObjectUrl.value) {
-    URL.revokeObjectURL(cvPhotoObjectUrl.value)
-    cvPhotoObjectUrl.value = ''
-  }
-}
-
-const loadIndustries = async () => {
-  loadingIndustries.value = true
-  try {
-    const response = await jobService.getIndustries({ per_page: 200 })
-    industryOptions.value = extractList(response)
-  } catch (error) {
-    industryOptions.value = []
-    notify.apiError(error, 'Không thể tải danh sách ngành nghề cho CV builder.')
-  } finally {
-    loadingIndustries.value = false
-  }
-}
-
-const loadTemplates = async () => {
-  loadingTemplates.value = true
-  try {
-    const response = await cvTemplateService.getActiveTemplates()
-    const payload = response?.data
-    const templates = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : []
-    setRuntimeCvTemplateOptions(templates)
-  } catch (error) {
-    setRuntimeCvTemplateOptions([])
-    notify.apiError(error, 'Không thể tải danh sách template CV. Hệ thống sẽ dùng bộ template mặc định.')
-  } finally {
-    loadingTemplates.value = false
-  }
-}
-
-const loadEditingProfile = async () => {
-  if (!editingProfileId.value) {
-    resetForm()
-    return
-  }
-
-  loading.value = true
-  try {
-    const response = await profileService.getProfileById(editingProfileId.value)
-    const profile = response?.data || null
-
-    if (!profile) {
-      notify.warning('Không tìm thấy hồ sơ cần chỉnh sửa.')
-      router.replace('/my-cv')
-      return
-    }
-
-    fillForm(profile)
-  } catch (error) {
-    notify.apiError(error, 'Không thể tải CV hệ thống cần chỉnh sửa.')
-    router.replace('/my-cv')
-  } finally {
-    loading.value = false
-  }
-}
-
-const addSectionItem = (field) => {
-  if (field === 'ky_nang_json') form.ky_nang_json.push(createSkillItem())
-  if (field === 'kinh_nghiem_json') form.kinh_nghiem_json.push(createExperienceItem())
-  if (field === 'hoc_van_json') form.hoc_van_json.push(createEducationItem())
-  if (field === 'du_an_json') form.du_an_json.push(createProjectItem())
-  if (field === 'chung_chi_json') form.chung_chi_json.push(createCertificateItem())
-}
-
-const removeSectionItem = (field, index) => {
-  if (!Array.isArray(form[field])) return
-  form[field].splice(index, 1)
-  if (!form[field].length && ['ky_nang_json', 'kinh_nghiem_json', 'hoc_van_json'].includes(field)) {
-    addSectionItem(field)
-  }
-}
-
-const buildAiWritingProfile = () => ({
-  tieu_de_ho_so: form.tieu_de_ho_so,
-  muc_tieu_nghe_nghiep: form.muc_tieu_nghe_nghiep,
-  trinh_do: form.trinh_do,
-  kinh_nghiem_nam: form.kinh_nghiem_nam,
-  mo_ta_ban_than: form.mo_ta_ban_than,
-  vi_tri_ung_tuyen_muc_tieu: targetPosition.value || form.vi_tri_ung_tuyen_muc_tieu,
-  ten_nganh_nghe_muc_tieu: selectedIndustryName.value || form.ten_nganh_nghe_muc_tieu,
-  ky_nang_json: normalizeItems(form.ky_nang_json, ['ten']),
-  kinh_nghiem_json: normalizeItems(form.kinh_nghiem_json, ['vi_tri']),
-  hoc_van_json: normalizeItems(form.hoc_van_json, ['truong']),
-  du_an_json: normalizeItems(form.du_an_json, ['ten']),
-  chung_chi_json: normalizeItems(form.chung_chi_json, ['ten']),
-})
-
-const aiWritingKey = (section, index = null) => `${section}:${index ?? 'general'}`
-
-const requestAiWriting = async (section = aiWritingSection.value, options = {}) => {
-  const targetIndex = options.index ?? null
-  const loadingKey = aiWritingKey(section, targetIndex)
-  const item = options.item || (
-    section === 'experience'
-      ? form.kinh_nghiem_json[targetIndex ?? 0] || {}
-      : section === 'project'
-        ? form.du_an_json[targetIndex ?? 0] || {}
-        : {}
-  )
-
-  aiWritingLoadingKey.value = loadingKey
-  try {
-    const response = await cvBuilderAiService.generateWriting({
-      section,
-      profile: buildAiWritingProfile(),
-      item,
-      item_index: targetIndex,
-      tone: aiWritingTone.value,
-      language: 'vi',
-    })
-    const data = response?.data || {}
-    aiWritingSection.value = section
-    aiWritingTargetIndex.value = targetIndex
-    aiWritingSuggestions.value = Array.isArray(data.suggestions) ? data.suggestions : []
-    aiWritingSkillSuggestions.value = Array.isArray(data.skill_suggestions) ? data.skill_suggestions : []
-    aiWritingPanelOpen.value = true
-
-    if (data.used_fallback) {
-      notify.info(response?.message || 'Đã dùng bộ gợi ý nội bộ vì AI service chưa sẵn sàng.')
-    } else {
-      notify.success('Đã sinh gợi ý nội dung CV.')
-    }
-  } catch (error) {
-    notify.apiError(error, 'Không thể sinh gợi ý AI Writing cho CV.')
-  } finally {
-    aiWritingLoadingKey.value = ''
-  }
-}
-
-const ensureAiTargetItem = (section) => {
-  if (section === 'experience') {
-    if (!form.kinh_nghiem_json.length) form.kinh_nghiem_json.push(createExperienceItem())
-    return form.kinh_nghiem_json[aiWritingTargetIndex.value ?? 0]
-  }
-
-  if (section === 'project') {
-    if (!form.du_an_json.length) form.du_an_json.push(createProjectItem())
-    return form.du_an_json[aiWritingTargetIndex.value ?? 0]
-  }
-
-  return null
-}
-
-const applyAiWritingSuggestion = (suggestion) => {
-  const text = String(suggestion || '').trim()
-  if (!text) return
-
-  if (aiWritingSection.value === 'summary') {
-    form.mo_ta_ban_than = text
-  } else if (aiWritingSection.value === 'career_goal') {
-    form.muc_tieu_nghe_nghiep = text
-  } else if (aiWritingSection.value === 'experience') {
-    const item = ensureAiTargetItem('experience')
-    if (item) item.mo_ta = text
-  } else if (aiWritingSection.value === 'project') {
-    const item = ensureAiTargetItem('project')
-    if (item) item.mo_ta = text
-  }
-
-  notify.success('Đã áp dụng gợi ý vào CV.')
-}
-
-const applyAiSkillSuggestions = (skills = aiWritingSkillSuggestions.value) => {
-  if (!Array.isArray(skills) || !skills.length) return
-
-  const currentSkills = normalizeItems(form.ky_nang_json, ['ten'])
-  const existingNames = new Set(currentSkills.map((item) => item.ten.toLowerCase()))
-  const mergedSkills = [...currentSkills]
-
-  skills.forEach((skill) => {
-    const name = String(skill?.ten || '').trim()
-    if (!name || existingNames.has(name.toLowerCase())) return
-    existingNames.add(name.toLowerCase())
-    mergedSkills.push(createSkillItem(name, skill?.muc_do || 'kha'))
-  })
-
-  form.ky_nang_json = mergedSkills.length ? mergedSkills : [createSkillItem()]
-  notify.success('Đã thêm các kỹ năng được gợi ý.')
-}
-
-const applyTemplatePreset = () => {
-  if (templateMode.value === 'position' && !targetPosition.value) {
-    notify.warning('Hãy chọn vị trí ứng tuyển trước khi áp preset.')
-    return
-  }
-
-  if (templateMode.value === 'style' && !selectedIndustryName.value && !styleFamily.value) {
-    notify.warning('Hãy chọn ít nhất ngành nghề hoặc phong cách trước khi áp preset.')
-    return
-  }
-
-  const preset = buildCvPresetByMode({
-    mode: templateMode.value,
-    industryName: selectedIndustryName.value,
-    styleFamily: styleFamily.value,
-    positionValue: targetPosition.value,
-    preference: stylePreference.value,
-  })
-  form.mau_cv = preset.template
-  form.che_do_mau_cv = templateMode.value
-  form.vi_tri_ung_tuyen_muc_tieu = targetPosition.value
-  form.ten_nganh_nghe_muc_tieu = selectedIndustryName.value
-
-  if (!String(form.tieu_de_ho_so).trim()) {
-    form.tieu_de_ho_so = preset.suggestedTitle
-  }
-
-  if (!String(form.muc_tieu_nghe_nghiep).trim()) {
-    form.muc_tieu_nghe_nghiep = preset.suggestedObjective
-  }
-
-  const existingSkills = normalizeItems(form.ky_nang_json, ['ten']).map((item) => item.ten.toLowerCase())
-  const missingSkills = preset.suggestedSkills.filter((item) => !existingSkills.includes(item.toLowerCase()))
-  if (missingSkills.length) {
-    form.ky_nang_json = [...normalizeItems(form.ky_nang_json, ['ten']), ...missingSkills.map((item) => createSkillItem(item, 'kha'))]
-  }
-
-  notify.success(
-    templateMode.value === 'position'
-      ? 'Đã áp dụng preset CV theo vị trí ứng tuyển.'
-      : `Đã áp dụng preset CV theo phong cách ${cvStyleFamilyOptions.find((item) => item.value === styleFamily.value)?.label?.toLowerCase() || 'đã chọn'}.`
-  )
-}
-
-const exportPreview = () => {
-  const opened = openCvPrintPreview({
-    profile: previewProfile.value,
-    owner: currentCandidate.value,
-  })
-
-  if (!opened) {
-    notify.warning('Trình duyệt đang chặn cửa sổ tải xuống. Hãy cho phép popup và thử lại.')
-    return
-  }
-}
-
-const openPreviewModal = () => {
-  previewModalOpen.value = true
-}
-
-const closePreviewModal = () => {
-  previewModalOpen.value = false
-}
-
-const buildFormData = () => {
-  const payload = new FormData()
-  payload.append('tieu_de_ho_so', form.tieu_de_ho_so)
-  payload.append('muc_tieu_nghe_nghiep', form.muc_tieu_nghe_nghiep || '')
-  payload.append('trinh_do', form.trinh_do || '')
-  payload.append('kinh_nghiem_nam', String(form.kinh_nghiem_nam || 0))
-  payload.append('mo_ta_ban_than', form.mo_ta_ban_than || '')
-  payload.append('nguon_ho_so', 'builder')
-  payload.append('mau_cv', form.mau_cv || 'executive_navy')
-  payload.append('bo_cuc_cv', selectedTemplateMeta.value?.layout || form.bo_cuc_cv || 'executive_navy')
-  payload.append('ten_template_cv', selectedTemplateMeta.value?.label || form.ten_template_cv || cvTemplateLabel(form.mau_cv))
-  payload.append('che_do_mau_cv', templateMode.value)
-  payload.append('vi_tri_ung_tuyen_muc_tieu', targetPosition.value || '')
-  payload.append('ten_nganh_nghe_muc_tieu', selectedIndustryName.value || '')
-  payload.append('che_do_anh_cv', form.che_do_anh_cv || 'profile')
-  if (form.che_do_anh_cv === 'upload' && form.anh_cv instanceof File) {
-    payload.append('anh_cv', form.anh_cv)
-  }
-  payload.append('ky_nang_json', JSON.stringify(normalizeItems(form.ky_nang_json, ['ten'])))
-  payload.append('kinh_nghiem_json', JSON.stringify(normalizeItems(form.kinh_nghiem_json, ['vi_tri'])))
-  payload.append('hoc_van_json', JSON.stringify(normalizeItems(form.hoc_van_json, ['truong'])))
-  payload.append('du_an_json', JSON.stringify(normalizeItems(form.du_an_json, ['ten'])))
-  payload.append('chung_chi_json', JSON.stringify(normalizeItems(form.chung_chi_json, ['ten'])))
-  payload.append('trang_thai', String(form.trang_thai))
-  return payload
-}
-
-const submitProfile = async () => {
-  if (selectedTemplateUsesPhoto.value && form.che_do_anh_cv === 'upload' && !form.anh_cv && !form.anh_cv_url) {
-    notify.warning('Hãy chọn ảnh đại diện riêng cho CV hoặc chuyển sang dùng ảnh tài khoản.')
-    return
-  }
-
-  saving.value = true
-  try {
-    const payload = buildFormData()
-    if (editingProfileId.value) {
-      await profileService.updateProfile(editingProfileId.value, payload)
-      notify.success('Đã cập nhật CV hệ thống.')
-    } else {
-      await profileService.createProfile(payload)
-      notify.success('Đã tạo CV hệ thống mới.')
-    }
-
-    router.push('/my-cv')
-  } catch (error) {
-    notify.apiError(error, 'Không thể lưu CV hệ thống.')
-  } finally {
-    saving.value = false
-  }
-}
-
-watch(
-  () => route.query.id,
-  async () => {
-    await loadEditingProfile()
-  },
-  { immediate: true },
-)
-
-watch(industryOptions, (items) => {
-  if (!form.ten_nganh_nghe_muc_tieu || selectedIndustryId.value) return
-
-  const matched = items.find((item) =>
-    String(item?.ten_nganh || item?.ten_nganh_nghe || '').trim().toLowerCase() ===
-    String(form.ten_nganh_nghe_muc_tieu || '').trim().toLowerCase()
-  )
-
-  if (matched?.id) {
-    selectedIndustryId.value = String(matched.id)
-  }
-})
-
-watch(templateMode, (mode) => {
-  form.che_do_mau_cv = mode
-
-  if (mode === 'style') {
-    targetPosition.value = ''
-    form.vi_tri_ung_tuyen_muc_tieu = ''
-    if (!availableTemplates.value.some((item) => item.value === form.mau_cv)) {
-      form.mau_cv = suggestCvTemplateByMode({
-        mode,
-        industryName: selectedIndustryName.value,
-        styleFamily: styleFamily.value,
-        preference: stylePreference.value,
-      })
-    }
-    return
-  }
-
-  styleFamily.value = inferCvStyleFamily(form.mau_cv)
-  if (!availableTemplates.value.some((item) => item.value === form.mau_cv)) {
-    form.mau_cv = recommendedTemplate.value
-  }
-})
-
-watch([styleFamily, targetPosition, selectedIndustryId], () => {
-  form.vi_tri_ung_tuyen_muc_tieu = targetPosition.value || ''
-  form.ten_nganh_nghe_muc_tieu = selectedIndustryName.value || ''
-
-  if (!availableTemplates.value.some((item) => item.value === form.mau_cv)) {
-    form.mau_cv = recommendedTemplate.value
-  }
-})
-
-watch(
-  () => form.mau_cv,
-  (value) => {
-    const meta = getCvTemplateMeta(value)
-    if (!meta) return
-    form.bo_cuc_cv = meta.layout || form.bo_cuc_cv || 'executive_navy'
-    form.ten_template_cv = meta.label || form.ten_template_cv || 'Executive Navy'
-  },
-  { immediate: true },
-)
-
-onMounted(async () => {
-  await loadTemplates()
-  await loadIndustries()
-})
-
-onBeforeUnmount(() => {
-  if (cvPhotoObjectUrl.value) {
-    URL.revokeObjectURL(cvPhotoObjectUrl.value)
-  }
-})
-</script>
-
 <template>
   <div class="space-y-8">
     <div class="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
@@ -923,63 +185,6 @@ onBeforeUnmount(() => {
             </div>
           </div>
 
-          <div
-            v-if="aiWritingPanelOpen"
-            class="mt-5 rounded-3xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-950"
-          >
-            <div class="flex items-start justify-between gap-4">
-              <div>
-                <h3 class="text-sm font-bold text-slate-900 dark:text-white">{{ aiWritingSectionLabel }}</h3>
-                <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  Chọn một gợi ý để đưa vào CV builder.
-                </p>
-              </div>
-              <button
-                class="rounded-full p-1.5 text-slate-400 transition hover:bg-white hover:text-slate-700 dark:hover:bg-slate-900 dark:hover:text-slate-200"
-                type="button"
-                @click="aiWritingPanelOpen = false"
-              >
-                <span class="material-symbols-outlined text-[18px]">close</span>
-              </button>
-            </div>
-
-            <div v-if="aiWritingSection === 'skills'" class="mt-4 flex flex-wrap gap-2">
-              <button
-                v-for="skill in aiWritingSkillSuggestions"
-                :key="`ai-skill-${skill.ten}`"
-                class="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white px-3 py-2 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-50 dark:border-emerald-900/50 dark:bg-slate-900 dark:text-emerald-300"
-                type="button"
-                @click="applyAiSkillSuggestions([skill])"
-              >
-                <span class="material-symbols-outlined text-[16px]">add</span>
-                {{ skill.ten }}
-              </button>
-              <button
-                v-if="aiWritingSkillSuggestions.length"
-                class="inline-flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-xs font-bold text-white transition hover:bg-slate-700"
-                type="button"
-                @click="applyAiSkillSuggestions()"
-              >
-                Thêm tất cả
-              </button>
-              <p v-else class="text-sm text-slate-500 dark:text-slate-400">Chưa có kỹ năng mới để thêm.</p>
-            </div>
-
-            <div v-else class="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-3">
-              <button
-                v-for="(suggestion, index) in aiWritingSuggestions"
-                :key="`ai-writing-${index}`"
-                class="rounded-2xl border border-slate-200 bg-white p-4 text-left text-sm leading-7 text-slate-600 transition hover:border-emerald-300 hover:bg-emerald-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-emerald-800 dark:hover:bg-emerald-950/20"
-                type="button"
-                @click="applyAiWritingSuggestion(suggestion)"
-              >
-                <span class="mb-2 inline-flex rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-bold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
-                  Dùng gợi ý {{ index + 1 }}
-                </span>
-                <span class="block whitespace-pre-line">{{ suggestion }}</span>
-              </button>
-            </div>
-          </div>
         </section>
 
         <section v-if="loading" class="rounded-[28px] border border-slate-200 bg-white p-10 shadow-sm dark:border-slate-800 dark:bg-slate-900">
@@ -1016,11 +221,11 @@ onBeforeUnmount(() => {
                 <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Số năm kinh nghiệm</label>
                 <input
                   v-model="form.kinh_nghiem_nam"
-                  min="0"
-                  max="50"
                   class="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
-                  type="number"
+                  placeholder="Ví dụ: 6 tháng, 0.5, 1 năm"
+                  type="text"
                 />
+                <p class="mt-1.5 text-xs text-slate-500 dark:text-slate-400">Có thể nhập theo tháng; ví dụ 6 tháng sẽ được quy đổi thành 0.5 năm.</p>
               </div>
 
               <div>
@@ -1569,7 +774,9 @@ onBeforeUnmount(() => {
             </button>
           </div>
         </template>
-    </div>
+
+
+</div>
 
     <div
       v-if="previewModalOpen"
@@ -1617,6 +824,91 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
+    <div
+      v-if="aiWritingPanelOpen"
+      class="fixed inset-0 z-50 overflow-y-auto bg-slate-950/55 px-4 py-6 backdrop-blur-sm"
+      @click.self="aiWritingPanelOpen = false"
+    >
+      <div class="mx-auto flex min-h-full w-full max-w-5xl items-center">
+        <div class="w-full overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900">
+          <div class="flex items-start justify-between gap-4 border-b border-slate-100 px-6 py-5 dark:border-slate-800">
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-600">AI Writing</p>
+              <h3 class="mt-2 text-2xl font-black text-slate-900 dark:text-white">{{ aiWritingSectionLabel }}</h3>
+              <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                Chọn một gợi ý để áp dụng vào đúng phần CV đang chỉnh.
+              </p>
+            </div>
+            <button
+              class="rounded-full p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+              type="button"
+              @click="aiWritingPanelOpen = false"
+            >
+              <span class="material-symbols-outlined">close</span>
+            </button>
+          </div>
+
+          <div class="max-h-[calc(100vh-12rem)] overflow-y-auto px-6 py-6">
+            <div v-if="aiWritingSection === 'skills'" class="space-y-5">
+              <div v-if="aiWritingSkillSuggestions.length" class="flex flex-wrap gap-2">
+                <button
+                  v-for="skill in aiWritingSkillSuggestions"
+                  :key="`ai-skill-modal-${skill.ten}`"
+                  class="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-bold text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-100 dark:border-emerald-900/50 dark:bg-emerald-950/20 dark:text-emerald-300"
+                  type="button"
+                  @click="applyAiSkillSuggestions([skill])"
+                >
+                  <span class="material-symbols-outlined text-[17px]">add</span>
+                  {{ skill.ten }}
+                </button>
+              </div>
+              <p v-else class="rounded-2xl border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
+                Chưa có kỹ năng mới để thêm.
+              </p>
+            </div>
+
+            <div v-else class="grid grid-cols-1 gap-4 lg:grid-cols-3">
+              <button
+                v-for="(suggestion, index) in aiWritingSuggestions"
+                :key="`ai-writing-modal-${index}`"
+                class="flex min-h-[220px] flex-col rounded-2xl border border-slate-200 bg-white p-4 text-left transition hover:border-emerald-300 hover:bg-emerald-50 dark:border-slate-700 dark:bg-slate-950 dark:hover:border-emerald-800 dark:hover:bg-emerald-950/20"
+                type="button"
+                @click="applyAiWritingSuggestion(suggestion)"
+              >
+                <span class="mb-3 inline-flex w-fit rounded-full bg-emerald-100 px-3 py-1.5 text-xs font-bold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                  Dùng gợi ý {{ index + 1 }}
+                </span>
+                <span class="block whitespace-pre-line text-sm leading-7 text-slate-600 dark:text-slate-300">{{ suggestion }}</span>
+              </button>
+              <p v-if="!aiWritingSuggestions.length" class="rounded-2xl border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400 lg:col-span-3">
+                Chưa có gợi ý nội dung để áp dụng.
+              </p>
+            </div>
+          </div>
+
+          <div class="flex flex-col gap-3 border-t border-slate-100 px-6 py-5 sm:flex-row sm:justify-between dark:border-slate-800">
+            <button
+              v-if="aiWritingSection === 'skills' && aiWritingSkillSuggestions.length"
+              class="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-5 py-3 text-sm font-bold text-white transition hover:bg-slate-700"
+              type="button"
+              @click="applyAiSkillSuggestions()"
+            >
+              <span class="material-symbols-outlined text-[18px]">playlist_add</span>
+              Thêm tất cả kỹ năng
+            </button>
+            <span v-else class="hidden sm:block"></span>
+            <button
+              class="rounded-2xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              type="button"
+              @click="aiWritingPanelOpen = false"
+            >
+              Đóng
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="pointer-events-none fixed inset-x-0 bottom-5 z-40 flex justify-center px-4">
       <div class="pointer-events-auto flex items-center gap-3 rounded-full border border-slate-200 bg-white/95 px-3 py-3 shadow-2xl backdrop-blur dark:border-slate-700 dark:bg-slate-900/95">
         <button
@@ -1639,3 +931,744 @@ onBeforeUnmount(() => {
     </div>
   </div>
 </template>
+
+<script setup>
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { cvBuilderAiService, cvTemplateService, jobService, profileService } from '@/services/api'
+import { useNotify } from '@/composables/useNotify'
+import { getStoredCandidate } from '@/utils/authStorage'
+import { normalizeExperienceYears } from '@/utils/experience'
+import ProfileCvPreview from '@/components/Dashboard/ProfileCvPreview.vue'
+import MonthYearPicker from '@/components/MonthYearPicker.vue'
+import {
+  buildCvPresetByMode,
+  cvStyleFamilyOptions,
+  cvSkillLevelOptions,
+  cvTargetPositionOptions,
+  cvTemplateModeOptions,
+  cvStylePreferenceOptions,
+  getCvTemplateMeta,
+  getCvProjectFieldConfig,
+  cvTemplateLabel,
+  getCvTemplatesForMode,
+  inferCvStyleFamily,
+  openCvPrintPreview,
+  resolveProfileCvAvatarUrl,
+  setRuntimeCvTemplateOptions,
+  suggestCvTemplateByMode,
+  templateUsesCvPhoto,
+} from '@/utils/profileCvBuilder'
+
+const route = useRoute()
+const router = useRouter()
+const notify = useNotify()
+
+const loading = ref(false)
+const saving = ref(false)
+const loadingIndustries = ref(false)
+const loadingTemplates = ref(false)
+const previewModalOpen = ref(false)
+const aiWritingPanelOpen = ref(false)
+const aiWritingLoadingKey = ref('')
+const aiWritingSection = ref('summary')
+const aiWritingTone = ref('professional')
+const aiWritingSuggestions = ref([])
+const aiWritingSkillSuggestions = ref([])
+const aiWritingTargetIndex = ref(null)
+const currentCandidate = ref(getStoredCandidate())
+const industryOptions = ref([])
+const selectedIndustryId = ref('')
+const templateMode = ref('style')
+const styleFamily = ref('executive_navy')
+const targetPosition = ref('')
+const stylePreference = ref('balanced')
+const cvPhotoObjectUrl = ref('')
+
+const educationOptions = [
+  { value: 'Trung học', label: 'Trung học' },
+  { value: 'Trung cấp', label: 'Trung cấp' },
+  { value: 'Cao đẳng', label: 'Cao đẳng' },
+  { value: 'Đại học', label: 'Đại học' },
+  { value: 'Thạc sĩ', label: 'Thạc sĩ' },
+  { value: 'Tiến sĩ', label: 'Tiến sĩ' },
+  { value: 'Khác', label: 'Khác' },
+]
+
+const cvAiWritingSections = [
+  { value: 'summary', label: 'Mô tả bản thân' },
+  { value: 'career_goal', label: 'Mục tiêu nghề nghiệp' },
+  { value: 'experience', label: 'Mô tả kinh nghiệm' },
+  { value: 'project', label: 'Mô tả dự án/thành tựu' },
+  { value: 'skills', label: 'Gợi ý kỹ năng' },
+]
+
+const cvAiWritingTones = [
+  { value: 'professional', label: 'Chuyên nghiệp' },
+  { value: 'concise', label: 'Ngắn gọn' },
+  { value: 'impact', label: 'Nhấn mạnh thành tựu' },
+  { value: 'fresher', label: 'Fresher/Junior' },
+]
+
+const createSkillItem = (ten = '', muc_do = 'kha') => ({ ten, muc_do })
+const createExperienceItem = () => ({ vi_tri: '', cong_ty: '', bat_dau: '', ket_thuc: '', mo_ta: '' })
+const createEducationItem = () => ({ truong: '', chuyen_nganh: '', bat_dau: '', ket_thuc: '', mo_ta: '' })
+const createProjectItem = () => ({
+  ten: '',
+  vai_tro: '',
+  don_vi_hoac_khach_hang: '',
+  linh_vuc_hoac_cong_cu: '',
+  mo_ta: '',
+  ket_qua_noi_bat: '',
+  loai_minh_chung: '',
+  lien_ket_minh_chung: '',
+})
+const createCertificateItem = () => ({ ten: '', don_vi: '', nam: '' })
+
+const form = reactive({
+  tieu_de_ho_so: '',
+  muc_tieu_nghe_nghiep: '',
+  trinh_do: '',
+  kinh_nghiem_nam: '',
+  mo_ta_ban_than: '',
+  nguon_ho_so: 'builder',
+  mau_cv: 'executive_navy',
+  bo_cuc_cv: 'executive_navy',
+  ten_template_cv: 'Executive Navy',
+  che_do_mau_cv: 'style',
+  vi_tri_ung_tuyen_muc_tieu: '',
+  ten_nganh_nghe_muc_tieu: '',
+  che_do_anh_cv: 'profile',
+  anh_cv: null,
+  anh_cv_url: '',
+  ky_nang_json: [createSkillItem()],
+  kinh_nghiem_json: [createExperienceItem()],
+  hoc_van_json: [createEducationItem()],
+  du_an_json: [],
+  chung_chi_json: [],
+  trang_thai: 1,
+})
+
+const extractList = (response) => {
+  const payload = response?.data
+  if (Array.isArray(payload?.data)) return payload.data
+  if (Array.isArray(payload)) return payload
+  return []
+}
+
+const normalizeItems = (items, requiredKeys = []) => {
+  if (!Array.isArray(items)) return []
+
+  return items
+    .map((item) => {
+      if (!item || typeof item !== 'object') return null
+      const normalized = Object.fromEntries(
+        Object.entries(item).map(([key, value]) => [key, String(value ?? '').trim()]),
+      )
+
+      const hasRequired = requiredKeys.length
+        ? requiredKeys.some((key) => normalized[key])
+        : Object.values(normalized).some(Boolean)
+
+      return hasRequired ? normalized : null
+    })
+    .filter(Boolean)
+}
+
+const editingProfileId = computed(() => {
+  const raw = String(route.query.id || '').trim()
+  return raw ? Number(raw) || null : null
+})
+
+const pageTitle = computed(() => (editingProfileId.value ? 'Chỉnh sửa CV hệ thống' : 'Tạo CV trên hệ thống'))
+const pageDescription = computed(() =>
+  editingProfileId.value
+    ? 'Cập nhật CV builder với các mẫu bám theo layout tham chiếu bạn đã chọn.'
+    : 'Dựng CV trực tiếp trên hệ thống với các mẫu bám theo layout tham chiếu thực tế, có thể chọn theo phong cách hoặc theo vị trí ứng tuyển.',
+)
+
+const selectedIndustry = computed(() =>
+  industryOptions.value.find((item) => String(item.id) === String(selectedIndustryId.value)) || null,
+)
+
+const selectedIndustryName = computed(
+  () => selectedIndustry.value?.ten_nganh || selectedIndustry.value?.ten_nganh_nghe || '',
+)
+const projectFieldConfig = computed(() => getCvProjectFieldConfig({
+  industryName: selectedIndustryName.value,
+  positionValue: targetPosition.value,
+}))
+
+const recommendedTemplate = computed(() => suggestCvTemplateByMode({
+  mode: templateMode.value,
+  industryName: selectedIndustryName.value,
+  styleFamily: styleFamily.value,
+  positionValue: targetPosition.value,
+  preference: stylePreference.value,
+}))
+const selectedTemplateMeta = computed(() =>
+  getCvTemplateMeta(form.mau_cv) || getCvTemplateMeta(recommendedTemplate.value),
+)
+const selectedTemplateUsesPhoto = computed(() =>
+  templateUsesCvPhoto(form.mau_cv, selectedTemplateMeta.value?.layout || form.bo_cuc_cv || ''),
+)
+const aiWritingSectionLabel = computed(
+  () => cvAiWritingSections.find((item) => item.value === aiWritingSection.value)?.label || 'AI Writing',
+)
+const candidateAvatarUrl = computed(() =>
+  currentCandidate.value?.avatar_url ||
+  currentCandidate.value?.anh_dai_dien_url ||
+  currentCandidate.value?.anh_dai_dien ||
+  '',
+)
+const cvPhotoPreviewUrl = computed(() => {
+  if (form.che_do_anh_cv !== 'upload') {
+    return ''
+  }
+
+  return cvPhotoObjectUrl.value || form.anh_cv_url || ''
+})
+const availableTemplates = computed(() => getCvTemplatesForMode(templateMode.value, styleFamily.value))
+const previewProfile = computed(() => ({
+  ...form,
+  bo_cuc_cv: selectedTemplateMeta.value?.layout || form.bo_cuc_cv || 'executive_navy',
+  ten_template_cv: selectedTemplateMeta.value?.label || form.ten_template_cv || cvTemplateLabel(form.mau_cv),
+  che_do_mau_cv: templateMode.value,
+  vi_tri_ung_tuyen_muc_tieu: targetPosition.value,
+  ten_nganh_nghe_muc_tieu: selectedIndustryName.value,
+  che_do_anh_cv: form.che_do_anh_cv,
+  anh_cv_preview_url: cvPhotoPreviewUrl.value,
+  ky_nang_json: normalizeItems(form.ky_nang_json, ['ten']),
+  kinh_nghiem_json: normalizeItems(form.kinh_nghiem_json, ['vi_tri']),
+  hoc_van_json: normalizeItems(form.hoc_van_json, ['truong']),
+  du_an_json: normalizeItems(form.du_an_json, ['ten']),
+  chung_chi_json: normalizeItems(form.chung_chi_json, ['ten']),
+}))
+
+const templatePreviewBase = computed(() => ({
+  ...previewProfile.value,
+  tieu_de_ho_so: previewProfile.value.tieu_de_ho_so || 'Senior Product Manager',
+  muc_tieu_nghe_nghiep:
+    previewProfile.value.muc_tieu_nghe_nghiep ||
+    'Tập trung vào kinh nghiệm nổi bật, kỹ năng cốt lõi và cách trình bày phù hợp với vai trò mục tiêu.',
+  mo_ta_ban_than:
+    previewProfile.value.mo_ta_ban_than ||
+    'Ứng viên có kinh nghiệm thực tế, định hướng rõ ràng và muốn thể hiện hồ sơ theo bố cục dễ quét cho nhà tuyển dụng.',
+  vi_tri_ung_tuyen_muc_tieu: previewProfile.value.vi_tri_ung_tuyen_muc_tieu || 'Product Manager',
+  ten_nganh_nghe_muc_tieu: previewProfile.value.ten_nganh_nghe_muc_tieu || 'Công nghệ thông tin',
+  ky_nang_json: previewProfile.value.ky_nang_json.length
+    ? previewProfile.value.ky_nang_json
+    : [
+        { ten: 'Stakeholder Management', muc_do: 'tot' },
+        { ten: 'Product Strategy', muc_do: 'tot' },
+        { ten: 'Agile', muc_do: 'kha' },
+      ],
+  kinh_nghiem_json: previewProfile.value.kinh_nghiem_json.length
+    ? previewProfile.value.kinh_nghiem_json
+    : [
+        {
+          vi_tri: 'Product Manager',
+          cong_ty: 'Tech Company',
+          bat_dau: '03/2022',
+          ket_thuc: 'Hiện tại',
+          mo_ta: 'Dẫn dắt roadmap sản phẩm, phối hợp team đa chức năng và tối ưu trải nghiệm người dùng.',
+        },
+      ],
+  hoc_van_json: previewProfile.value.hoc_van_json.length
+    ? previewProfile.value.hoc_van_json
+    : [
+        {
+          truong: 'Đại học Duy Tân',
+          chuyen_nganh: 'Quản trị / Công nghệ',
+          bat_dau: '09/2018',
+          ket_thuc: '06/2022',
+          mo_ta: '',
+        },
+      ],
+}))
+
+const getTemplatePreviewProfile = (templateValue) => ({
+  ...templatePreviewBase.value,
+  mau_cv: templateValue,
+})
+
+const resetForm = () => {
+  if (cvPhotoObjectUrl.value) {
+    URL.revokeObjectURL(cvPhotoObjectUrl.value)
+    cvPhotoObjectUrl.value = ''
+  }
+  form.tieu_de_ho_so = ''
+  form.muc_tieu_nghe_nghiep = ''
+  form.trinh_do = ''
+  form.kinh_nghiem_nam = ''
+  form.mo_ta_ban_than = ''
+  form.nguon_ho_so = 'builder'
+  form.mau_cv = 'executive_navy'
+  form.bo_cuc_cv = 'executive_navy'
+  form.ten_template_cv = 'Executive Navy'
+  form.che_do_mau_cv = 'style'
+  form.vi_tri_ung_tuyen_muc_tieu = ''
+  form.ten_nganh_nghe_muc_tieu = ''
+  form.che_do_anh_cv = 'profile'
+  form.anh_cv = null
+  form.anh_cv_url = ''
+  form.ky_nang_json = [createSkillItem()]
+  form.kinh_nghiem_json = [createExperienceItem()]
+  form.hoc_van_json = [createEducationItem()]
+  form.du_an_json = []
+  form.chung_chi_json = []
+  form.trang_thai = 1
+  selectedIndustryId.value = ''
+  templateMode.value = 'style'
+  styleFamily.value = 'executive_navy'
+  targetPosition.value = ''
+  stylePreference.value = 'balanced'
+}
+
+const fillForm = (profile) => {
+  if (cvPhotoObjectUrl.value) {
+    URL.revokeObjectURL(cvPhotoObjectUrl.value)
+    cvPhotoObjectUrl.value = ''
+  }
+  form.tieu_de_ho_so = profile?.tieu_de_ho_so || ''
+  form.muc_tieu_nghe_nghiep = profile?.muc_tieu_nghe_nghiep || ''
+  form.trinh_do = profile?.trinh_do || ''
+  form.kinh_nghiem_nam = profile?.kinh_nghiem_nam ?? ''
+  form.mo_ta_ban_than = profile?.mo_ta_ban_than || ''
+  form.nguon_ho_so = 'builder'
+  form.mau_cv = profile?.mau_cv || 'executive_navy'
+  form.bo_cuc_cv = profile?.bo_cuc_cv || getCvTemplateMeta(profile?.mau_cv || 'executive_navy')?.layout || 'executive_navy'
+  form.ten_template_cv = profile?.ten_template_cv || cvTemplateLabel(profile?.mau_cv || 'executive_navy')
+  form.che_do_mau_cv = profile?.che_do_mau_cv || 'style'
+  form.vi_tri_ung_tuyen_muc_tieu = profile?.vi_tri_ung_tuyen_muc_tieu || ''
+  form.ten_nganh_nghe_muc_tieu = profile?.ten_nganh_nghe_muc_tieu || ''
+  form.che_do_anh_cv = profile?.che_do_anh_cv || 'profile'
+  form.anh_cv = null
+  form.anh_cv_url = profile?.anh_cv_url || ''
+  form.ky_nang_json = Array.isArray(profile?.ky_nang_json) && profile.ky_nang_json.length
+    ? profile.ky_nang_json.map((item) => ({ ten: item?.ten || '', muc_do: item?.muc_do || 'kha' }))
+    : [createSkillItem()]
+  form.kinh_nghiem_json = Array.isArray(profile?.kinh_nghiem_json) && profile.kinh_nghiem_json.length
+    ? profile.kinh_nghiem_json.map((item) => ({ vi_tri: item?.vi_tri || '', cong_ty: item?.cong_ty || '', bat_dau: item?.bat_dau || '', ket_thuc: item?.ket_thuc || '', mo_ta: item?.mo_ta || '' }))
+    : [createExperienceItem()]
+  form.hoc_van_json = Array.isArray(profile?.hoc_van_json) && profile.hoc_van_json.length
+    ? profile.hoc_van_json.map((item) => ({ truong: item?.truong || '', chuyen_nganh: item?.chuyen_nganh || '', bat_dau: item?.bat_dau || '', ket_thuc: item?.ket_thuc || '', mo_ta: item?.mo_ta || '' }))
+    : [createEducationItem()]
+  form.du_an_json = Array.isArray(profile?.du_an_json)
+    ? profile.du_an_json.map((item) => ({
+        ten: item?.ten || '',
+        vai_tro: item?.vai_tro || '',
+        don_vi_hoac_khach_hang: item?.don_vi_hoac_khach_hang || item?.don_vi || item?.khach_hang || '',
+        linh_vuc_hoac_cong_cu: item?.linh_vuc_hoac_cong_cu || item?.cong_nghe || '',
+        mo_ta: item?.mo_ta || '',
+        ket_qua_noi_bat: item?.ket_qua_noi_bat || '',
+        loai_minh_chung: item?.loai_minh_chung || '',
+        lien_ket_minh_chung: item?.lien_ket_minh_chung || item?.link || '',
+      }))
+    : []
+  form.chung_chi_json = Array.isArray(profile?.chung_chi_json)
+    ? profile.chung_chi_json.map((item) => ({ ten: item?.ten || '', don_vi: item?.don_vi || '', nam: item?.nam || '' }))
+    : []
+  form.trang_thai = Number(profile?.trang_thai ?? 1)
+  templateMode.value = form.che_do_mau_cv || 'style'
+  targetPosition.value = form.vi_tri_ung_tuyen_muc_tieu || ''
+  styleFamily.value = inferCvStyleFamily(form.mau_cv)
+}
+
+const handleCvPhotoChange = (event) => {
+  const [file] = Array.from(event?.target?.files || [])
+  form.anh_cv = file || null
+
+  if (cvPhotoObjectUrl.value) {
+    URL.revokeObjectURL(cvPhotoObjectUrl.value)
+    cvPhotoObjectUrl.value = ''
+  }
+
+  if (!file) {
+    return
+  }
+
+  cvPhotoObjectUrl.value = URL.createObjectURL(file)
+}
+
+const clearCvPhotoUpload = () => {
+  form.anh_cv = null
+  form.anh_cv_url = ''
+
+  if (cvPhotoObjectUrl.value) {
+    URL.revokeObjectURL(cvPhotoObjectUrl.value)
+    cvPhotoObjectUrl.value = ''
+  }
+}
+
+const loadIndustries = async () => {
+  loadingIndustries.value = true
+  try {
+    const response = await jobService.getIndustries({ per_page: 200 })
+    industryOptions.value = extractList(response)
+  } catch (error) {
+    industryOptions.value = []
+    notify.apiError(error, 'Không thể tải danh sách ngành nghề cho CV builder.')
+  } finally {
+    loadingIndustries.value = false
+  }
+}
+
+const loadTemplates = async () => {
+  loadingTemplates.value = true
+  try {
+    const response = await cvTemplateService.getActiveTemplates()
+    const payload = response?.data
+    const templates = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : []
+    setRuntimeCvTemplateOptions(templates)
+  } catch (error) {
+    setRuntimeCvTemplateOptions([])
+    notify.apiError(error, 'Không thể tải danh sách template CV. Hệ thống sẽ dùng bộ template mặc định.')
+  } finally {
+    loadingTemplates.value = false
+  }
+}
+
+const loadEditingProfile = async () => {
+  if (!editingProfileId.value) {
+    resetForm()
+    return
+  }
+
+  loading.value = true
+  try {
+    const response = await profileService.getProfileById(editingProfileId.value)
+    const profile = response?.data || null
+
+    if (!profile) {
+      notify.warning('Không tìm thấy hồ sơ cần chỉnh sửa.')
+      router.replace('/my-cv')
+      return
+    }
+
+    fillForm(profile)
+  } catch (error) {
+    notify.apiError(error, 'Không thể tải CV hệ thống cần chỉnh sửa.')
+    router.replace('/my-cv')
+  } finally {
+    loading.value = false
+  }
+}
+
+const addSectionItem = (field) => {
+  if (field === 'ky_nang_json') form.ky_nang_json.push(createSkillItem())
+  if (field === 'kinh_nghiem_json') form.kinh_nghiem_json.push(createExperienceItem())
+  if (field === 'hoc_van_json') form.hoc_van_json.push(createEducationItem())
+  if (field === 'du_an_json') form.du_an_json.push(createProjectItem())
+  if (field === 'chung_chi_json') form.chung_chi_json.push(createCertificateItem())
+}
+
+const removeSectionItem = (field, index) => {
+  if (!Array.isArray(form[field])) return
+  form[field].splice(index, 1)
+  if (!form[field].length && ['ky_nang_json', 'kinh_nghiem_json', 'hoc_van_json'].includes(field)) {
+    addSectionItem(field)
+  }
+}
+
+const buildAiWritingProfile = () => ({
+  tieu_de_ho_so: form.tieu_de_ho_so,
+  muc_tieu_nghe_nghiep: form.muc_tieu_nghe_nghiep,
+  trinh_do: form.trinh_do,
+  kinh_nghiem_nam: form.kinh_nghiem_nam,
+  mo_ta_ban_than: form.mo_ta_ban_than,
+  vi_tri_ung_tuyen_muc_tieu: targetPosition.value || form.vi_tri_ung_tuyen_muc_tieu,
+  ten_nganh_nghe_muc_tieu: selectedIndustryName.value || form.ten_nganh_nghe_muc_tieu,
+  ky_nang_json: normalizeItems(form.ky_nang_json, ['ten']),
+  kinh_nghiem_json: normalizeItems(form.kinh_nghiem_json, ['vi_tri']),
+  hoc_van_json: normalizeItems(form.hoc_van_json, ['truong']),
+  du_an_json: normalizeItems(form.du_an_json, ['ten']),
+  chung_chi_json: normalizeItems(form.chung_chi_json, ['ten']),
+})
+
+const aiWritingKey = (section, index = null) => `${section}:${index ?? 'general'}`
+
+const requestAiWriting = async (section = aiWritingSection.value, options = {}) => {
+  const targetIndex = options.index ?? null
+  const loadingKey = aiWritingKey(section, targetIndex)
+  const item = options.item || (
+    section === 'experience'
+      ? form.kinh_nghiem_json[targetIndex ?? 0] || {}
+      : section === 'project'
+        ? form.du_an_json[targetIndex ?? 0] || {}
+        : {}
+  )
+
+  aiWritingLoadingKey.value = loadingKey
+  try {
+    const response = await cvBuilderAiService.generateWriting({
+      section,
+      profile: buildAiWritingProfile(),
+      item,
+      item_index: targetIndex,
+      tone: aiWritingTone.value,
+      language: 'vi',
+    })
+    const data = response?.data || {}
+    aiWritingSection.value = section
+    aiWritingTargetIndex.value = targetIndex
+    aiWritingSuggestions.value = Array.isArray(data.suggestions) ? data.suggestions : []
+    aiWritingSkillSuggestions.value = Array.isArray(data.skill_suggestions) ? data.skill_suggestions : []
+    aiWritingPanelOpen.value = true
+
+    if (data.used_fallback) {
+      notify.info(response?.message || 'Đã dùng bộ gợi ý nội bộ vì AI service chưa sẵn sàng.')
+    } else {
+      notify.success('Đã sinh gợi ý nội dung CV.')
+    }
+  } catch (error) {
+    notify.apiError(error, 'Không thể sinh gợi ý AI Writing cho CV.')
+  } finally {
+    aiWritingLoadingKey.value = ''
+  }
+}
+
+const ensureAiTargetItem = (section) => {
+  if (section === 'experience') {
+    if (!form.kinh_nghiem_json.length) form.kinh_nghiem_json.push(createExperienceItem())
+    return form.kinh_nghiem_json[aiWritingTargetIndex.value ?? 0]
+  }
+
+  if (section === 'project') {
+    if (!form.du_an_json.length) form.du_an_json.push(createProjectItem())
+    return form.du_an_json[aiWritingTargetIndex.value ?? 0]
+  }
+
+  return null
+}
+
+const applyAiWritingSuggestion = (suggestion) => {
+  const text = String(suggestion || '').trim()
+  if (!text) return
+
+  if (aiWritingSection.value === 'summary') {
+    form.mo_ta_ban_than = text
+  } else if (aiWritingSection.value === 'career_goal') {
+    form.muc_tieu_nghe_nghiep = text
+  } else if (aiWritingSection.value === 'experience') {
+    const item = ensureAiTargetItem('experience')
+    if (item) item.mo_ta = text
+  } else if (aiWritingSection.value === 'project') {
+    const item = ensureAiTargetItem('project')
+    if (item) item.mo_ta = text
+  }
+
+  aiWritingPanelOpen.value = false
+  notify.success('Đã áp dụng gợi ý vào CV.')
+}
+
+const applyAiSkillSuggestions = (skills = aiWritingSkillSuggestions.value) => {
+  if (!Array.isArray(skills) || !skills.length) return
+
+  const currentSkills = normalizeItems(form.ky_nang_json, ['ten'])
+  const existingNames = new Set(currentSkills.map((item) => item.ten.toLowerCase()))
+  const mergedSkills = [...currentSkills]
+
+  skills.forEach((skill) => {
+    const name = String(skill?.ten || '').trim()
+    if (!name || existingNames.has(name.toLowerCase())) return
+    existingNames.add(name.toLowerCase())
+    mergedSkills.push(createSkillItem(name, skill?.muc_do || 'kha'))
+  })
+
+  form.ky_nang_json = mergedSkills.length ? mergedSkills : [createSkillItem()]
+  aiWritingPanelOpen.value = false
+  notify.success('Đã thêm các kỹ năng được gợi ý.')
+}
+
+const applyTemplatePreset = () => {
+  if (templateMode.value === 'position' && !targetPosition.value) {
+    notify.warning('Hãy chọn vị trí ứng tuyển trước khi áp preset.')
+    return
+  }
+
+  if (templateMode.value === 'style' && !selectedIndustryName.value && !styleFamily.value) {
+    notify.warning('Hãy chọn ít nhất ngành nghề hoặc phong cách trước khi áp preset.')
+    return
+  }
+
+  const preset = buildCvPresetByMode({
+    mode: templateMode.value,
+    industryName: selectedIndustryName.value,
+    styleFamily: styleFamily.value,
+    positionValue: targetPosition.value,
+    preference: stylePreference.value,
+  })
+  form.mau_cv = preset.template
+  form.che_do_mau_cv = templateMode.value
+  form.vi_tri_ung_tuyen_muc_tieu = targetPosition.value
+  form.ten_nganh_nghe_muc_tieu = selectedIndustryName.value
+
+  if (!String(form.tieu_de_ho_so).trim()) {
+    form.tieu_de_ho_so = preset.suggestedTitle
+  }
+
+  if (!String(form.muc_tieu_nghe_nghiep).trim()) {
+    form.muc_tieu_nghe_nghiep = preset.suggestedObjective
+  }
+
+  const existingSkills = normalizeItems(form.ky_nang_json, ['ten']).map((item) => item.ten.toLowerCase())
+  const missingSkills = preset.suggestedSkills.filter((item) => !existingSkills.includes(item.toLowerCase()))
+  if (missingSkills.length) {
+    form.ky_nang_json = [...normalizeItems(form.ky_nang_json, ['ten']), ...missingSkills.map((item) => createSkillItem(item, 'kha'))]
+  }
+
+  notify.success(
+    templateMode.value === 'position'
+      ? 'Đã áp dụng preset CV theo vị trí ứng tuyển.'
+      : `Đã áp dụng preset CV theo phong cách ${cvStyleFamilyOptions.find((item) => item.value === styleFamily.value)?.label?.toLowerCase() || 'đã chọn'}.`
+  )
+}
+
+const exportPreview = () => {
+  const opened = openCvPrintPreview({
+    profile: previewProfile.value,
+    owner: currentCandidate.value,
+  })
+
+  if (!opened) {
+    notify.warning('Trình duyệt đang chặn cửa sổ tải xuống. Hãy cho phép popup và thử lại.')
+    return
+  }
+}
+
+const openPreviewModal = () => {
+  previewModalOpen.value = true
+}
+
+const closePreviewModal = () => {
+  previewModalOpen.value = false
+}
+
+const buildFormData = () => {
+  const payload = new FormData()
+  payload.append('tieu_de_ho_so', form.tieu_de_ho_so)
+  payload.append('muc_tieu_nghe_nghiep', form.muc_tieu_nghe_nghiep || '')
+  payload.append('trinh_do', form.trinh_do || '')
+  payload.append('kinh_nghiem_nam', String(normalizeExperienceYears(form.kinh_nghiem_nam)))
+  payload.append('mo_ta_ban_than', form.mo_ta_ban_than || '')
+  payload.append('nguon_ho_so', 'builder')
+  payload.append('mau_cv', form.mau_cv || 'executive_navy')
+  payload.append('bo_cuc_cv', selectedTemplateMeta.value?.layout || form.bo_cuc_cv || 'executive_navy')
+  payload.append('ten_template_cv', selectedTemplateMeta.value?.label || form.ten_template_cv || cvTemplateLabel(form.mau_cv))
+  payload.append('che_do_mau_cv', templateMode.value)
+  payload.append('vi_tri_ung_tuyen_muc_tieu', targetPosition.value || '')
+  payload.append('ten_nganh_nghe_muc_tieu', selectedIndustryName.value || '')
+  payload.append('che_do_anh_cv', form.che_do_anh_cv || 'profile')
+  if (form.che_do_anh_cv === 'upload' && form.anh_cv instanceof File) {
+    payload.append('anh_cv', form.anh_cv)
+  }
+  payload.append('ky_nang_json', JSON.stringify(normalizeItems(form.ky_nang_json, ['ten'])))
+  payload.append('kinh_nghiem_json', JSON.stringify(normalizeItems(form.kinh_nghiem_json, ['vi_tri'])))
+  payload.append('hoc_van_json', JSON.stringify(normalizeItems(form.hoc_van_json, ['truong'])))
+  payload.append('du_an_json', JSON.stringify(normalizeItems(form.du_an_json, ['ten'])))
+  payload.append('chung_chi_json', JSON.stringify(normalizeItems(form.chung_chi_json, ['ten'])))
+  payload.append('trang_thai', String(form.trang_thai))
+  return payload
+}
+
+const submitProfile = async () => {
+  if (selectedTemplateUsesPhoto.value && form.che_do_anh_cv === 'upload' && !form.anh_cv && !form.anh_cv_url) {
+    notify.warning('Hãy chọn ảnh đại diện riêng cho CV hoặc chuyển sang dùng ảnh tài khoản.')
+    return
+  }
+
+  saving.value = true
+  try {
+    const payload = buildFormData()
+    if (editingProfileId.value) {
+      await profileService.updateProfile(editingProfileId.value, payload)
+      notify.success('Đã cập nhật CV hệ thống.')
+    } else {
+      await profileService.createProfile(payload)
+      notify.success('Đã tạo CV hệ thống mới.')
+    }
+
+    router.push('/my-cv')
+  } catch (error) {
+    notify.apiError(error, 'Không thể lưu CV hệ thống.')
+  } finally {
+    saving.value = false
+  }
+}
+
+watch(
+  () => route.query.id,
+  async () => {
+    await loadEditingProfile()
+  },
+  { immediate: true },
+)
+
+watch(industryOptions, (items) => {
+  if (!form.ten_nganh_nghe_muc_tieu || selectedIndustryId.value) return
+
+  const matched = items.find((item) =>
+    String(item?.ten_nganh || item?.ten_nganh_nghe || '').trim().toLowerCase() ===
+    String(form.ten_nganh_nghe_muc_tieu || '').trim().toLowerCase()
+  )
+
+  if (matched?.id) {
+    selectedIndustryId.value = String(matched.id)
+  }
+})
+
+watch(templateMode, (mode) => {
+  form.che_do_mau_cv = mode
+
+  if (mode === 'style') {
+    targetPosition.value = ''
+    form.vi_tri_ung_tuyen_muc_tieu = ''
+    if (!availableTemplates.value.some((item) => item.value === form.mau_cv)) {
+      form.mau_cv = suggestCvTemplateByMode({
+        mode,
+        industryName: selectedIndustryName.value,
+        styleFamily: styleFamily.value,
+        preference: stylePreference.value,
+      })
+    }
+    return
+  }
+
+  styleFamily.value = inferCvStyleFamily(form.mau_cv)
+  if (!availableTemplates.value.some((item) => item.value === form.mau_cv)) {
+    form.mau_cv = recommendedTemplate.value
+  }
+})
+
+watch([styleFamily, targetPosition, selectedIndustryId], () => {
+  form.vi_tri_ung_tuyen_muc_tieu = targetPosition.value || ''
+  form.ten_nganh_nghe_muc_tieu = selectedIndustryName.value || ''
+
+  if (!availableTemplates.value.some((item) => item.value === form.mau_cv)) {
+    form.mau_cv = recommendedTemplate.value
+  }
+})
+
+watch(
+  () => form.mau_cv,
+  (value) => {
+    const meta = getCvTemplateMeta(value)
+    if (!meta) return
+    form.bo_cuc_cv = meta.layout || form.bo_cuc_cv || 'executive_navy'
+    form.ten_template_cv = meta.label || form.ten_template_cv || 'Executive Navy'
+  },
+  { immediate: true },
+)
+
+onMounted(async () => {
+  await loadTemplates()
+  await loadIndustries()
+})
+
+onBeforeUnmount(() => {
+  if (cvPhotoObjectUrl.value) {
+    URL.revokeObjectURL(cvPhotoObjectUrl.value)
+  }
+})
+</script>

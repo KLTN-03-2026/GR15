@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 from collections import Counter
+import json
+import math
 import re
 from difflib import SequenceMatcher
 
+from app.core.config import settings
 from app.core.logger import get_logger
-from app.services.skill_catalog import SKILL_CATALOG, normalize_search_text
+from app.providers.gemini_client import generate_text
+from app.services.skill_catalog import SKILL_CATALOG, canonical_skill_display_name, canonicalize_skill_name, normalize_search_text
 
 
 logger = get_logger(__name__)
@@ -14,6 +18,12 @@ MODEL_VERSION = "matching_v4_salary_location_workmode"
 
 EXACT_SKILL_COMPONENT_WEIGHT = 0.75
 SEMANTIC_SKILL_COMPONENT_WEIGHT = 0.25
+TEXT_BM25_WEIGHT = 0.55
+TEXT_TFIDF_WEIGHT = 0.2
+TEXT_LEXICAL_WEIGHT = 0.15
+TEXT_SKILL_CONTEXT_WEIGHT = 0.1
+BM25_K1 = 1.4
+BM25_B = 0.75
 
 TOKEN_STOPWORDS = {
     "va",
@@ -265,7 +275,49 @@ def match_cv_jd(
             "salary_fit_detail": salary_fit_detail,
             "location_fit_detail": location_fit_detail,
             "work_mode_fit_detail": work_mode_fit_detail,
+            "text_similarity_method": {
+                "name": "bm25_tfidf_skill_alias_context",
+                "description": "BM25/TF-IDF trên raw_text đã chuẩn hóa, có mở rộng ngữ cảnh bằng skill alias.",
+                "bm25_weight": TEXT_BM25_WEIGHT,
+                "tfidf_weight": TEXT_TFIDF_WEIGHT,
+                "lexical_weight": TEXT_LEXICAL_WEIGHT,
+                "skill_context_weight": TEXT_SKILL_CONTEXT_WEIGHT,
+            },
         }
+
+        score_explanation_items = _build_score_explanation_items(
+            skill_score=skill_score,
+            experience_score=experience_score,
+            education_score=education_score,
+            text_similarity_score=text_similarity_score,
+            salary_score=salary_score,
+            location_score=location_score,
+            work_mode_score=work_mode_score,
+            weights=weights,
+            matched_skills=matched_skills,
+            missing_skills=missing_skills,
+            salary_fit_detail=salary_fit_detail,
+            location_fit_detail=location_fit_detail,
+            work_mode_fit_detail=work_mode_fit_detail,
+        )
+        explanation_payload = _build_match_explanation_payload(
+            cv_profile=cv_profile,
+            jd_profile=jd_profile,
+            diem_phu_hop=diem_phu_hop,
+            matched_skills=matched_skills,
+            missing_skills=missing_skills,
+            near_matched_skills=near_matched_skills,
+            experience_score=experience_score,
+            education_score=education_score,
+            text_similarity_score=text_similarity_score,
+            salary_score=salary_score,
+            location_score=location_score,
+            work_mode_score=work_mode_score,
+            level_info=level_info,
+            candidate_level_info=candidate_level_info,
+            chi_tiet_diem=chi_tiet_diem,
+            score_explanation_items=score_explanation_items,
+        )
 
         return {
             "success": True,
@@ -282,34 +334,9 @@ def match_cv_jd(
                 "matched_skills_json": matched_skills,
                 "missing_skills_json": missing_skills,
                 "danh_sach_ky_nang_thieu": ", ".join(item["skill_name"] for item in missing_skills) or None,
-                "explanation": _build_explanation(
-                    diem_phu_hop=diem_phu_hop,
-                    matched_skills=matched_skills,
-                    missing_skills=missing_skills,
-                    near_matched_skills=near_matched_skills,
-                    experience_score=experience_score,
-                    education_score=education_score,
-                    text_similarity_score=text_similarity_score,
-                    salary_score=salary_score,
-                    location_score=location_score,
-                    work_mode_score=work_mode_score,
-                    level_info=level_info,
-                ),
-                "score_explanation_items": _build_score_explanation_items(
-                    skill_score=skill_score,
-                    experience_score=experience_score,
-                    education_score=education_score,
-                    text_similarity_score=text_similarity_score,
-                    salary_score=salary_score,
-                    location_score=location_score,
-                    work_mode_score=work_mode_score,
-                    weights=weights,
-                    matched_skills=matched_skills,
-                    missing_skills=missing_skills,
-                    salary_fit_detail=salary_fit_detail,
-                    location_fit_detail=location_fit_detail,
-                    work_mode_fit_detail=work_mode_fit_detail,
-                ),
+                **explanation_payload,
+                "provider": explanation_payload.get("explanation_provider", "rule_based"),
+                "score_explanation_items": score_explanation_items,
                 "model_version": MODEL_VERSION,
             },
             "error": None,
@@ -373,10 +400,11 @@ def _extract_jd_skill_items(jd_profile: dict) -> list[dict]:
         if not skill_name:
             continue
 
+        normalized = _normalize_skill_name(str(skill_name))
         items.append(
             {
-                "skill_name": str(skill_name),
-                "normalized": _normalize_skill_name(str(skill_name)),
+                "skill_name": canonical_skill_display_name(str(skill_name)),
+                "normalized": normalized,
                 "bat_buoc": bat_buoc,
                 "trong_so": trong_so,
             }
@@ -502,9 +530,21 @@ def _extract_jd_years(jd_profile: dict) -> float | None:
 
 def _extract_year_number(text: str) -> float | None:
     normalized = normalize_search_text(text)
-    match = re.search(r"(\d+(?:[.,]\d+)?)\s*(nam|year)", normalized)
-    if match:
-        return float(match.group(1).replace(",", "."))
+
+    if any(keyword in normalized for keyword in {"khong yeu cau kinh nghiem", "khong yeu cau", "no experience required"}):
+        return 0.0
+
+    month_match = re.search(r"(\d+(?:[.,]\d+)?)\s*(thang|month|months|mo)\b", normalized)
+    if month_match:
+        return round(float(month_match.group(1).replace(",", ".")) / 12, 2)
+
+    year_match = re.search(r"(\d+(?:[.,]\d+)?)\s*(nam|year|years)\b", normalized)
+    if year_match:
+        return float(year_match.group(1).replace(",", "."))
+
+    plain_number = re.fullmatch(r"\s*(\d+(?:[.,]\d+)?)\s*", normalized)
+    if plain_number:
+        return float(plain_number.group(1).replace(",", "."))
 
     if "duoi 1 nam" in normalized or "less than 1 year" in normalized:
         return 1.0
@@ -653,15 +693,25 @@ def _calculate_text_similarity_score(cv_profile: dict, jd_profile: dict) -> floa
     if not cv_text or not jd_text:
         return 0.0
 
-    cv_tokens = _tokenize_for_similarity(cv_text)
-    jd_tokens = _tokenize_for_similarity(jd_text)
+    cv_tokens = _build_context_similarity_terms(cv_text, cv_profile, "cv")
+    jd_tokens = _build_context_similarity_terms(jd_text, jd_profile, "jd")
 
     if not cv_tokens or not jd_tokens:
         return 0.0
 
+    bm25 = _normalized_bm25_similarity(cv_tokens, jd_tokens)
+    tfidf = _tfidf_cosine_similarity(cv_tokens, jd_tokens)
     cosine = _cosine_similarity(cv_tokens, jd_tokens)
     jaccard = _jaccard_similarity(cv_tokens, jd_tokens)
-    score = (cosine * 0.7 + jaccard * 0.3) * 100
+    lexical = cosine * 0.7 + jaccard * 0.3
+    skill_context = _skill_context_overlap_score(cv_profile, jd_profile, cv_text, jd_text)
+
+    score = (
+        bm25 * TEXT_BM25_WEIGHT
+        + tfidf * TEXT_TFIDF_WEIGHT
+        + lexical * TEXT_LEXICAL_WEIGHT
+        + skill_context * TEXT_SKILL_CONTEXT_WEIGHT
+    ) * 100
     return round(score, 2)
 
 
@@ -806,6 +856,240 @@ def _build_explanation(
     return explanation
 
 
+def _build_match_explanation_payload(
+    *,
+    cv_profile: dict,
+    jd_profile: dict,
+    diem_phu_hop: float,
+    matched_skills: list[dict],
+    missing_skills: list[dict],
+    near_matched_skills: list[dict],
+    experience_score: float,
+    education_score: float,
+    text_similarity_score: float,
+    salary_score: float,
+    location_score: float,
+    work_mode_score: float,
+    level_info: dict,
+    candidate_level_info: dict,
+    chi_tiet_diem: dict,
+    score_explanation_items: list[dict],
+) -> dict:
+    fallback_explanation = _build_explanation(
+        diem_phu_hop=diem_phu_hop,
+        matched_skills=matched_skills,
+        missing_skills=missing_skills,
+        near_matched_skills=near_matched_skills,
+        experience_score=experience_score,
+        education_score=education_score,
+        text_similarity_score=text_similarity_score,
+        salary_score=salary_score,
+        location_score=location_score,
+        work_mode_score=work_mode_score,
+        level_info=level_info,
+    )
+
+    provider = (settings.match_explanation_provider or "gemini").strip().lower()
+    if provider not in {"gemini", "template", "rule", "rules", "rule_based", "local"}:
+        logger.warning("Unknown MATCH_EXPLANATION_PROVIDER=%s, fallback to gemini", settings.match_explanation_provider)
+        provider = "gemini"
+
+    if provider != "gemini":
+        return {
+            "explanation": fallback_explanation,
+            "explanation_provider": "rule_based",
+        }
+
+    context = {
+        "candidate": {
+            "profile_title": cv_profile.get("tieu_de_ho_so"),
+            "years_experience": chi_tiet_diem.get("cv_years"),
+            "years_experience_label": _format_year_duration(chi_tiet_diem.get("cv_years")),
+            "education": cv_profile.get("trinh_do"),
+            "skills": chi_tiet_diem.get("cv_skills"),
+            "source": cv_profile.get("nguon_ho_so"),
+        },
+        "job": {
+            "title": jd_profile.get("tieu_de") or jd_profile.get("title"),
+            "level": level_info.get("level"),
+            "required_years": chi_tiet_diem.get("jd_required_years"),
+            "required_years_label": _format_year_duration(chi_tiet_diem.get("jd_required_years")),
+            "education": jd_profile.get("trinh_do_yeu_cau"),
+            "skills": chi_tiet_diem.get("jd_skills"),
+        },
+        "scores": {
+            "overall": diem_phu_hop,
+            "skill": score_explanation_items[0]["score"] if score_explanation_items else None,
+            "experience": experience_score,
+            "education": education_score,
+            "text_similarity": text_similarity_score,
+            "salary": salary_score,
+            "location": location_score,
+            "work_mode": work_mode_score,
+            "weights": chi_tiet_diem.get("weights"),
+        },
+        "skill_match": {
+            "matched": matched_skills,
+            "missing": missing_skills,
+            "near_matched": near_matched_skills,
+        },
+        "level_resolution": {
+            "job": level_info,
+            "candidate": candidate_level_info,
+        },
+        "score_explanation_items": score_explanation_items,
+        "deterministic_explanation": fallback_explanation,
+    }
+
+    try:
+        gemini_payload = _generate_gemini_match_explanation(context)
+        return {
+            "explanation": gemini_payload["explanation"],
+            "strengths": gemini_payload["strengths"],
+            "weaknesses": gemini_payload["weaknesses"],
+            "risks": gemini_payload["risks"],
+            "questions": gemini_payload["questions"],
+            "recommendation": gemini_payload["recommendation"],
+            "explanation_provider": "gemini",
+            "explanation_model": settings.gemini_model,
+        }
+    except Exception as exc:
+        logger.exception("Gemini match explanation failed, fallback to deterministic explanation.")
+        return {
+            "explanation": fallback_explanation,
+            "explanation_provider": "rule_based_fallback",
+            "explanation_error": str(exc),
+        }
+
+
+def _generate_gemini_match_explanation(context: dict) -> dict:
+    raw = generate_text(
+        system_prompt=(
+            "Bạn là trợ lý tuyển dụng viết giải thích so sánh CV-JD. "
+            "Chỉ dùng dữ liệu JSON đầu vào, không bịa thêm kỹ năng, số năm, công ty, chứng chỉ hoặc thành tích. "
+            "Điểm số đã được hệ thống tính sẵn, không tự tính lại và không thay đổi điểm. "
+            "Viết tiếng Việt rõ ràng, trung lập, hữu ích cho HR. "
+            "Chỉ trả về JSON hợp lệ, không markdown."
+        ),
+        user_prompt=_build_gemini_match_explanation_prompt(context),
+        max_tokens=settings.match_explanation_max_tokens,
+        temperature=0.25,
+    )
+    payload = _parse_json_payload(raw)
+
+    explanation = _replace_decimal_year_phrases(str(payload.get("explanation") or "").strip())
+    strengths = [_replace_decimal_year_phrases(item) for item in _normalize_gemini_list(payload.get("strengths"))]
+    weaknesses = [_replace_decimal_year_phrases(item) for item in _normalize_gemini_list(payload.get("weaknesses"))]
+    risks = [_replace_decimal_year_phrases(item) for item in _normalize_gemini_list(payload.get("risks"))]
+    questions = [
+        _replace_decimal_year_phrases(item)
+        for item in _normalize_gemini_list(payload.get("questions") or payload.get("interview_questions"))
+    ]
+    recommendation = _replace_decimal_year_phrases(str(payload.get("recommendation") or "").strip())
+
+    if not explanation or not strengths or not weaknesses or not recommendation:
+        raise RuntimeError("Gemini không trả về explanation/strengths/weaknesses/recommendation hợp lệ.")
+
+    return {
+        "explanation": explanation,
+        "strengths": strengths[:4],
+        "weaknesses": weaknesses[:4],
+        "risks": (risks or ["Cần HR đọc CV chi tiết để xác nhận ngữ cảnh và mức độ đóng góp thực tế."])[:3],
+        "questions": (questions or ["Ứng viên đã từng xử lý nhiệm vụ nào gần nhất với JD này và kết quả đo lường ra sao?"])[:4],
+        "recommendation": recommendation,
+    }
+
+
+def _build_gemini_match_explanation_prompt(context: dict) -> str:
+    schema = {
+        "explanation": "2-4 câu giải thích tổng quan, nhắc các điểm số/chênh lệch quan trọng đã có trong JSON.",
+        "strengths": ["Điểm mạnh cụ thể dựa trên matched skills, kinh nghiệm, học vấn hoặc dữ liệu CV."],
+        "weaknesses": ["Điểm thiếu hoặc cần xác minh dựa trên missing skills/điểm thấp."],
+        "risks": ["Rủi ro tuyển dụng hoặc dữ liệu chưa đủ, nếu có."],
+        "questions": ["Câu hỏi phỏng vấn nên hỏi để xác minh gap hoặc điểm mạnh."],
+        "recommendation": "Khuyến nghị ngắn cho HR: ưu tiên/phỏng vấn/kiểm tra thêm/chưa nên ưu tiên.",
+    }
+    return (
+        "Hãy viết giải thích cho HR dựa trên dữ liệu sau.\n"
+        "Quy tắc:\n"
+        "- Không thay đổi điểm số và không thêm thông tin ngoài JSON.\n"
+        "- Nếu dữ liệu thiếu, hãy nói cần xác minh thay vì suy đoán.\n"
+        "- Nhắc rõ kỹ năng khớp/thiếu quan trọng, kinh nghiệm và yếu tố làm điểm tăng/giảm.\n"
+        "- Khi nói về kinh nghiệm dưới 1 năm, dùng label tháng trong JSON, ví dụ 0.25 năm phải viết là 3 tháng; 0.5 năm phải viết là 6 tháng.\n"
+        "- Trả về đúng JSON theo schema.\n"
+        f"Schema: {json.dumps(schema, ensure_ascii=False)}\n"
+        f"Dữ liệu: {json.dumps(context, ensure_ascii=False)}"
+    )
+
+
+def _parse_json_payload(raw: str) -> dict:
+    cleaned = raw.strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
+        cleaned = re.sub(r"\s*```$", "", cleaned)
+
+    try:
+        payload = json.loads(cleaned)
+    except json.JSONDecodeError:
+        match = re.search(r"\{.*\}", cleaned, flags=re.S)
+        if not match:
+            raise
+        payload = json.loads(match.group(0))
+
+    if not isinstance(payload, dict):
+        raise RuntimeError("Gemini trả về JSON không phải object.")
+
+    return payload
+
+
+def _normalize_gemini_list(value: object) -> list[str]:
+    if isinstance(value, str):
+        return [value.strip()] if value.strip() else []
+    if not isinstance(value, list):
+        return []
+
+    results = []
+    for item in value:
+        if isinstance(item, dict):
+            text = item.get("text") or item.get("value") or item.get("label")
+        else:
+            text = item
+        text = str(text or "").strip()
+        if text:
+            results.append(text)
+
+    return results
+
+
+def _format_year_duration(value) -> str | None:
+    if not isinstance(value, (int, float)):
+        return None
+
+    years = float(value)
+    if years < 0:
+        return None
+    if years == 0:
+        return "0 năm"
+    if years < 1:
+        months = max(1, round(years * 12))
+        return f"{months} tháng"
+
+    formatted = f"{years:.2f}".rstrip("0").rstrip(".")
+    return f"{formatted} năm"
+
+
+def _replace_decimal_year_phrases(text: str) -> str:
+    if not text:
+        return text
+
+    def repl(match: re.Match) -> str:
+        value = float(match.group(1).replace(",", "."))
+        label = _format_year_duration(value)
+        return label or match.group(0)
+
+    return re.sub(r"\b(0[.,]\d+)\s*năm\b", repl, text, flags=re.I)
+
+
 def _build_score_explanation_items(
     *,
     skill_score: float,
@@ -849,7 +1133,7 @@ def _build_score_explanation_items(
             "label": "Ngữ cảnh CV-JD",
             "score": round(text_similarity_score, 2),
             "weight": weights.get("text_similarity", 0),
-            "message": "Đo mức độ trùng ngữ cảnh giữa CV và JD sau chuẩn hóa từ khóa.",
+            "message": "Đo mức độ liên quan nội dung bằng BM25/TF-IDF sau khi chuẩn hóa raw_text và mở rộng skill alias.",
         },
         {
             "key": "salary",
@@ -876,7 +1160,7 @@ def _build_score_explanation_items(
 
 
 def _normalize_skill_name(value: str) -> str:
-    return normalize_search_text(value).strip()
+    return canonicalize_skill_name(value)
 
 
 def _find_best_skill_similarity(jd_skill: str, cv_skill_names: set[str]) -> dict | None:
@@ -961,6 +1245,171 @@ def _semantic_credit_ratio(similarity: dict) -> float:
     if match_type in {"lexical", "token_overlap", "shared_domain"}:
         return min(max(score * 0.65, 0.35), 0.8)
     return 0.0
+
+
+def _build_context_similarity_terms(normalized_text: str, profile: dict, profile_type: str) -> list[str]:
+    terms = _tokenize_for_similarity(normalized_text)
+    detected_skills = _detect_skill_contexts(normalized_text)
+
+    if profile_type == "cv":
+        explicit_skills = {
+            skill
+            for skill in _extract_cv_skill_names(profile)
+            if skill
+        }
+    else:
+        explicit_skills = {
+            item["normalized"]
+            for item in _extract_jd_skill_items(profile)
+            if item.get("normalized")
+        }
+
+    for skill_key in sorted(detected_skills | explicit_skills):
+        terms.extend(_skill_similarity_terms(skill_key, repetitions=3))
+
+    for skill_key in sorted(detected_skills):
+        category = SKILL_LOOKUP.get(skill_key, {}).get("category")
+        if category:
+            terms.append(_term_key("domain", str(category)))
+
+    return terms
+
+
+def _detect_skill_contexts(normalized_text: str) -> set[str]:
+    detected: set[str] = set()
+    if not normalized_text:
+        return detected
+
+    for item in SKILL_CATALOG:
+        canonical = canonicalize_skill_name(str(item.get("skill_name") or ""))
+        aliases = [item.get("skill_name"), *item.get("aliases", [])]
+        for alias in aliases:
+            alias_text = normalize_search_text(str(alias or "")).strip()
+            if not alias_text:
+                continue
+
+            pattern = r"(?<!\w)" + re.escape(alias_text) + r"(?!\w)"
+            if re.search(pattern, normalized_text):
+                detected.add(canonical)
+                break
+
+    return detected
+
+
+def _skill_similarity_terms(skill_key: str, *, repetitions: int = 1) -> list[str]:
+    if not skill_key:
+        return []
+
+    meta = SKILL_LOOKUP.get(skill_key, {})
+    display_name = str(meta.get("skill_name") or skill_key)
+    terms = [_term_key("skill", skill_key)] * repetitions
+    terms.extend(_tokenize_for_similarity(normalize_search_text(display_name)))
+
+    category = meta.get("category")
+    if category:
+        terms.append(_term_key("domain", str(category)))
+
+    return terms
+
+
+def _term_key(prefix: str, value: str) -> str:
+    normalized = normalize_search_text(value).strip()
+    key = re.sub(r"[^a-z0-9]+", "_", normalized).strip("_")
+    return f"{prefix}_{key}" if key else prefix
+
+
+def _normalized_bm25_similarity(document_tokens: list[str], query_tokens: list[str]) -> float:
+    corpus = [document_tokens, query_tokens]
+    score = _bm25_score(document_tokens, query_tokens, corpus)
+    ideal_score = _bm25_score(query_tokens, query_tokens, corpus)
+
+    if ideal_score <= 0:
+        return 0.0
+
+    return min(score / ideal_score, 1.0)
+
+
+def _bm25_score(document_tokens: list[str], query_tokens: list[str], corpus: list[list[str]]) -> float:
+    doc_counter = Counter(document_tokens)
+    query_counter = Counter(query_tokens)
+    doc_len = len(document_tokens)
+    avg_doc_len = sum(len(doc) for doc in corpus) / max(len(corpus), 1)
+    corpus_sets = [set(doc) for doc in corpus]
+
+    if not doc_len or not avg_doc_len:
+        return 0.0
+
+    score = 0.0
+    for token, query_weight in query_counter.items():
+        tf = doc_counter.get(token, 0)
+        if not tf:
+            continue
+
+        doc_frequency = sum(1 for doc in corpus_sets if token in doc)
+        idf = math.log(1 + (len(corpus) - doc_frequency + 0.5) / (doc_frequency + 0.5))
+        denominator = tf + BM25_K1 * (1 - BM25_B + BM25_B * doc_len / avg_doc_len)
+        score += idf * ((tf * (BM25_K1 + 1)) / denominator) * min(query_weight, 3)
+
+    return score
+
+
+def _tfidf_cosine_similarity(left_tokens: list[str], right_tokens: list[str]) -> float:
+    documents = [left_tokens, right_tokens]
+    left_vector = _tfidf_vector(left_tokens, documents)
+    right_vector = _tfidf_vector(right_tokens, documents)
+    common = set(left_vector) & set(right_vector)
+    dot = sum(left_vector[token] * right_vector[token] for token in common)
+    left_norm = sum(value * value for value in left_vector.values()) ** 0.5
+    right_norm = sum(value * value for value in right_vector.values()) ** 0.5
+
+    if left_norm == 0 or right_norm == 0:
+        return 0.0
+
+    return dot / (left_norm * right_norm)
+
+
+def _tfidf_vector(tokens: list[str], documents: list[list[str]]) -> dict[str, float]:
+    counter = Counter(tokens)
+    total = max(len(tokens), 1)
+    document_sets = [set(document) for document in documents]
+    vector = {}
+
+    for token, count in counter.items():
+        doc_frequency = sum(1 for document in document_sets if token in document)
+        idf = math.log((len(documents) + 1) / (doc_frequency + 1)) + 1
+        vector[token] = (count / total) * idf
+
+    return vector
+
+
+def _skill_context_overlap_score(cv_profile: dict, jd_profile: dict, cv_text: str, jd_text: str) -> float:
+    cv_skills = set(_extract_cv_skill_names(cv_profile)) | _detect_skill_contexts(cv_text)
+    jd_skills = {item["normalized"] for item in _extract_jd_skill_items(jd_profile)} | _detect_skill_contexts(jd_text)
+
+    if not jd_skills:
+        return 0.0
+
+    exact_overlap = len(cv_skills & jd_skills) / len(jd_skills)
+    category_overlap = _skill_category_overlap_score(cv_skills, jd_skills)
+    return min(exact_overlap * 0.8 + category_overlap * 0.2, 1.0)
+
+
+def _skill_category_overlap_score(cv_skills: set[str], jd_skills: set[str]) -> float:
+    cv_categories = {
+        SKILL_LOOKUP.get(skill, {}).get("category")
+        for skill in cv_skills
+        if SKILL_LOOKUP.get(skill, {}).get("category")
+    }
+    jd_categories = {
+        SKILL_LOOKUP.get(skill, {}).get("category")
+        for skill in jd_skills
+        if SKILL_LOOKUP.get(skill, {}).get("category")
+    }
+
+    if not jd_categories:
+        return 0.0
+
+    return len(cv_categories & jd_categories) / len(jd_categories)
 
 
 def _tokenize_for_similarity(text: str) -> list[str]:

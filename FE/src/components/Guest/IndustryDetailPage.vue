@@ -1,65 +1,3 @@
-<script setup>
-import { computed, onMounted, ref, watch } from 'vue'
-import { RouterLink, useRoute } from 'vue-router'
-import { jobService } from '@/services/api'
-import { useNotify } from '@/composables/useNotify'
-
-const route = useRoute()
-const notify = useNotify()
-
-const loading = ref(false)
-const industry = ref(null)
-const industryJobs = ref([])
-
-const extractList = (response) => {
-  const payload = response?.data
-  if (Array.isArray(payload?.data)) return payload.data
-  if (Array.isArray(payload)) return payload
-  return []
-}
-
-const loadIndustryDetail = async () => {
-  loading.value = true
-
-  try {
-    const [industryResponse, jobsResponse] = await Promise.all([
-      jobService.getIndustryById(route.params.id),
-      jobService.getJobs({
-        nganh_nghe_id: route.params.id,
-        per_page: 6,
-      }),
-    ])
-
-    industry.value = industryResponse?.data || null
-    industryJobs.value = extractList(jobsResponse)
-  } catch (error) {
-    industry.value = null
-    industryJobs.value = []
-    notify.apiError(error, 'Không tải được thông tin ngành nghề.')
-  } finally {
-    loading.value = false
-  }
-}
-
-const industryName = computed(() => industry.value?.ten_nganh || 'Ngành nghề')
-const industryDescription = computed(() => industry.value?.mo_ta || 'Ngành nghề này đang được cập nhật thêm phần mô tả chi tiết.')
-const parentIndustry = computed(() => industry.value?.danh_muc_cha || null)
-const childIndustries = computed(() => Array.isArray(industry.value?.danh_muc_con) ? industry.value.danh_muc_con : [])
-const openJobsCount = computed(() => industryJobs.value.length)
-
-const formatSalary = (job) => {
-  const from = Number(job?.muc_luong_tu || 0)
-  const to = Number(job?.muc_luong_den || 0)
-
-  if (from && to) return `${from.toLocaleString('vi-VN')} - ${to.toLocaleString('vi-VN')} đ`
-  if (from) return `${from.toLocaleString('vi-VN')} đ`
-  return 'Thỏa thuận'
-}
-
-watch(() => route.params.id, loadIndustryDetail)
-onMounted(loadIndustryDetail)
-</script>
-
 <template>
   <section class="py-14 lg:py-16">
     <div class="mx-auto max-w-7xl px-6">
@@ -88,7 +26,9 @@ onMounted(loadIndustryDetail)
                     {{ parentIndustry.ten_nganh }}
                   </RouterLink>
                 </template>
-              </div>
+
+
+</div>
 
               <p class="mt-5 text-sm font-bold uppercase tracking-[0.35em] text-[#2463eb]">Khám phá ngành nghề</p>
               <h1 class="mt-3 text-3xl font-black tracking-tight text-slate-900 dark:text-white lg:text-4xl">
@@ -268,3 +208,65 @@ onMounted(loadIndustryDetail)
     </div>
   </section>
 </template>
+
+<script setup>
+import { computed, onMounted, ref, watch } from 'vue'
+import { RouterLink, useRoute } from 'vue-router'
+import { jobService } from '@/services/api'
+import { useNotify } from '@/composables/useNotify'
+
+const route = useRoute()
+const notify = useNotify()
+
+const loading = ref(false)
+const industry = ref(null)
+const industryJobs = ref([])
+
+const extractList = (response) => {
+  const payload = response?.data
+  if (Array.isArray(payload?.data)) return payload.data
+  if (Array.isArray(payload)) return payload
+  return []
+}
+
+const loadIndustryDetail = async () => {
+  loading.value = true
+
+  try {
+    const [industryResponse, jobsResponse] = await Promise.all([
+      jobService.getIndustryById(route.params.id),
+      jobService.getJobs({
+        nganh_nghe_id: route.params.id,
+        per_page: 6,
+      }),
+    ])
+
+    industry.value = industryResponse?.data || null
+    industryJobs.value = extractList(jobsResponse)
+  } catch (error) {
+    industry.value = null
+    industryJobs.value = []
+    notify.apiError(error, 'Không tải được thông tin ngành nghề.')
+  } finally {
+    loading.value = false
+  }
+}
+
+const industryName = computed(() => industry.value?.ten_nganh || 'Ngành nghề')
+const industryDescription = computed(() => industry.value?.mo_ta || 'Ngành nghề này đang được cập nhật thêm phần mô tả chi tiết.')
+const parentIndustry = computed(() => industry.value?.danh_muc_cha || null)
+const childIndustries = computed(() => Array.isArray(industry.value?.danh_muc_con) ? industry.value.danh_muc_con : [])
+const openJobsCount = computed(() => industryJobs.value.length)
+
+const formatSalary = (job) => {
+  const from = Number(job?.muc_luong_tu || 0)
+  const to = Number(job?.muc_luong_den || 0)
+
+  if (from && to) return `${from.toLocaleString('vi-VN')} - ${to.toLocaleString('vi-VN')} đ`
+  if (from) return `${from.toLocaleString('vi-VN')} đ`
+  return 'Thỏa thuận'
+}
+
+watch(() => route.params.id, loadIndustryDetail)
+onMounted(loadIndustryDetail)
+</script>

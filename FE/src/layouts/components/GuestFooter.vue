@@ -1,7 +1,3 @@
-<script setup>
-import AppLogo from '@/components/AppLogo.vue'
-</script>
-
 <template>
   <footer class="bg-slate-900 py-12 text-slate-300">
     <div class="mx-auto max-w-7xl px-6">
@@ -51,3 +47,7 @@ import AppLogo from '@/components/AppLogo.vue'
     </div>
   </footer>
 </template>
+
+<script setup>
+import AppLogo from '@/components/AppLogo.vue'
+</script>

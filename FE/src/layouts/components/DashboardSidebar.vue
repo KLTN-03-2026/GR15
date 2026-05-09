@@ -1,37 +1,3 @@
-<script setup>
-import AppLogo from '@/components/AppLogo.vue'
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { RouterLink } from 'vue-router'
-import { getStoredCandidate } from '@/utils/authStorage'
-
-defineProps({
-  collapsed: {
-    type: Boolean,
-    default: false,
-  },
-})
-
-const currentUser = ref(getStoredCandidate())
-
-const syncCurrentUser = () => {
-  currentUser.value = getStoredCandidate()
-}
-
-const displayName = computed(() => currentUser.value?.ho_ten || 'Ứng viên')
-const displayRole = computed(() => currentUser.value?.ten_vai_tro || 'Job Seeker')
-const avatarLetter = computed(() => displayName.value.trim().charAt(0).toUpperCase() || 'U')
-
-onMounted(() => {
-  window.addEventListener('auth-changed', syncCurrentUser)
-  syncCurrentUser()
-})
-
-onBeforeUnmount(() => {
-  window.removeEventListener('auth-changed', syncCurrentUser)
-})
-
-</script>
-
 <template>
   <aside
     class="sticky top-0 flex h-screen shrink-0 flex-col border-r border-slate-200/80 bg-white/95 backdrop-blur transition-all duration-200 dark:border-slate-800 dark:bg-slate-950/90"
@@ -106,6 +72,40 @@ onBeforeUnmount(() => {
     </nav>
   </aside>
 </template>
+
+<script setup>
+import AppLogo from '@/components/AppLogo.vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { RouterLink } from 'vue-router'
+import { getStoredCandidate } from '@/utils/authStorage'
+
+defineProps({
+  collapsed: {
+    type: Boolean,
+    default: false,
+  },
+})
+
+const currentUser = ref(getStoredCandidate())
+
+const syncCurrentUser = () => {
+  currentUser.value = getStoredCandidate()
+}
+
+const displayName = computed(() => currentUser.value?.ho_ten || 'Ứng viên')
+const displayRole = computed(() => currentUser.value?.ten_vai_tro || 'Job Seeker')
+const avatarLetter = computed(() => displayName.value.trim().charAt(0).toUpperCase() || 'U')
+
+onMounted(() => {
+  window.addEventListener('auth-changed', syncCurrentUser)
+  syncCurrentUser()
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('auth-changed', syncCurrentUser)
+})
+
+</script>
 
 <style scoped>
 .nav-link.active-nav {

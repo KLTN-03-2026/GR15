@@ -1,500 +1,3 @@
-<script setup>
-import { computed, onMounted, ref } from 'vue'
-import { RouterLink, useRoute, useRouter } from 'vue-router'
-import { employerApplicationService, employerBillingService, employerJobService } from '@/services/api'
-import { useEmployerCompanyPermissions } from '@/composables/useEmployerCompanyPermissions'
-import { useNotify } from '@/composables/useNotify'
-import { getApplicationStatusMeta } from '@/utils/applicationStatus'
-import { formatDateTimeVN, formatHistoricalDateTimeVN } from '@/utils/dateTime'
-import { getAuthToken } from '@/utils/authStorage'
-import { hasBuilderCv, openCvPrintPreview } from '@/utils/profileCvBuilder'
-
-const route = useRoute()
-const router = useRouter()
-const notify = useNotify()
-const { ensurePermissionsLoaded, canManageJobs, canManageAllAssignments, currentEmployerId, currentInternalRoleLabel } = useEmployerCompanyPermissions()
-
-const loading = ref(false)
-const billingLoading = ref(false)
-const parsingLoading = ref(false)
-const togglingStatus = ref(false)
-const shortlistLoading = ref(false)
-const aiScoringLoading = ref(false)
-const comparingShortlist = ref(false)
-const sponsorLoading = ref('')
-const job = ref(null)
-const applications = ref([])
-const shortlistItems = ref([])
-const shortlistMeta = ref(null)
-const selectedCompareProfileIds = ref([])
-const comparisonResult = ref(null)
-const shortlistScope = ref('public')
-const billingWallet = ref(null)
-const billingPricing = ref([])
-const billingEntitlements = ref([])
-
-const formatDateTime = (value) => formatDateTimeVN(value, 'Chưa cập nhật')
-const formatSubmittedDateTime = (value) => formatHistoricalDateTimeVN(value, 'Chưa cập nhật')
-const formatCurrency = (value) => `${Number(value || 0).toLocaleString('vi-VN')} đ`
-
-const formatSalary = (job) => {
-  const salaryFrom = Number(job?.muc_luong_tu || 0)
-  const salaryTo = Number(job?.muc_luong_den || 0)
-
-  if (salaryFrom && salaryTo) {
-    return `${salaryFrom.toLocaleString('vi-VN')} đ - ${salaryTo.toLocaleString('vi-VN')} đ`
-  }
-
-  if (salaryFrom) return `${salaryFrom.toLocaleString('vi-VN')} đ`
-  return 'Thỏa thuận'
-}
-
-const statusLabel = computed(() => (Number(job.value?.trang_thai) === 1 ? 'Đang hoạt động' : 'Tạm ngưng'))
-const statusTone = computed(() =>
-  Number(job.value?.trang_thai) === 1
-    ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-400/20'
-    : 'bg-amber-500/10 text-amber-300 border border-amber-400/20'
-)
-
-const parseStatusMeta = computed(() => {
-  const status = Number(job.value?.parsing?.parse_status || 0)
-
-  if (status === 1) {
-    return {
-      label: 'Đã parse JD',
-      classes: 'bg-violet-500/10 text-violet-300 border border-violet-400/20',
-    }
-  }
-
-  if (status === 2) {
-    return {
-      label: 'Parse lỗi',
-      classes: 'bg-rose-500/10 text-rose-300 border border-rose-400/20',
-    }
-  }
-
-  return {
-    label: 'Chưa parse JD',
-    classes: 'bg-slate-500/10 text-slate-300 border border-slate-400/20',
-  }
-})
-
-const statusCards = computed(() => {
-  const currentJob = job.value
-  if (!currentJob) return []
-
-  return [
-    {
-      label: 'Tổng hồ sơ',
-      value: currentJob.tong_ho_so || 0,
-      hint: 'Đã nộp vào tin này',
-      icon: 'groups',
-      tone: 'text-blue-300 bg-blue-500/10',
-    },
-    {
-      label: 'Trúng tuyển',
-      value: currentJob.so_luong_da_nhan || 0,
-      hint: `${currentJob.so_luong_con_lai || 0} chỉ tiêu còn lại`,
-      icon: 'task_alt',
-      tone: 'text-emerald-300 bg-emerald-500/10',
-    },
-    {
-      label: 'Đang chờ',
-      value: currentJob.ho_so_dang_cho || 0,
-      hint: 'Nên xử lý sớm',
-      icon: 'hourglass_top',
-      tone: 'text-amber-300 bg-amber-500/10',
-    },
-    {
-      label: 'Đã xem',
-      value: currentJob.ho_so_da_xem || 0,
-      hint: `${currentJob.ho_so_tu_choi || 0} hồ sơ đã từ chối`,
-      icon: 'visibility',
-      tone: 'text-sky-300 bg-sky-500/10',
-    },
-  ]
-})
-
-const applicationStatusMeta = getApplicationStatusMeta
-const isOwnedJob = computed(() => Number(job.value?.hr_phu_trach?.id || job.value?.hr_phu_trach_id || 0) === Number(currentEmployerId.value || 0))
-const canMutateCurrentJob = computed(() => Boolean(canManageJobs.value && (canManageAllAssignments.value || isOwnedJob.value)))
-const walletAvailable = computed(() => Number(billingWallet.value?.so_du_kha_dung || 0))
-const featuredStatusLabel = computed(() => {
-  if (!job.value?.is_featured) return 'Tin đang chạy hiển thị thường'
-  return `Đang nổi bật đến ${formatDateTime(job.value?.featured_until)}`
-})
-const resolveBillingFeature = (featureCode) => {
-  const pricing = billingPricing.value.find((item) => item.feature_code === featureCode) || null
-  const entitlement = billingEntitlements.value.find((item) => item.feature_code === featureCode) || null
-  const hasIncludedQuota = Boolean(entitlement?.subscription_is_unlimited)
-    || Number(entitlement?.subscription_quota_remaining || 0) > 0
-    || Number(entitlement?.free_quota_remaining || 0) > 0
-  const walletPrice = Number(pricing?.don_gia || entitlement?.wallet_price || 0)
-  const walletUnit = pricing?.don_vi_tinh || entitlement?.wallet_unit || 'lượt'
-  const requiresWallet = !hasIncludedQuota && walletPrice > 0
-
-  return {
-    featureCode,
-    pricing,
-    entitlement,
-    hasIncludedQuota,
-    walletPrice,
-    walletUnit,
-    requiresWallet,
-    affordable: !requiresWallet || walletAvailable.value >= walletPrice,
-  }
-}
-const shortlistAiFeature = computed(() => resolveBillingFeature('employer_shortlist_ai_explanation'))
-const compareAiFeature = computed(() => resolveBillingFeature('employer_candidate_compare_ai'))
-const featuredPackages = computed(() =>
-  ['employer_featured_job_7d', 'employer_featured_job_30d']
-    .map((featureCode) => {
-      const pricing = billingPricing.value.find((item) => item.feature_code === featureCode) || null
-      const entitlement = billingEntitlements.value.find((item) => item.feature_code === featureCode) || null
-
-      return {
-        featureCode,
-        label: pricing?.ten_hien_thi || (featureCode === 'employer_featured_job_7d' ? 'Featured Job 7 ngày' : 'Featured Job 30 ngày'),
-        description: featureCode === 'employer_featured_job_7d'
-          ? 'Đẩy tin lên nhóm nổi bật trong 7 ngày.'
-          : 'Giữ tin trong nhóm nổi bật trong 30 ngày.',
-        price: Number(pricing?.don_gia || entitlement?.wallet_price || 0),
-        unit: pricing?.don_vi_tinh || entitlement?.wallet_unit || 'listing',
-      }
-    })
-    .filter((item) => item.price > 0)
-)
-
-const requiredSkills = computed(() => {
-  const manualSkills = (job.value?.ky_nang_yeu_caus || [])
-    .map((item) => item?.ky_nang?.ten_ky_nang)
-    .filter(Boolean)
-
-  const parsedSkills = (job.value?.parsing?.parsed_skills_json || [])
-    .map((item) => item?.skill_name || item?.ten_ky_nang || item?.name)
-    .filter(Boolean)
-
-  return [...new Set([...manualSkills, ...parsedSkills])]
-})
-
-const parsedRequirements = computed(() =>
-  (job.value?.parsing?.parsed_requirements_json || [])
-    .map((item) => {
-      if (typeof item === 'string') return item
-      return item?.requirement || item?.text || item?.value || item?.name || null
-    })
-    .filter(Boolean)
-)
-
-const parsedBenefits = computed(() =>
-  (job.value?.parsing?.parsed_benefits_json || [])
-    .map((item) => {
-      if (typeof item === 'string') return item
-      return item?.benefit || item?.text || item?.value || item?.name || null
-    })
-    .filter(Boolean)
-)
-const jdQualityWarnings = computed(() => Array.isArray(job.value?.parsing?.quality_warnings_json) ? job.value.parsing.quality_warnings_json : [])
-const jdSuggestedSkills = computed(() => Array.isArray(job.value?.parsing?.suggested_skills_json) ? job.value.parsing.suggested_skills_json : [])
-
-const upcomingApplications = computed(() => applications.value.slice(0, 6))
-const topShortlistItems = computed(() => shortlistItems.value.slice(0, 5))
-const canCompareShortlist = computed(() => selectedCompareProfileIds.value.length >= 2)
-const formatFeaturePrice = (feature) => {
-  if (!feature?.walletPrice) return 'Chưa cấu hình giá'
-  return `${formatCurrency(feature.walletPrice)}/${feature.walletUnit || 'lượt'}`
-}
-const canRunPaidFeature = (feature) => {
-  if (!feature) return true
-  if (feature.hasIncludedQuota) return true
-  if (!feature.walletPrice) return true
-  return feature.affordable
-}
-
-const loadBillingContext = async () => {
-  billingLoading.value = true
-  try {
-    const [walletResponse, pricingResponse, entitlementsResponse] = await Promise.all([
-      employerBillingService.getWallet(),
-      employerBillingService.getPricing(),
-      employerBillingService.getEntitlements(),
-    ])
-
-    billingWallet.value = walletResponse?.data?.wallet || null
-    billingPricing.value = pricingResponse?.data || []
-    billingEntitlements.value = entitlementsResponse?.data?.entitlements || []
-  } catch (error) {
-    billingWallet.value = null
-    billingPricing.value = []
-    billingEntitlements.value = []
-    notify.apiError(error, 'Không tải được dữ liệu billing employer.')
-  } finally {
-    billingLoading.value = false
-  }
-}
-
-const fetchJobDetail = async () => {
-  loading.value = true
-  try {
-    const [jobResponse, applicationResponse] = await Promise.all([
-      employerJobService.getJobById(route.params.id),
-      employerApplicationService.getApplications({
-        tin_tuyen_dung_id: route.params.id,
-        per_page: 50,
-      }),
-    ])
-
-    job.value = jobResponse?.data || null
-    applications.value = applicationResponse?.data?.data || []
-    if (job.value?.id) {
-      await fetchShortlist(false)
-    }
-  } catch (error) {
-    notify.apiError(error, 'Không tải được chi tiết tin tuyển dụng.')
-    await router.push('/employer/jobs')
-  } finally {
-    loading.value = false
-  }
-}
-
-const sponsorJob = async (featureCode) => {
-  if (!job.value?.id) return
-  if (!canMutateCurrentJob.value) {
-    notify.warning(canManageJobs.value
-      ? 'Bạn chỉ có thể đẩy nổi bật cho tin tuyển dụng mình phụ trách.'
-      : `Vai trò ${currentInternalRoleLabel.value} không thể đẩy nổi bật tin tuyển dụng.`)
-    return
-  }
-
-  sponsorLoading.value = featureCode
-  try {
-    const response = await employerJobService.sponsorJob(job.value.id, featureCode)
-    notify.success(response?.message || 'Đã kích hoạt featured listing cho tin tuyển dụng.')
-    await Promise.all([fetchJobDetail(), loadBillingContext()])
-  } catch (error) {
-    notify.apiError(error, 'Không thể kích hoạt featured listing cho tin tuyển dụng.')
-  } finally {
-    sponsorLoading.value = ''
-  }
-}
-
-const fetchShortlist = async (withAi = false) => {
-  if (!route.params.id) return
-
-  if (withAi) {
-    aiScoringLoading.value = true
-  } else {
-    shortlistLoading.value = true
-  }
-
-  try {
-    const response = await employerJobService.getShortlist(route.params.id, {
-      limit: 10,
-      scope: shortlistScope.value,
-      ai_explain: withAi,
-    })
-    shortlistItems.value = response?.data?.items || []
-    shortlistMeta.value = response?.data?.meta || null
-    selectedCompareProfileIds.value = []
-    comparisonResult.value = null
-    if (withAi) {
-      await loadBillingContext()
-    }
-  } catch (error) {
-    shortlistItems.value = []
-    shortlistMeta.value = null
-    selectedCompareProfileIds.value = []
-    comparisonResult.value = null
-    notify.apiError(error, 'Không tải được AI Shortlist cho tin tuyển dụng.')
-  } finally {
-    shortlistLoading.value = false
-    aiScoringLoading.value = false
-  }
-}
-
-const changeShortlistScope = async (scope) => {
-  if (shortlistScope.value === scope) return
-  shortlistScope.value = scope
-  await fetchShortlist(false)
-}
-
-const rescoreShortlistWithAi = async () => {
-  await fetchShortlist(true)
-}
-
-const isSelectedForCompare = (item) => selectedCompareProfileIds.value.includes(Number(item?.ho_so?.id || 0))
-
-const toggleCompareSelection = (item) => {
-  const profileId = Number(item?.ho_so?.id || 0)
-  if (!profileId) return
-
-  if (selectedCompareProfileIds.value.includes(profileId)) {
-    selectedCompareProfileIds.value = selectedCompareProfileIds.value.filter((id) => id !== profileId)
-    return
-  }
-
-  if (selectedCompareProfileIds.value.length >= 5) {
-    notify.warning('Chỉ có thể so sánh tối đa 5 CV trong một lần.')
-    return
-  }
-
-  selectedCompareProfileIds.value = [...selectedCompareProfileIds.value, profileId]
-}
-
-const compareShortlistCandidates = async () => {
-  if (!canCompareShortlist.value) {
-    notify.info('Vui lòng chọn ít nhất 2 CV để so sánh.')
-    return
-  }
-
-  comparingShortlist.value = true
-  try {
-    const response = await employerJobService.compareShortlistCandidates(route.params.id, selectedCompareProfileIds.value, { ai_explain: true })
-    comparisonResult.value = response?.data || null
-    await loadBillingContext()
-  } catch (error) {
-    comparisonResult.value = null
-    notify.apiError(error, 'Không so sánh được các ứng viên đã chọn.')
-  } finally {
-    comparingShortlist.value = false
-  }
-}
-
-const clearComparison = () => {
-  selectedCompareProfileIds.value = []
-  comparisonResult.value = null
-}
-
-const scoreTone = (score) => {
-  const value = Number(score || 0)
-  if (value >= 80) return 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-300'
-  if (value >= 65) return 'bg-blue-500/10 text-blue-600 dark:text-blue-300'
-  if (value >= 50) return 'bg-amber-500/10 text-amber-600 dark:text-amber-300'
-  return 'bg-rose-500/10 text-rose-600 dark:text-rose-300'
-}
-
-const confidenceTone = (level) => {
-  if (level === 'high') return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
-  if (level === 'medium') return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
-  return 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300'
-}
-
-const explanationGroups = (structured) => [
-  { key: 'strengths', label: 'Điểm mạnh', items: structured?.strengths || [] },
-  { key: 'weaknesses', label: 'Điểm yếu', items: structured?.weaknesses || [] },
-  { key: 'risks', label: 'Rủi ro', items: structured?.risks || [] },
-  { key: 'interview_questions', label: 'Câu hỏi phỏng vấn', items: structured?.interview_questions || [] },
-].filter((group) => group.items.length)
-
-const fetchProtectedFile = async (url) => {
-  const token = getAuthToken()
-
-  if (!token) {
-    notify.warning('Vui lòng đăng nhập lại để xem file CV.')
-    return null
-  }
-
-  const response = await fetch(encodeURI(url), {
-    method: 'GET',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: 'application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,*/*',
-    },
-  })
-
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}`)
-  }
-
-  return response.blob()
-}
-
-const openShortlistCv = async (item) => {
-  const profile = item?.ho_so
-
-  if (!profile?.file_cv_url && !hasBuilderCv(profile)) {
-    notify.info('Hồ sơ này chưa có file CV hoặc dữ liệu CV tạo trên hệ thống để xem.')
-    return
-  }
-
-  if (!profile.file_cv_url && hasBuilderCv(profile)) {
-    const opened = openCvPrintPreview({
-      profile,
-      owner: item?.candidate,
-    })
-
-    if (!opened) {
-      notify.warning('Trình duyệt đang chặn cửa sổ xem CV. Hãy cho phép popup và thử lại.')
-    }
-    return
-  }
-
-  try {
-    const blob = await fetchProtectedFile(profile.file_cv_url)
-    if (!blob) return
-    const objectUrl = URL.createObjectURL(blob)
-    window.open(objectUrl, '_blank', 'noopener')
-    setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000)
-  } catch (error) {
-    notify.error('Không mở được file CV. Vui lòng thử lại.')
-  }
-}
-
-const parseJob = async () => {
-  if (!job.value) return
-  if (!canMutateCurrentJob.value) {
-    notify.warning(canManageJobs.value
-      ? 'Bạn chỉ có thể parse JD cho tin tuyển dụng mình phụ trách.'
-      : `Vai trò ${currentInternalRoleLabel.value} không thể parse JD cho tin tuyển dụng.`)
-    return
-  }
-
-  parsingLoading.value = true
-  try {
-    const response = await employerJobService.parseJob(job.value.id)
-    const parseData = response?.data || null
-    notify.success('Đã gửi yêu cầu parse JD cho tin tuyển dụng.')
-    await fetchJobDetail()
-    if (parseData && job.value) {
-      job.value.parsing = {
-        ...(job.value.parsing || {}),
-        ...parseData,
-      }
-    }
-  } catch (error) {
-    notify.apiError(error, 'Không thể parse JD cho tin tuyển dụng.')
-  } finally {
-    parsingLoading.value = false
-  }
-}
-
-const toggleStatus = async () => {
-  if (!job.value) return
-  if (!canMutateCurrentJob.value) {
-    notify.warning(canManageJobs.value
-      ? 'Bạn chỉ có thể đổi trạng thái cho tin tuyển dụng mình phụ trách.'
-      : `Vai trò ${currentInternalRoleLabel.value} không thể đổi trạng thái tin tuyển dụng.`)
-    return
-  }
-
-  togglingStatus.value = true
-  try {
-    await employerJobService.toggleStatus(job.value.id)
-    notify.success(`Đã chuyển trạng thái sang ${Number(job.value.trang_thai) === 1 ? 'tạm ngưng' : 'đang hoạt động'}.`)
-    await fetchJobDetail()
-  } catch (error) {
-    notify.apiError(error, 'Không thể chuyển trạng thái tin tuyển dụng.')
-  } finally {
-    togglingStatus.value = false
-  }
-}
-
-onMounted(async () => {
-  await ensurePermissionsLoaded()
-  await Promise.all([fetchJobDetail(), loadBillingContext()])
-})
-</script>
-
 <template>
   <div class="mx-auto max-w-7xl">
     <div v-if="loading" class="grid grid-cols-1 gap-5 lg:grid-cols-4">
@@ -1218,5 +721,504 @@ onMounted(async () => {
         </div>
       </div>
     </template>
-  </div>
+
+
+</div>
 </template>
+
+<script setup>
+import { computed, onMounted, ref } from 'vue'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
+import { employerApplicationService, employerBillingService, employerJobService } from '@/services/api'
+import { useEmployerCompanyPermissions } from '@/composables/useEmployerCompanyPermissions'
+import { useNotify } from '@/composables/useNotify'
+import { getApplicationStatusMeta } from '@/utils/applicationStatus'
+import { formatDateTimeVN, formatHistoricalDateTimeVN } from '@/utils/dateTime'
+import { getAuthToken } from '@/utils/authStorage'
+import { hasBuilderCv, openCvPrintPreview } from '@/utils/profileCvBuilder'
+
+const route = useRoute()
+const router = useRouter()
+const notify = useNotify()
+const { ensurePermissionsLoaded, canManageJobs, canManageAllAssignments, currentEmployerId, currentInternalRoleLabel } = useEmployerCompanyPermissions()
+
+const loading = ref(false)
+const billingLoading = ref(false)
+const parsingLoading = ref(false)
+const togglingStatus = ref(false)
+const shortlistLoading = ref(false)
+const aiScoringLoading = ref(false)
+const comparingShortlist = ref(false)
+const sponsorLoading = ref('')
+const job = ref(null)
+const applications = ref([])
+const shortlistItems = ref([])
+const shortlistMeta = ref(null)
+const selectedCompareProfileIds = ref([])
+const comparisonResult = ref(null)
+const shortlistScope = ref('public')
+const billingWallet = ref(null)
+const billingPricing = ref([])
+const billingEntitlements = ref([])
+
+const formatDateTime = (value) => formatDateTimeVN(value, 'Chưa cập nhật')
+const formatSubmittedDateTime = (value) => formatHistoricalDateTimeVN(value, 'Chưa cập nhật')
+const formatCurrency = (value) => `${Number(value || 0).toLocaleString('vi-VN')} đ`
+
+const formatSalary = (job) => {
+  const salaryFrom = Number(job?.muc_luong_tu || 0)
+  const salaryTo = Number(job?.muc_luong_den || 0)
+
+  if (salaryFrom && salaryTo) {
+    return `${salaryFrom.toLocaleString('vi-VN')} đ - ${salaryTo.toLocaleString('vi-VN')} đ`
+  }
+
+  if (salaryFrom) return `${salaryFrom.toLocaleString('vi-VN')} đ`
+  return 'Thỏa thuận'
+}
+
+const statusLabel = computed(() => (Number(job.value?.trang_thai) === 1 ? 'Đang hoạt động' : 'Tạm ngưng'))
+const statusTone = computed(() =>
+  Number(job.value?.trang_thai) === 1
+    ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-400/20'
+    : 'bg-amber-500/10 text-amber-300 border border-amber-400/20'
+)
+
+const parseStatusMeta = computed(() => {
+  const status = Number(job.value?.parsing?.parse_status || 0)
+
+  if (status === 1) {
+    return {
+      label: 'Đã parse JD',
+      classes: 'bg-violet-500/10 text-violet-300 border border-violet-400/20',
+    }
+  }
+
+  if (status === 2) {
+    return {
+      label: 'Parse lỗi',
+      classes: 'bg-rose-500/10 text-rose-300 border border-rose-400/20',
+    }
+  }
+
+  return {
+    label: 'Chưa parse JD',
+    classes: 'bg-slate-500/10 text-slate-300 border border-slate-400/20',
+  }
+})
+
+const statusCards = computed(() => {
+  const currentJob = job.value
+  if (!currentJob) return []
+
+  return [
+    {
+      label: 'Tổng hồ sơ',
+      value: currentJob.tong_ho_so || 0,
+      hint: 'Đã nộp vào tin này',
+      icon: 'groups',
+      tone: 'text-blue-300 bg-blue-500/10',
+    },
+    {
+      label: 'Trúng tuyển',
+      value: currentJob.so_luong_da_nhan || 0,
+      hint: `${currentJob.so_luong_con_lai || 0} chỉ tiêu còn lại`,
+      icon: 'task_alt',
+      tone: 'text-emerald-300 bg-emerald-500/10',
+    },
+    {
+      label: 'Đang chờ',
+      value: currentJob.ho_so_dang_cho || 0,
+      hint: 'Nên xử lý sớm',
+      icon: 'hourglass_top',
+      tone: 'text-amber-300 bg-amber-500/10',
+    },
+    {
+      label: 'Đã xem',
+      value: currentJob.ho_so_da_xem || 0,
+      hint: `${currentJob.ho_so_tu_choi || 0} hồ sơ đã từ chối`,
+      icon: 'visibility',
+      tone: 'text-sky-300 bg-sky-500/10',
+    },
+  ]
+})
+
+const applicationStatusMeta = getApplicationStatusMeta
+const isOwnedJob = computed(() => Number(job.value?.hr_phu_trach?.id || job.value?.hr_phu_trach_id || 0) === Number(currentEmployerId.value || 0))
+const canMutateCurrentJob = computed(() => Boolean(canManageJobs.value && (canManageAllAssignments.value || isOwnedJob.value)))
+const walletAvailable = computed(() => Number(billingWallet.value?.so_du_kha_dung || 0))
+const featuredStatusLabel = computed(() => {
+  if (!job.value?.is_featured) return 'Tin đang chạy hiển thị thường'
+  return `Đang nổi bật đến ${formatDateTime(job.value?.featured_until)}`
+})
+const resolveBillingFeature = (featureCode) => {
+  const pricing = billingPricing.value.find((item) => item.feature_code === featureCode) || null
+  const entitlement = billingEntitlements.value.find((item) => item.feature_code === featureCode) || null
+  const hasIncludedQuota = Boolean(entitlement?.subscription_is_unlimited)
+    || Number(entitlement?.subscription_quota_remaining || 0) > 0
+    || Number(entitlement?.free_quota_remaining || 0) > 0
+  const walletPrice = Number(pricing?.don_gia || entitlement?.wallet_price || 0)
+  const walletUnit = pricing?.don_vi_tinh || entitlement?.wallet_unit || 'lượt'
+  const requiresWallet = !hasIncludedQuota && walletPrice > 0
+
+  return {
+    featureCode,
+    pricing,
+    entitlement,
+    hasIncludedQuota,
+    walletPrice,
+    walletUnit,
+    requiresWallet,
+    affordable: !requiresWallet || walletAvailable.value >= walletPrice,
+  }
+}
+const shortlistAiFeature = computed(() => resolveBillingFeature('employer_shortlist_ai_explanation'))
+const compareAiFeature = computed(() => resolveBillingFeature('employer_candidate_compare_ai'))
+const featuredPackages = computed(() =>
+  ['employer_featured_job_7d', 'employer_featured_job_30d']
+    .map((featureCode) => {
+      const pricing = billingPricing.value.find((item) => item.feature_code === featureCode) || null
+      const entitlement = billingEntitlements.value.find((item) => item.feature_code === featureCode) || null
+
+      return {
+        featureCode,
+        label: pricing?.ten_hien_thi || (featureCode === 'employer_featured_job_7d' ? 'Featured Job 7 ngày' : 'Featured Job 30 ngày'),
+        description: featureCode === 'employer_featured_job_7d'
+          ? 'Đẩy tin lên nhóm nổi bật trong 7 ngày.'
+          : 'Giữ tin trong nhóm nổi bật trong 30 ngày.',
+        price: Number(pricing?.don_gia || entitlement?.wallet_price || 0),
+        unit: pricing?.don_vi_tinh || entitlement?.wallet_unit || 'listing',
+      }
+    })
+    .filter((item) => item.price > 0)
+)
+
+const requiredSkills = computed(() => {
+  const manualSkills = (job.value?.ky_nang_yeu_caus || [])
+    .map((item) => item?.ky_nang?.ten_ky_nang)
+    .filter(Boolean)
+
+  const parsedSkills = (job.value?.parsing?.parsed_skills_json || [])
+    .map((item) => item?.skill_name || item?.ten_ky_nang || item?.name)
+    .filter(Boolean)
+
+  return [...new Set([...manualSkills, ...parsedSkills])]
+})
+
+const parsedRequirements = computed(() =>
+  (job.value?.parsing?.parsed_requirements_json || [])
+    .map((item) => {
+      if (typeof item === 'string') return item
+      return item?.requirement || item?.text || item?.value || item?.name || null
+    })
+    .filter(Boolean)
+)
+
+const parsedBenefits = computed(() =>
+  (job.value?.parsing?.parsed_benefits_json || [])
+    .map((item) => {
+      if (typeof item === 'string') return item
+      return item?.benefit || item?.text || item?.value || item?.name || null
+    })
+    .filter(Boolean)
+)
+const jdQualityWarnings = computed(() => Array.isArray(job.value?.parsing?.quality_warnings_json) ? job.value.parsing.quality_warnings_json : [])
+const jdSuggestedSkills = computed(() => Array.isArray(job.value?.parsing?.suggested_skills_json) ? job.value.parsing.suggested_skills_json : [])
+
+const upcomingApplications = computed(() => applications.value.slice(0, 6))
+const topShortlistItems = computed(() => shortlistItems.value.slice(0, 5))
+const canCompareShortlist = computed(() => selectedCompareProfileIds.value.length >= 2)
+const formatFeaturePrice = (feature) => {
+  if (!feature?.walletPrice) return 'Chưa cấu hình giá'
+  return `${formatCurrency(feature.walletPrice)}/${feature.walletUnit || 'lượt'}`
+}
+const canRunPaidFeature = (feature) => {
+  if (!feature) return true
+  if (feature.hasIncludedQuota) return true
+  if (!feature.walletPrice) return true
+  return feature.affordable
+}
+
+const loadBillingContext = async () => {
+  billingLoading.value = true
+  try {
+    const [walletResponse, pricingResponse, entitlementsResponse] = await Promise.all([
+      employerBillingService.getWallet(),
+      employerBillingService.getPricing(),
+      employerBillingService.getEntitlements(),
+    ])
+
+    billingWallet.value = walletResponse?.data?.wallet || null
+    billingPricing.value = pricingResponse?.data || []
+    billingEntitlements.value = entitlementsResponse?.data?.entitlements || []
+  } catch (error) {
+    billingWallet.value = null
+    billingPricing.value = []
+    billingEntitlements.value = []
+    notify.apiError(error, 'Không tải được dữ liệu billing employer.')
+  } finally {
+    billingLoading.value = false
+  }
+}
+
+const fetchJobDetail = async () => {
+  loading.value = true
+  try {
+    const [jobResponse, applicationResponse] = await Promise.all([
+      employerJobService.getJobById(route.params.id),
+      employerApplicationService.getApplications({
+        tin_tuyen_dung_id: route.params.id,
+        per_page: 50,
+      }),
+    ])
+
+    job.value = jobResponse?.data || null
+    applications.value = applicationResponse?.data?.data || []
+    if (job.value?.id) {
+      await fetchShortlist(false)
+    }
+  } catch (error) {
+    notify.apiError(error, 'Không tải được chi tiết tin tuyển dụng.')
+    await router.push('/employer/jobs')
+  } finally {
+    loading.value = false
+  }
+}
+
+const sponsorJob = async (featureCode) => {
+  if (!job.value?.id) return
+  if (!canMutateCurrentJob.value) {
+    notify.warning(canManageJobs.value
+      ? 'Bạn chỉ có thể đẩy nổi bật cho tin tuyển dụng mình phụ trách.'
+      : `Vai trò ${currentInternalRoleLabel.value} không thể đẩy nổi bật tin tuyển dụng.`)
+    return
+  }
+
+  sponsorLoading.value = featureCode
+  try {
+    const response = await employerJobService.sponsorJob(job.value.id, featureCode)
+    notify.success(response?.message || 'Đã kích hoạt featured listing cho tin tuyển dụng.')
+    await Promise.all([fetchJobDetail(), loadBillingContext()])
+  } catch (error) {
+    notify.apiError(error, 'Không thể kích hoạt featured listing cho tin tuyển dụng.')
+  } finally {
+    sponsorLoading.value = ''
+  }
+}
+
+const fetchShortlist = async (withAi = false) => {
+  if (!route.params.id) return
+
+  if (withAi) {
+    aiScoringLoading.value = true
+  } else {
+    shortlistLoading.value = true
+  }
+
+  try {
+    const response = await employerJobService.getShortlist(route.params.id, {
+      limit: 10,
+      scope: shortlistScope.value,
+      ai_explain: withAi,
+    })
+    shortlistItems.value = response?.data?.items || []
+    shortlistMeta.value = response?.data?.meta || null
+    selectedCompareProfileIds.value = []
+    comparisonResult.value = null
+    if (withAi) {
+      await loadBillingContext()
+    }
+  } catch (error) {
+    shortlistItems.value = []
+    shortlistMeta.value = null
+    selectedCompareProfileIds.value = []
+    comparisonResult.value = null
+    notify.apiError(error, 'Không tải được AI Shortlist cho tin tuyển dụng.')
+  } finally {
+    shortlistLoading.value = false
+    aiScoringLoading.value = false
+  }
+}
+
+const changeShortlistScope = async (scope) => {
+  if (shortlistScope.value === scope) return
+  shortlistScope.value = scope
+  await fetchShortlist(false)
+}
+
+const rescoreShortlistWithAi = async () => {
+  await fetchShortlist(true)
+}
+
+const isSelectedForCompare = (item) => selectedCompareProfileIds.value.includes(Number(item?.ho_so?.id || 0))
+
+const toggleCompareSelection = (item) => {
+  const profileId = Number(item?.ho_so?.id || 0)
+  if (!profileId) return
+
+  if (selectedCompareProfileIds.value.includes(profileId)) {
+    selectedCompareProfileIds.value = selectedCompareProfileIds.value.filter((id) => id !== profileId)
+    return
+  }
+
+  if (selectedCompareProfileIds.value.length >= 5) {
+    notify.warning('Chỉ có thể so sánh tối đa 5 CV trong một lần.')
+    return
+  }
+
+  selectedCompareProfileIds.value = [...selectedCompareProfileIds.value, profileId]
+}
+
+const compareShortlistCandidates = async () => {
+  if (!canCompareShortlist.value) {
+    notify.info('Vui lòng chọn ít nhất 2 CV để so sánh.')
+    return
+  }
+
+  comparingShortlist.value = true
+  try {
+    const response = await employerJobService.compareShortlistCandidates(route.params.id, selectedCompareProfileIds.value, { ai_explain: true })
+    comparisonResult.value = response?.data || null
+    await loadBillingContext()
+  } catch (error) {
+    comparisonResult.value = null
+    notify.apiError(error, 'Không so sánh được các ứng viên đã chọn.')
+  } finally {
+    comparingShortlist.value = false
+  }
+}
+
+const clearComparison = () => {
+  selectedCompareProfileIds.value = []
+  comparisonResult.value = null
+}
+
+const scoreTone = (score) => {
+  const value = Number(score || 0)
+  if (value >= 80) return 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-300'
+  if (value >= 65) return 'bg-blue-500/10 text-blue-600 dark:text-blue-300'
+  if (value >= 50) return 'bg-amber-500/10 text-amber-600 dark:text-amber-300'
+  return 'bg-rose-500/10 text-rose-600 dark:text-rose-300'
+}
+
+const confidenceTone = (level) => {
+  if (level === 'high') return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
+  if (level === 'medium') return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+  return 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300'
+}
+
+const explanationGroups = (structured) => [
+  { key: 'strengths', label: 'Điểm mạnh', items: structured?.strengths || [] },
+  { key: 'weaknesses', label: 'Điểm yếu', items: structured?.weaknesses || [] },
+  { key: 'risks', label: 'Rủi ro', items: structured?.risks || [] },
+  { key: 'interview_questions', label: 'Câu hỏi phỏng vấn', items: structured?.interview_questions || [] },
+].filter((group) => group.items.length)
+
+const fetchProtectedFile = async (url) => {
+  const token = getAuthToken()
+
+  if (!token) {
+    notify.warning('Vui lòng đăng nhập lại để xem file CV.')
+    return null
+  }
+
+  const response = await fetch(encodeURI(url), {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,*/*',
+    },
+  })
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`)
+  }
+
+  return response.blob()
+}
+
+const openShortlistCv = async (item) => {
+  const profile = item?.ho_so
+
+  if (!profile?.file_cv_url && !hasBuilderCv(profile)) {
+    notify.info('Hồ sơ này chưa có file CV hoặc dữ liệu CV tạo trên hệ thống để xem.')
+    return
+  }
+
+  if (!profile.file_cv_url && hasBuilderCv(profile)) {
+    const opened = openCvPrintPreview({
+      profile,
+      owner: item?.candidate,
+    })
+
+    if (!opened) {
+      notify.warning('Trình duyệt đang chặn cửa sổ xem CV. Hãy cho phép popup và thử lại.')
+    }
+    return
+  }
+
+  try {
+    const blob = await fetchProtectedFile(profile.file_cv_url)
+    if (!blob) return
+    const objectUrl = URL.createObjectURL(blob)
+    window.open(objectUrl, '_blank', 'noopener')
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000)
+  } catch (error) {
+    notify.error('Không mở được file CV. Vui lòng thử lại.')
+  }
+}
+
+const parseJob = async () => {
+  if (!job.value) return
+  if (!canMutateCurrentJob.value) {
+    notify.warning(canManageJobs.value
+      ? 'Bạn chỉ có thể parse JD cho tin tuyển dụng mình phụ trách.'
+      : `Vai trò ${currentInternalRoleLabel.value} không thể parse JD cho tin tuyển dụng.`)
+    return
+  }
+
+  parsingLoading.value = true
+  try {
+    const response = await employerJobService.parseJob(job.value.id)
+    const parseData = response?.data || null
+    notify.success('Đã gửi yêu cầu parse JD cho tin tuyển dụng.')
+    await fetchJobDetail()
+    if (parseData && job.value) {
+      job.value.parsing = {
+        ...(job.value.parsing || {}),
+        ...parseData,
+      }
+    }
+  } catch (error) {
+    notify.apiError(error, 'Không thể parse JD cho tin tuyển dụng.')
+  } finally {
+    parsingLoading.value = false
+  }
+}
+
+const toggleStatus = async () => {
+  if (!job.value) return
+  if (!canMutateCurrentJob.value) {
+    notify.warning(canManageJobs.value
+      ? 'Bạn chỉ có thể đổi trạng thái cho tin tuyển dụng mình phụ trách.'
+      : `Vai trò ${currentInternalRoleLabel.value} không thể đổi trạng thái tin tuyển dụng.`)
+    return
+  }
+
+  togglingStatus.value = true
+  try {
+    await employerJobService.toggleStatus(job.value.id)
+    notify.success(`Đã chuyển trạng thái sang ${Number(job.value.trang_thai) === 1 ? 'tạm ngưng' : 'đang hoạt động'}.`)
+    await fetchJobDetail()
+  } catch (error) {
+    notify.apiError(error, 'Không thể chuyển trạng thái tin tuyển dụng.')
+  } finally {
+    togglingStatus.value = false
+  }
+}
+
+onMounted(async () => {
+  await ensurePermissionsLoaded()
+  await Promise.all([fetchJobDetail(), loadBillingContext()])
+})
+</script>

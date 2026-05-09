@@ -1,89 +1,3 @@
-<script setup>
-import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { RouterLink } from 'vue-router'
-import { useNotifications } from '@/composables/useNotifications'
-
-const props = defineProps({
-  role: {
-    type: String,
-    required: true,
-  },
-  buttonClass: {
-    type: String,
-    default: 'relative p-2 text-slate-600 transition hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 rounded-full',
-  },
-  panelClass: {
-    type: String,
-    default: 'w-[360px]',
-  },
-  badgeClass: {
-    type: String,
-    default: 'border-white dark:border-slate-900',
-  },
-})
-
-const containerRef = ref(null)
-const open = ref(false)
-
-const {
-  items,
-  loading,
-  error,
-  unreadCount,
-  realtimeStatus,
-  realtimeStatusLabel,
-  isRealtimeConnected,
-  refresh,
-  markAsRead,
-  markAllAsRead,
-} = useNotifications(props.role)
-
-const titleMap = {
-  candidate: 'Thông báo ứng tuyển',
-  employer: 'Thông báo tuyển dụng',
-  admin: 'Thông báo vận hành',
-}
-
-const panelTitle = computed(() => titleMap[props.role] || 'Thông báo')
-const realtimeStatusTone = computed(() => {
-  if (isRealtimeConnected.value) return 'bg-emerald-500'
-  if (['connecting', 'idle'].includes(realtimeStatus.value)) return 'bg-amber-400'
-  if (realtimeStatus.value === 'disabled') return 'bg-slate-300 dark:bg-slate-600'
-  return 'bg-rose-500'
-})
-
-const closePanel = () => {
-  open.value = false
-}
-
-const togglePanel = async () => {
-  open.value = !open.value
-
-  if (open.value) {
-    await refresh()
-  }
-}
-
-const handleOutsideClick = (event) => {
-  if (!open.value || !containerRef.value) return
-  if (!containerRef.value.contains(event.target)) {
-    closePanel()
-  }
-}
-
-onMounted(() => {
-  if (typeof window !== 'undefined') {
-    window.addEventListener('click', handleOutsideClick)
-  }
-})
-
-onUnmounted(() => {
-  if (typeof window !== 'undefined') {
-    window.removeEventListener('click', handleOutsideClick)
-  }
-})
-</script>
-
 <template>
   <div ref="containerRef" class="relative">
     <button :class="buttonClass" type="button" @click.stop="togglePanel">
@@ -199,3 +113,89 @@ onUnmounted(() => {
     </transition>
   </div>
 </template>
+
+<script setup>
+import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { RouterLink } from 'vue-router'
+import { useNotifications } from '@/composables/useNotifications'
+
+const props = defineProps({
+  role: {
+    type: String,
+    required: true,
+  },
+  buttonClass: {
+    type: String,
+    default: 'relative p-2 text-slate-600 transition hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 rounded-full',
+  },
+  panelClass: {
+    type: String,
+    default: 'w-[360px]',
+  },
+  badgeClass: {
+    type: String,
+    default: 'border-white dark:border-slate-900',
+  },
+})
+
+const containerRef = ref(null)
+const open = ref(false)
+
+const {
+  items,
+  loading,
+  error,
+  unreadCount,
+  realtimeStatus,
+  realtimeStatusLabel,
+  isRealtimeConnected,
+  refresh,
+  markAsRead,
+  markAllAsRead,
+} = useNotifications(props.role)
+
+const titleMap = {
+  candidate: 'Thông báo ứng tuyển',
+  employer: 'Thông báo tuyển dụng',
+  admin: 'Thông báo vận hành',
+}
+
+const panelTitle = computed(() => titleMap[props.role] || 'Thông báo')
+const realtimeStatusTone = computed(() => {
+  if (isRealtimeConnected.value) return 'bg-emerald-500'
+  if (['connecting', 'idle'].includes(realtimeStatus.value)) return 'bg-amber-400'
+  if (realtimeStatus.value === 'disabled') return 'bg-slate-300 dark:bg-slate-600'
+  return 'bg-rose-500'
+})
+
+const closePanel = () => {
+  open.value = false
+}
+
+const togglePanel = async () => {
+  open.value = !open.value
+
+  if (open.value) {
+    await refresh()
+  }
+}
+
+const handleOutsideClick = (event) => {
+  if (!open.value || !containerRef.value) return
+  if (!containerRef.value.contains(event.target)) {
+    closePanel()
+  }
+}
+
+onMounted(() => {
+  if (typeof window !== 'undefined') {
+    window.addEventListener('click', handleOutsideClick)
+  }
+})
+
+onUnmounted(() => {
+  if (typeof window !== 'undefined') {
+    window.removeEventListener('click', handleOutsideClick)
+  }
+})
+</script>

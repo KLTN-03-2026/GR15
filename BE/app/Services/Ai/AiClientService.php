@@ -4,7 +4,9 @@ namespace App\Services\Ai;
 
 use App\Support\ApiErrorMessage;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\Pool;
 use Illuminate\Http\Client\RequestException;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 use Throwable;
@@ -52,6 +54,96 @@ class AiClientService
             'cv_profile' => $cvProfile,
             'jd_profile' => $jdProfile,
         ], 'cv_jd_matching');
+    }
+
+    public function matchCvJdParallel(array $requests): array
+    {
+        if ($requests === []) {
+            return [];
+        }
+
+        $uri = '/match/cv-jd';
+        $feature = 'cv_jd_matching';
+        $payloads = [];
+        $startedAt = microtime(true);
+
+        foreach ($requests as $key => $request) {
+            $payloads[$key] = [
+                'ho_so_id' => (int) ($request['ho_so_id'] ?? 0),
+                'tin_tuyen_dung_id' => (int) ($request['tin_tuyen_dung_id'] ?? 0),
+                'cv_profile' => $request['cv_profile'] ?? [],
+                'jd_profile' => $request['jd_profile'] ?? [],
+            ];
+        }
+
+        try {
+            $responses = Http::pool(function (Pool $pool) use ($payloads, $uri) {
+                $poolRequests = [];
+                foreach ($payloads as $key => $payload) {
+                    $poolRequests[] = $pool
+                        ->as((string) $key)
+                        ->timeout($this->timeout)
+                        ->acceptJson()
+                        ->asJson()
+                        ->post($this->baseUrl . $uri, $payload);
+                }
+
+                return $poolRequests;
+            });
+        } catch (Throwable $exception) {
+            foreach ($payloads as $payload) {
+                $this->usageLogger->logError($feature, $uri, $payload, $exception, $startedAt);
+            }
+
+            throw new RuntimeException(
+                ApiErrorMessage::fromThrowable($exception, 503, 'Không thể kết nối tới AI service.'),
+                0,
+                $exception
+            );
+        }
+
+        $results = [];
+        foreach ($payloads as $key => $payload) {
+            $response = $responses[(string) $key] ?? null;
+            if (!$response instanceof Response) {
+                $exception = new RuntimeException('AI service không trả về phản hồi cho hồ sơ này.');
+                $this->usageLogger->logError($feature, $uri, $payload, $exception, $startedAt);
+                $results[$key] = ['success' => false, 'error' => $exception->getMessage()];
+                continue;
+            }
+
+            if ($response->failed()) {
+                $message = $response->json('message')
+                    ?? $response->json('error')
+                    ?? $response->body()
+                    ?? 'AI service trả về lỗi.';
+                $exception = new RuntimeException(
+                    ApiErrorMessage::fromRawMessage((string) $message, $response->status(), 'AI service trả về lỗi.')
+                );
+                $this->usageLogger->logError($feature, $uri, $payload, $exception, $startedAt, $response->status());
+                $results[$key] = ['success' => false, 'error' => $exception->getMessage()];
+                continue;
+            }
+
+            $json = $response->json();
+            if (is_array($json) && ($json['success'] ?? true) === false) {
+                $exception = new RuntimeException(
+                    ApiErrorMessage::fromRawMessage(
+                        (string) ($json['error'] ?? $json['message'] ?? 'AI service trả về lỗi.'),
+                        $response->status(),
+                        'AI service trả về lỗi.'
+                    )
+                );
+                $this->usageLogger->logError($feature, $uri, $payload, $exception, $startedAt, $response->status());
+                $results[$key] = ['success' => false, 'error' => $exception->getMessage()];
+                continue;
+            }
+
+            $this->usageLogger->logSuccess($feature, $uri, $payload, $json, $startedAt, $response);
+            $results[$key] = is_array($json) ? $json : ['success' => false, 'error' => 'AI service trả về dữ liệu không hợp lệ.'];
+        }
+
+        return $results;
     }
 
     public function generateCoverLetter(

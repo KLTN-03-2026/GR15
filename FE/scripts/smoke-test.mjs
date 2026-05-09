@@ -20,7 +20,6 @@ assert.match(api, /getOnboarding/, 'onboarding API must be wired')
 assert.match(api, /downloadExport/, 'server-side application PDF export APIs must be wired')
 assert.match(api, /blobApiCall/, 'binary PDF download helper must exist')
 
-assert.match(router, /\/smart-job-alerts/, 'Smart Job Alerts route must exist')
 assert.match(router, /\/ai-center/, 'AI Center route must exist')
 assert.match(router, /\/saved-jobs/, 'Saved jobs route must exist')
 

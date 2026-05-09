@@ -129,7 +129,7 @@
   {"skill_name": "Account Management", "category": "sales_business", "aliases": ["account management", "quan ly khach hang"]},
   {"skill_name": "Lead Generation", "category": "sales_business", "aliases": ["lead generation", "tim kiem khach hang tiem nang"]},
   {"skill_name": "Business Analysis", "category": "business_analysis", "aliases": ["business analysis", "business analyst"]},
-  {"skill_name": "Requirement Gathering", "category": "business_analysis", "aliases": ["requirement gathering", "phan tich yeu cau"]},
+  {"skill_name": "Thu thập yêu cầu", "category": "business_analysis", "aliases": ["requirement gathering", "requirements gathering", "thu thap yeu cau", "thu thập yêu cầu", "phan tich yeu cau", "phân tích yêu cầu"]},
   {"skill_name": "User Story", "category": "business_analysis", "aliases": ["user story", "user stories"]},
   {"skill_name": "UAT", "category": "business_analysis", "aliases": ["uat", "user acceptance testing"]},
   {"skill_name": "Microsoft Word", "category": "office_admin", "aliases": ["microsoft word", "word"]},

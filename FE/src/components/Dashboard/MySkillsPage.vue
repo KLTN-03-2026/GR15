@@ -1,209 +1,3 @@
-<script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
-import { candidateSkillService } from '@/services/api'
-import { useNotify } from '@/composables/useNotify'
-
-const notify = useNotify()
-
-const isLoading = ref(true)
-const isSubmitting = ref(false)
-const catalogLoading = ref(false)
-const isEditMode = ref(false)
-const currentSkillId = ref(null)
-const deletingSkillId = ref(null)
-const skillToDelete = ref(null)
-
-const catalogOptions = ref([])
-const mySkills = ref([])
-
-const form = reactive({
-  ky_nang_id: '',
-  muc_do: '3',
-  nam_kinh_nghiem: '',
-  so_chung_chi: '',
-  hinh_anh: null,
-})
-
-const previewUrl = ref('')
-
-const levelOptions = [
-  { value: '1', label: '1 - Cơ bản' },
-  { value: '2', label: '2 - Trung bình' },
-  { value: '3', label: '3 - Khá' },
-  { value: '4', label: '4 - Giỏi' },
-  { value: '5', label: '5 - Chuyên gia' },
-]
-
-const levelLabel = (value) => {
-  return levelOptions.find(option => Number(option.value) === Number(value))?.label?.replace(/^\d+\s-\s/, '') || 'Chưa rõ'
-}
-
-const summary = computed(() => {
-  const total = mySkills.value.length
-  const averageLevel = total
-    ? (mySkills.value.reduce((sum, item) => sum + Number(item.muc_do || 0), 0) / total).toFixed(1)
-    : '0.0'
-  const totalYears = mySkills.value.reduce((sum, item) => sum + Number(item.nam_kinh_nghiem || 0), 0)
-  const totalCertificates = mySkills.value.reduce((sum, item) => sum + Number(item.so_chung_chi || 0), 0)
-
-  return {
-    total,
-    averageLevel,
-    totalYears,
-    totalCertificates,
-  }
-})
-
-const resetForm = () => {
-  form.ky_nang_id = ''
-  form.muc_do = '3'
-  form.nam_kinh_nghiem = ''
-  form.so_chung_chi = ''
-  form.hinh_anh = null
-  previewUrl.value = ''
-  isEditMode.value = false
-  currentSkillId.value = null
-}
-
-const normalizeCatalog = (payload) => {
-  const items = payload?.data?.data || payload?.data || []
-  catalogOptions.value = Array.isArray(items) ? items : []
-}
-
-const normalizeMySkills = (payload) => {
-  const items = payload?.data || payload?.data?.data || []
-  mySkills.value = Array.isArray(items) ? items : []
-}
-
-const loadCatalog = async () => {
-  catalogLoading.value = true
-  try {
-    const response = await candidateSkillService.getCatalog({ per_page: 100 })
-    normalizeCatalog(response)
-  } catch (error) {
-    notify.apiError(error, 'Không thể tải danh mục kỹ năng.')
-  } finally {
-    catalogLoading.value = false
-  }
-}
-
-const loadMySkills = async () => {
-  isLoading.value = true
-  try {
-    const response = await candidateSkillService.getMySkills()
-    normalizeMySkills(response)
-  } catch (error) {
-    notify.apiError(error, 'Không thể tải kỹ năng cá nhân.')
-  } finally {
-    isLoading.value = false
-  }
-}
-
-const onFileChange = (event) => {
-  const [file] = event.target.files || []
-  form.hinh_anh = file || null
-  previewUrl.value = file ? URL.createObjectURL(file) : ''
-}
-
-const buildPayload = () => {
-  const payload = new FormData()
-
-  if (!isEditMode.value) {
-    payload.append('ky_nang_id', form.ky_nang_id)
-  }
-
-  payload.append('muc_do', form.muc_do)
-
-  if (form.nam_kinh_nghiem !== '') {
-    payload.append('nam_kinh_nghiem', String(form.nam_kinh_nghiem))
-  }
-
-  if (form.so_chung_chi !== '') {
-    payload.append('so_chung_chi', String(form.so_chung_chi))
-  }
-
-  if (form.hinh_anh instanceof File) {
-    payload.append('hinh_anh', form.hinh_anh)
-  }
-
-  return payload
-}
-
-const validateForm = () => {
-  if (!isEditMode.value && !form.ky_nang_id) {
-    notify.warning('Vui lòng chọn kỹ năng cần thêm.')
-    return false
-  }
-
-  return true
-}
-
-const handleSubmit = async () => {
-  if (!validateForm()) return
-
-  isSubmitting.value = true
-
-  try {
-    const payload = buildPayload()
-
-    if (isEditMode.value && currentSkillId.value) {
-      await candidateSkillService.updateSkill(currentSkillId.value, payload)
-      notify.success('Cập nhật kỹ năng thành công.')
-    } else {
-      await candidateSkillService.createSkill(payload)
-      notify.success('Thêm kỹ năng thành công.')
-    }
-
-    resetForm()
-    await loadMySkills()
-  } catch (error) {
-    notify.apiError(error, isEditMode.value ? 'Không thể cập nhật kỹ năng.' : 'Không thể thêm kỹ năng.')
-  } finally {
-    isSubmitting.value = false
-  }
-}
-
-const handleEdit = (item) => {
-  isEditMode.value = true
-  currentSkillId.value = item.id
-  form.ky_nang_id = String(item.ky_nang_id || '')
-  form.muc_do = String(item.muc_do || '3')
-  form.nam_kinh_nghiem = item.nam_kinh_nghiem ?? ''
-  form.so_chung_chi = item.so_chung_chi ?? ''
-  form.hinh_anh = null
-  previewUrl.value = item.hinh_anh_url || ''
-}
-
-const askDelete = (item) => {
-  skillToDelete.value = item
-}
-
-const confirmDelete = async () => {
-  if (!skillToDelete.value) return
-
-  deletingSkillId.value = skillToDelete.value.id
-  try {
-    await candidateSkillService.deleteSkill(skillToDelete.value.id)
-    notify.success('Xóa kỹ năng thành công.')
-
-    if (currentSkillId.value === skillToDelete.value.id) {
-      resetForm()
-    }
-
-    skillToDelete.value = null
-    await loadMySkills()
-  } catch (error) {
-    notify.apiError(error, 'Không thể xóa kỹ năng.')
-  } finally {
-    deletingSkillId.value = null
-  }
-}
-
-onMounted(async () => {
-  await Promise.all([loadCatalog(), loadMySkills()])
-})
-</script>
-
 <template>
   <div class="min-h-screen text-slate-900 dark:text-white">
     <section class="mx-auto max-w-7xl px-6 py-8">
@@ -479,3 +273,209 @@ onMounted(async () => {
     </div>
   </div>
 </template>
+
+<script setup>
+import { computed, onMounted, reactive, ref } from 'vue'
+import { candidateSkillService } from '@/services/api'
+import { useNotify } from '@/composables/useNotify'
+
+const notify = useNotify()
+
+const isLoading = ref(true)
+const isSubmitting = ref(false)
+const catalogLoading = ref(false)
+const isEditMode = ref(false)
+const currentSkillId = ref(null)
+const deletingSkillId = ref(null)
+const skillToDelete = ref(null)
+
+const catalogOptions = ref([])
+const mySkills = ref([])
+
+const form = reactive({
+  ky_nang_id: '',
+  muc_do: '3',
+  nam_kinh_nghiem: '',
+  so_chung_chi: '',
+  hinh_anh: null,
+})
+
+const previewUrl = ref('')
+
+const levelOptions = [
+  { value: '1', label: '1 - Cơ bản' },
+  { value: '2', label: '2 - Trung bình' },
+  { value: '3', label: '3 - Khá' },
+  { value: '4', label: '4 - Giỏi' },
+  { value: '5', label: '5 - Chuyên gia' },
+]
+
+const levelLabel = (value) => {
+  return levelOptions.find(option => Number(option.value) === Number(value))?.label?.replace(/^\d+\s-\s/, '') || 'Chưa rõ'
+}
+
+const summary = computed(() => {
+  const total = mySkills.value.length
+  const averageLevel = total
+    ? (mySkills.value.reduce((sum, item) => sum + Number(item.muc_do || 0), 0) / total).toFixed(1)
+    : '0.0'
+  const totalYears = mySkills.value.reduce((sum, item) => sum + Number(item.nam_kinh_nghiem || 0), 0)
+  const totalCertificates = mySkills.value.reduce((sum, item) => sum + Number(item.so_chung_chi || 0), 0)
+
+  return {
+    total,
+    averageLevel,
+    totalYears,
+    totalCertificates,
+  }
+})
+
+const resetForm = () => {
+  form.ky_nang_id = ''
+  form.muc_do = '3'
+  form.nam_kinh_nghiem = ''
+  form.so_chung_chi = ''
+  form.hinh_anh = null
+  previewUrl.value = ''
+  isEditMode.value = false
+  currentSkillId.value = null
+}
+
+const normalizeCatalog = (payload) => {
+  const items = payload?.data?.data || payload?.data || []
+  catalogOptions.value = Array.isArray(items) ? items : []
+}
+
+const normalizeMySkills = (payload) => {
+  const items = payload?.data || payload?.data?.data || []
+  mySkills.value = Array.isArray(items) ? items : []
+}
+
+const loadCatalog = async () => {
+  catalogLoading.value = true
+  try {
+    const response = await candidateSkillService.getCatalog({ per_page: 100 })
+    normalizeCatalog(response)
+  } catch (error) {
+    notify.apiError(error, 'Không thể tải danh mục kỹ năng.')
+  } finally {
+    catalogLoading.value = false
+  }
+}
+
+const loadMySkills = async () => {
+  isLoading.value = true
+  try {
+    const response = await candidateSkillService.getMySkills()
+    normalizeMySkills(response)
+  } catch (error) {
+    notify.apiError(error, 'Không thể tải kỹ năng cá nhân.')
+  } finally {
+    isLoading.value = false
+  }
+}
+
+const onFileChange = (event) => {
+  const [file] = event.target.files || []
+  form.hinh_anh = file || null
+  previewUrl.value = file ? URL.createObjectURL(file) : ''
+}
+
+const buildPayload = () => {
+  const payload = new FormData()
+
+  if (!isEditMode.value) {
+    payload.append('ky_nang_id', form.ky_nang_id)
+  }
+
+  payload.append('muc_do', form.muc_do)
+
+  if (form.nam_kinh_nghiem !== '') {
+    payload.append('nam_kinh_nghiem', String(form.nam_kinh_nghiem))
+  }
+
+  if (form.so_chung_chi !== '') {
+    payload.append('so_chung_chi', String(form.so_chung_chi))
+  }
+
+  if (form.hinh_anh instanceof File) {
+    payload.append('hinh_anh', form.hinh_anh)
+  }
+
+  return payload
+}
+
+const validateForm = () => {
+  if (!isEditMode.value && !form.ky_nang_id) {
+    notify.warning('Vui lòng chọn kỹ năng cần thêm.')
+    return false
+  }
+
+  return true
+}
+
+const handleSubmit = async () => {
+  if (!validateForm()) return
+
+  isSubmitting.value = true
+
+  try {
+    const payload = buildPayload()
+
+    if (isEditMode.value && currentSkillId.value) {
+      await candidateSkillService.updateSkill(currentSkillId.value, payload)
+      notify.success('Cập nhật kỹ năng thành công.')
+    } else {
+      await candidateSkillService.createSkill(payload)
+      notify.success('Thêm kỹ năng thành công.')
+    }
+
+    resetForm()
+    await loadMySkills()
+  } catch (error) {
+    notify.apiError(error, isEditMode.value ? 'Không thể cập nhật kỹ năng.' : 'Không thể thêm kỹ năng.')
+  } finally {
+    isSubmitting.value = false
+  }
+}
+
+const handleEdit = (item) => {
+  isEditMode.value = true
+  currentSkillId.value = item.id
+  form.ky_nang_id = String(item.ky_nang_id || '')
+  form.muc_do = String(item.muc_do || '3')
+  form.nam_kinh_nghiem = item.nam_kinh_nghiem ?? ''
+  form.so_chung_chi = item.so_chung_chi ?? ''
+  form.hinh_anh = null
+  previewUrl.value = item.hinh_anh_url || ''
+}
+
+const askDelete = (item) => {
+  skillToDelete.value = item
+}
+
+const confirmDelete = async () => {
+  if (!skillToDelete.value) return
+
+  deletingSkillId.value = skillToDelete.value.id
+  try {
+    await candidateSkillService.deleteSkill(skillToDelete.value.id)
+    notify.success('Xóa kỹ năng thành công.')
+
+    if (currentSkillId.value === skillToDelete.value.id) {
+      resetForm()
+    }
+
+    skillToDelete.value = null
+    await loadMySkills()
+  } catch (error) {
+    notify.apiError(error, 'Không thể xóa kỹ năng.')
+  } finally {
+    deletingSkillId.value = null
+  }
+}
+
+onMounted(async () => {
+  await Promise.all([loadCatalog(), loadMySkills()])
+})
+</script>

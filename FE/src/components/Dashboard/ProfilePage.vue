@@ -1,123 +1,3 @@
-<script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
-import { authService } from '@/services/api'
-import { useNotify } from '@/composables/useNotify'
-import { updateStoredCandidate } from '@/utils/authStorage'
-
-const notify = useNotify()
-
-const loading = ref(false)
-const saving = ref(false)
-const avatarPreview = ref('')
-const selectedAvatarFile = ref(null)
-
-const form = reactive({
-  ho_ten: '',
-  email: '',
-  so_dien_thoai: '',
-  ngay_sinh: '',
-  gioi_tinh: '',
-  dia_chi: '',
-  anh_dai_dien: '',
-  ten_vai_tro: '',
-})
-
-const genderOptions = [
-  { value: 'nam', label: 'Nam' },
-  { value: 'nu', label: 'Nữ' },
-  { value: 'khac', label: 'Khác' },
-]
-
-const avatarLetter = computed(() => (form.ho_ten || 'Ứng viên').trim().charAt(0).toUpperCase() || 'U')
-
-const profileStrength = computed(() => {
-  let score = 30
-  if (form.ho_ten) score += 15
-  if (form.email) score += 10
-  if (form.so_dien_thoai) score += 10
-  if (form.ngay_sinh) score += 10
-  if (form.gioi_tinh) score += 5
-  if (form.dia_chi) score += 10
-  if (form.anh_dai_dien || avatarPreview.value) score += 10
-  return Math.min(100, score)
-})
-
-const getAvatarUrl = (path) => {
-  if (!path) return ''
-  if (path.startsWith('http')) return path
-  return `http://127.0.0.1:8000/storage/${path}`
-}
-
-const syncStoredUser = (user) => {
-  if (!user) return
-  updateStoredCandidate(user)
-}
-
-const fillForm = (user) => {
-  form.ho_ten = user?.ho_ten || ''
-  form.email = user?.email || ''
-  form.so_dien_thoai = user?.so_dien_thoai || ''
-  form.ngay_sinh = user?.ngay_sinh ? String(user.ngay_sinh).slice(0, 10) : ''
-  form.gioi_tinh = user?.gioi_tinh || ''
-  form.dia_chi = user?.dia_chi || ''
-  form.anh_dai_dien = user?.anh_dai_dien || ''
-  form.ten_vai_tro = user?.ten_vai_tro || 'Ứng viên'
-  avatarPreview.value = user?.avatar_url || getAvatarUrl(user?.anh_dai_dien || '')
-}
-
-const fetchProfile = async () => {
-  loading.value = true
-  try {
-    const response = await authService.getProfile()
-    const user = response?.data || null
-    fillForm(user)
-    syncStoredUser(user)
-  } catch (error) {
-    notify.apiError(error, 'Không tải được hồ sơ cá nhân.')
-  } finally {
-    loading.value = false
-  }
-}
-
-const handleAvatarChange = (event) => {
-  const file = event.target.files?.[0]
-  if (!file) return
-
-  selectedAvatarFile.value = file
-  avatarPreview.value = URL.createObjectURL(file)
-}
-
-const submitProfile = async () => {
-  saving.value = true
-  try {
-    const payload = new FormData()
-    payload.append('ho_ten', form.ho_ten)
-    payload.append('email', form.email)
-    payload.append('so_dien_thoai', form.so_dien_thoai || '')
-    payload.append('ngay_sinh', form.ngay_sinh || '')
-    payload.append('gioi_tinh', form.gioi_tinh || '')
-    payload.append('dia_chi', form.dia_chi || '')
-
-    if (selectedAvatarFile.value) {
-      payload.append('anh_dai_dien', selectedAvatarFile.value)
-    }
-
-    const response = await authService.updateProfile(payload)
-    const updatedUser = response?.data || null
-    fillForm(updatedUser)
-    syncStoredUser(updatedUser)
-    selectedAvatarFile.value = null
-    notify.success('Cập nhật hồ sơ cá nhân thành công.')
-  } catch (error) {
-    notify.apiError(error, 'Không thể cập nhật hồ sơ cá nhân.')
-  } finally {
-    saving.value = false
-  }
-}
-
-onMounted(fetchProfile)
-</script>
-
 <template>
   <div class="max-w-5xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8">
     <aside class="lg:col-span-4 flex flex-col gap-6">
@@ -271,3 +151,123 @@ onMounted(fetchProfile)
     </div>
   </div>
 </template>
+
+<script setup>
+import { computed, onMounted, reactive, ref } from 'vue'
+import { authService } from '@/services/api'
+import { useNotify } from '@/composables/useNotify'
+import { updateStoredCandidate } from '@/utils/authStorage'
+
+const notify = useNotify()
+
+const loading = ref(false)
+const saving = ref(false)
+const avatarPreview = ref('')
+const selectedAvatarFile = ref(null)
+
+const form = reactive({
+  ho_ten: '',
+  email: '',
+  so_dien_thoai: '',
+  ngay_sinh: '',
+  gioi_tinh: '',
+  dia_chi: '',
+  anh_dai_dien: '',
+  ten_vai_tro: '',
+})
+
+const genderOptions = [
+  { value: 'nam', label: 'Nam' },
+  { value: 'nu', label: 'Nữ' },
+  { value: 'khac', label: 'Khác' },
+]
+
+const avatarLetter = computed(() => (form.ho_ten || 'Ứng viên').trim().charAt(0).toUpperCase() || 'U')
+
+const profileStrength = computed(() => {
+  let score = 30
+  if (form.ho_ten) score += 15
+  if (form.email) score += 10
+  if (form.so_dien_thoai) score += 10
+  if (form.ngay_sinh) score += 10
+  if (form.gioi_tinh) score += 5
+  if (form.dia_chi) score += 10
+  if (form.anh_dai_dien || avatarPreview.value) score += 10
+  return Math.min(100, score)
+})
+
+const getAvatarUrl = (path) => {
+  if (!path) return ''
+  if (path.startsWith('http')) return path
+  return `http://127.0.0.1:8000/storage/${path}`
+}
+
+const syncStoredUser = (user) => {
+  if (!user) return
+  updateStoredCandidate(user)
+}
+
+const fillForm = (user) => {
+  form.ho_ten = user?.ho_ten || ''
+  form.email = user?.email || ''
+  form.so_dien_thoai = user?.so_dien_thoai || ''
+  form.ngay_sinh = user?.ngay_sinh ? String(user.ngay_sinh).slice(0, 10) : ''
+  form.gioi_tinh = user?.gioi_tinh || ''
+  form.dia_chi = user?.dia_chi || ''
+  form.anh_dai_dien = user?.anh_dai_dien || ''
+  form.ten_vai_tro = user?.ten_vai_tro || 'Ứng viên'
+  avatarPreview.value = user?.avatar_url || getAvatarUrl(user?.anh_dai_dien || '')
+}
+
+const fetchProfile = async () => {
+  loading.value = true
+  try {
+    const response = await authService.getProfile()
+    const user = response?.data || null
+    fillForm(user)
+    syncStoredUser(user)
+  } catch (error) {
+    notify.apiError(error, 'Không tải được hồ sơ cá nhân.')
+  } finally {
+    loading.value = false
+  }
+}
+
+const handleAvatarChange = (event) => {
+  const file = event.target.files?.[0]
+  if (!file) return
+
+  selectedAvatarFile.value = file
+  avatarPreview.value = URL.createObjectURL(file)
+}
+
+const submitProfile = async () => {
+  saving.value = true
+  try {
+    const payload = new FormData()
+    payload.append('ho_ten', form.ho_ten)
+    payload.append('email', form.email)
+    payload.append('so_dien_thoai', form.so_dien_thoai || '')
+    payload.append('ngay_sinh', form.ngay_sinh || '')
+    payload.append('gioi_tinh', form.gioi_tinh || '')
+    payload.append('dia_chi', form.dia_chi || '')
+
+    if (selectedAvatarFile.value) {
+      payload.append('anh_dai_dien', selectedAvatarFile.value)
+    }
+
+    const response = await authService.updateProfile(payload)
+    const updatedUser = response?.data || null
+    fillForm(updatedUser)
+    syncStoredUser(updatedUser)
+    selectedAvatarFile.value = null
+    notify.success('Cập nhật hồ sơ cá nhân thành công.')
+  } catch (error) {
+    notify.apiError(error, 'Không thể cập nhật hồ sơ cá nhân.')
+  } finally {
+    saving.value = false
+  }
+}
+
+onMounted(fetchProfile)
+</script>
