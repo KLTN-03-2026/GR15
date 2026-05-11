@@ -239,7 +239,7 @@ def should_use_fast_path(message: str, *, intent: str | None = None) -> bool:
 def build_template_answer(question: str, context: dict, history: list[dict], intent: str) -> str:
     context = ensure_chat_mapping(context)
     candidate = ensure_chat_mapping(context.get("candidate_profile"))
-    report = ensure_chat_mapping(context.get("career_report"))
+    report = {}
     matches = normalize_match_entries(context.get("top_matching_jobs"))
     related_job = ensure_chat_mapping(context.get("related_job"))
     rag_context = ensure_chat_mapping(context.get("rag_context"))
@@ -343,7 +343,7 @@ def build_template_answer(question: str, context: dict, history: list[dict], int
         return "\n".join(lines)
 
     if intent == INTENT_CAREER_DIRECTION:
-        role = report.get("nghe_de_xuat") or related_job.get("title") or "Backend Developer"
+        role = related_job.get("title") or candidate.get("vi_tri_ung_tuyen_muc_tieu") or "vị trí mục tiêu hiện tại"
         alternatives = _alternative_roles(report, role)
         lines = [
             "Đề xuất chính:",
@@ -407,8 +407,12 @@ def build_template_answer(question: str, context: dict, history: list[dict], int
         return "\n".join(lines)
 
     if intent == INTENT_GENERAL_CAREER:
-        role = report.get("nghe_de_xuat") or related_job.get("title") or "hướng nghề hiện tại"
-        strengths = extract_report_skill_hints(report).get("strength_categories") or []
+        role = related_job.get("title") or candidate.get("vi_tri_ung_tuyen_muc_tieu") or "hướng nghề hiện tại"
+        strengths = _unique_list([
+            *(candidate.get("parsed_skills") or []),
+            *(candidate.get("builder_skills") or []),
+            *_collect_matched_skills(matches),
+        ])
         lines = [
             f"Hướng nghề phù hợp nhất hiện tại là: {role}.",
         ]
@@ -617,7 +621,6 @@ def _has_chat_context(context: dict) -> bool:
     return bool(
         context.get("conversation_summary")
         or ensure_chat_mapping(context.get("candidate_profile")).get("parsed_skills")
-        or context.get("career_report")
         or context.get("top_matching_jobs")
         or context.get("related_job")
     )
@@ -638,10 +641,6 @@ def _collect_missing_skills(matches: list[dict], report: dict) -> list[str]:
             if skill and skill not in result:
                 result.append(skill)
 
-    extra = extract_report_skill_hints(report).get("skills") or []
-    for skill in extra:
-        if skill and skill not in result:
-            result.append(skill)
     return result
 
 
@@ -718,10 +717,10 @@ def _build_career_path_simulator_answer(
     related_job: dict,
 ) -> str:
     explicit_focus = _extract_learning_focus(question)
+    explicit_duration = _extract_learning_duration(question)
     target_industry = candidate.get("ten_nganh_nghe_muc_tieu")
     target_role = (
         candidate.get("vi_tri_ung_tuyen_muc_tieu")
-        or report.get("nghe_de_xuat")
         or related_job.get("title")
         or (matches[0].get("job_title") if matches else None)
         or "vị trí mục tiêu hiện tại"
@@ -737,12 +736,23 @@ def _build_career_path_simulator_answer(
             explicit_focus,
             current_skills=current_skills,
             target_industry=target_industry,
+            duration=explicit_duration,
         )
 
     missing_skills = _collect_missing_skills(matches, report)
     jobs = _job_candidates(matches)
     alternative_roles = _alternative_roles(report, str(target_role))
     current_level = _infer_current_level(candidate, matches)
+
+    if explicit_duration and not explicit_duration["is_default_90_day_plan"]:
+        return _build_custom_duration_learning_plan(
+            duration=explicit_duration,
+            target_role=str(target_role),
+            target_industry=target_industry,
+            current_skills=current_skills,
+            missing_skills=missing_skills,
+            jobs=jobs,
+        )
 
     lines = [
         "Mô phỏng lộ trình nghề nghiệp 30/60/90 ngày:",
@@ -819,12 +829,23 @@ def _build_explicit_learning_focus_answer(
     *,
     current_skills: list[str],
     target_industry: str | None = None,
+    duration: dict | None = None,
 ) -> str:
     label = focus["label"]
     track = focus["track"]
     track_config = _learning_track_config(track)
     relevant_skills = _filter_focus_relevant_skills(current_skills, track_config["keywords"])
     current_level = _infer_focus_level(relevant_skills)
+
+    if duration and not duration["is_default_90_day_plan"]:
+        return _build_custom_duration_learning_plan(
+            duration=duration,
+            target_role=label,
+            target_industry=target_industry,
+            current_skills=relevant_skills,
+            missing_skills=track_config["core_topics"],
+            jobs=[],
+        )
 
     lines = [
         "Mô phỏng lộ trình nghề nghiệp 30/60/90 ngày:",
@@ -928,6 +949,117 @@ def _normalize_string_list(value) -> list[str]:
         normalized.append(text)
 
     return normalized
+
+
+def _extract_learning_duration(question: str) -> dict | None:
+    normalized = normalize_search_text(question)
+    explicit_306090 = any(marker in normalized for marker in ["30 60 90", "30/60/90", "30-60-90"])
+    if explicit_306090:
+        return {
+            "label": "30/60/90 ngày",
+            "unit": "day",
+            "amount": 90,
+            "is_default_90_day_plan": True,
+        }
+
+    patterns = [
+        (r"(\d{1,2})\s*(?:ngay|ngày|day|days)\b", "day", "ngày"),
+        (r"(\d{1,2})\s*(?:tuan|tuần|week|weeks)\b", "week", "tuần"),
+        (r"(\d{1,2})\s*(?:thang|tháng|month|months)\b", "month", "tháng"),
+    ]
+    for pattern, unit, unit_label in patterns:
+        match = re.search(pattern, normalized)
+        if not match:
+            continue
+        amount = int(match.group(1))
+        return {
+            "label": f"{amount} {unit_label}",
+            "unit": unit,
+            "amount": amount,
+            "is_default_90_day_plan": unit == "month" and amount == 3,
+        }
+
+    if any(marker in normalized for marker in ["quy toi", "quý tới"]):
+        return {"label": "3 tháng", "unit": "month", "amount": 3, "is_default_90_day_plan": True}
+
+    return None
+
+
+def _build_custom_duration_learning_plan(
+    *,
+    duration: dict,
+    target_role: str,
+    target_industry: str | None,
+    current_skills: list[str],
+    missing_skills: list[str],
+    jobs: list[str],
+) -> str:
+    label = duration["label"]
+    phases = _duration_phase_labels(duration)
+    priority_skills = _unique_list([*missing_skills, *current_skills])[:6]
+    lines = [
+        f"Lộ trình {label}:",
+        f"- Mục tiêu chính: {target_role}.",
+    ]
+    if target_industry:
+        lines.append(f"- Ngành mục tiêu: {target_industry}.")
+    if current_skills:
+        lines.append("- Nền tảng đang có: " + ", ".join(current_skills[:5]) + ".")
+    if missing_skills:
+        lines.append("- Khoảng cách cần bù: " + ", ".join(missing_skills[:5]) + ".")
+
+    phase_actions = [
+        [
+            "Rà soát JD/CV đang chọn, đưa kỹ năng khớp nhất lên phần đầu CV.",
+            "Chọn 1 kỹ năng ưu tiên để học sâu và ghi lại ví dụ chứng minh năng lực.",
+        ],
+        [
+            "Làm một bài thực hành nhỏ bám đúng kỹ năng còn thiếu hoặc yêu cầu trong JD.",
+            "Viết lại mô tả dự án/kinh nghiệm theo hướng có bối cảnh, việc đã làm và kết quả.",
+        ],
+        [
+            "Luyện trả lời phỏng vấn cho vị trí mục tiêu và chuẩn bị thư xin việc ngắn theo JD.",
+            "Đối chiếu lại CV với tin tuyển dụng đang chọn để chốt các điểm cần chỉnh cuối.",
+        ],
+    ]
+    for index, phase_label in enumerate(phases):
+        actions = phase_actions[min(index, len(phase_actions) - 1)]
+        lines.extend(["", f"{phase_label}:", *[f"- {item}" for item in actions]])
+        if priority_skills:
+            lines.append("- Trọng tâm kỹ năng: " + ", ".join(priority_skills[index:index + 2] or priority_skills[:2]) + ".")
+
+    lines.extend([
+        "",
+        "Mốc kiểm tra:",
+        "- CV có ít nhất 1 minh chứng mới bám sát JD.",
+        "- Câu trả lời phỏng vấn nêu được ví dụ cụ thể thay vì chỉ nói chung chung.",
+    ])
+    if jobs:
+        lines.append("- Ưu tiên đối chiếu với vị trí đang gần nhất: " + jobs[0] + ".")
+
+    return "\n".join(lines)
+
+
+def _duration_phase_labels(duration: dict) -> list[str]:
+    unit = duration["unit"]
+    amount = int(duration["amount"])
+    if unit == "day":
+        if amount >= 60:
+            return ["30 ngày đầu", "Ngày 31-60", f"Ngày 61-{amount}"]
+        if amount >= 30:
+            return ["10 ngày đầu", "Giai đoạn giữa", f"Đến ngày {amount}"]
+        if amount <= 14:
+            return ["Giai đoạn 1", "Giai đoạn 2"]
+        return ["Tuần 1", "Tuần 2-3", f"Đến ngày {amount}"]
+    if unit == "week":
+        if amount <= 2:
+            return ["Tuần đầu", "Tuần cuối"]
+        return ["1/3 đầu", "1/3 giữa", "1/3 cuối"]
+    if unit == "month":
+        if amount <= 2:
+            return ["Tháng 1", f"Tháng {amount}"]
+        return ["Giai đoạn đầu", "Giai đoạn giữa", "Giai đoạn cuối"]
+    return ["Giai đoạn 1", "Giai đoạn 2", "Giai đoạn 3"]
 
 
 def _extract_learning_focus(question: str) -> dict | None:

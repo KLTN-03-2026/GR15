@@ -19,7 +19,6 @@ class InterviewRound extends Model
         'trang_thai',
         'ngay_hen_phong_van',
         'hinh_thuc_phong_van',
-        'nguoi_phong_van',
         'interviewer_user_id',
         'link_phong_van',
         'trang_thai_tham_gia',
@@ -43,13 +42,28 @@ class InterviewRound extends Model
         self::TRANG_THAI_HUY,
     ];
 
+    public const LOAI_HR = 'hr';
+    public const LOAI_TECHNICAL = 'technical';
+    public const LOAI_MANAGER = 'manager';
+    public const LOAI_FINAL = 'final';
+    public const LOAI_CULTURE = 'culture';
+    public const LOAI_OTHER = 'other';
+
     public const LOAI_VONG_LIST = [
-        'hr',
-        'technical',
-        'manager',
-        'final',
-        'culture',
-        'other',
+        self::LOAI_HR,
+        self::LOAI_TECHNICAL,
+        self::LOAI_MANAGER,
+        self::LOAI_FINAL,
+        self::LOAI_CULTURE,
+        self::LOAI_OTHER,
+    ];
+
+    public const KET_QUA_DAT = 'pass';
+    public const KET_QUA_ROT = 'fail';
+
+    public const KET_QUA_LIST = [
+        self::KET_QUA_DAT,
+        self::KET_QUA_ROT,
     ];
 
     protected $casts = [

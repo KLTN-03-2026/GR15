@@ -130,9 +130,7 @@
               </td>
             </tr>
           </template>
-
-
-<template v-else-if="users.length === 0">
+          <template v-else-if="users.length === 0">
             <tr>
               <td colspan="5" class="px-6 py-8 text-center text-slate-500">
                 <span class="material-symbols-outlined text-3xl mb-2">inbox</span>

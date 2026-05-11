@@ -3,6 +3,7 @@
 namespace App\Events;
 
 use App\Models\UngTuyen;
+use App\Support\EncodedId;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
@@ -40,6 +41,7 @@ class ApplicationChanged implements ShouldBroadcastNow
             payload: [
                 'ung_tuyen_id' => (int) $application->id,
                 'tin_tuyen_dung_id' => (int) $application->tin_tuyen_dung_id,
+                'tin_tuyen_dung_encoded_id' => EncodedId::encode((int) $application->tin_tuyen_dung_id),
                 'tin_tuyen_dung_tieu_de' => $application->tinTuyenDung?->tieu_de,
                 'trang_thai' => (int) $application->trang_thai,
                 'trang_thai_offer' => $application->trang_thai_offer !== null ? (int) $application->trang_thai_offer : null,

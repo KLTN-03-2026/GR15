@@ -121,7 +121,7 @@
         </div>
         <div class="flex items-center gap-3">
           <span class="inline-flex h-2.5 w-2.5 rounded-full bg-emerald-400"></span>
-          <span class="text-xs font-bold uppercase tracking-[0.28em] text-slate-500">AI Agent Online</span>
+          <span class="max-w-[420px] truncate text-xs font-bold uppercase tracking-[0.18em] text-slate-500">AI AGENT ONLINE</span>
         </div>
       </header>
 
@@ -185,6 +185,7 @@
             v-model="mockAnswerInput"
             class="max-h-32 min-h-[44px] flex-1 resize-none bg-transparent text-base leading-7 text-slate-900 outline-none placeholder:text-slate-400"
             placeholder="Nhập câu trả lời của bạn tại đây..."
+            :disabled="activeMockCompleted"
             @keydown.enter.exact.prevent="submitMockAnswer"
           />
           <button
@@ -220,7 +221,7 @@
             </button>
             <button
               class="rounded-xl bg-slate-950 px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
-              :disabled="!activeMockSessionId || generatingMockReport"
+              :disabled="!mockCanGenerateReport"
               type="button"
               @click="generateMockReport"
             >
@@ -439,7 +440,15 @@ const activeMockSession = computed(() =>
 
 const mockSessionOptions = computed(() => mockSessions.value.slice(0, 6))
 const hasMockMessages = computed(() => mockMessages.value.length > 0)
-const mockCanAnswer = computed(() => Boolean(activeMockSessionId.value && mockAnswerInput.value.trim() && !answeringMock.value))
+const activeMockCompleted = computed(() =>
+  Number(activeMockSession.value?.status || 0) === 2 || Boolean(mockReport.value)
+)
+const mockCanAnswer = computed(() =>
+  Boolean(activeMockSessionId.value && mockAnswerInput.value.trim() && !answeringMock.value && !activeMockCompleted.value)
+)
+const mockCanGenerateReport = computed(() =>
+  Boolean(activeMockSessionId.value && !generatingMockReport.value && !mockReport.value)
+)
 const mockCanCreateSession = computed(() =>
   Boolean(
     !creatingMockSession.value
@@ -496,6 +505,13 @@ const mockStatusTone = computed(() =>
     ? 'bg-violet-500/15 text-violet-200 border-violet-500/30'
     : 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-900 dark:text-slate-300 dark:border-slate-700'
 )
+const activeMockContextLabel = computed(() => {
+  const session = activeMockSession.value
+  if (!session) return 'Chọn CV và tin tuyển dụng'
+  const cvTitle = session.ho_so?.tieu_de_ho_so || 'CV đang chọn'
+  const jobTitle = session.tin_tuyen_dung?.tieu_de || 'Tin tuyển dụng đang chọn'
+  return `${cvTitle} · ${jobTitle}`
+})
 
 const defaultAssessmentCriteria = [
   {

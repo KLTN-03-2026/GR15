@@ -20,15 +20,13 @@
                 <template v-if="parentIndustry">
                   <span>/</span>
                   <RouterLink
-                    :to="`/industries/${parentIndustry.id}`"
+                    :to="`/industries/${routeId(parentIndustry)}`"
                     class="hover:text-[#2463eb]"
                   >
                     {{ parentIndustry.ten_nganh }}
                   </RouterLink>
                 </template>
-
-
-</div>
+              </div>
 
               <p class="mt-5 text-sm font-bold uppercase tracking-[0.35em] text-[#2463eb]">Khám phá ngành nghề</p>
               <h1 class="mt-3 text-3xl font-black tracking-tight text-slate-900 dark:text-white lg:text-4xl">
@@ -128,7 +126,7 @@
 
                 <div class="mt-5">
                   <RouterLink
-                    :to="`/jobs/${job.id}`"
+                    :to="`/jobs/${routeId(job)}`"
                     class="inline-flex rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white transition hover:bg-[#2463eb] dark:bg-white dark:text-slate-900 dark:hover:bg-[#2463eb] dark:hover:text-white"
                   >
                     Xem chi tiết
@@ -149,7 +147,7 @@
               <div v-if="parentIndustry" class="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-950">
                 <p class="text-xs font-bold uppercase tracking-[0.25em] text-slate-400">Danh mục cha</p>
                 <RouterLink
-                  :to="`/industries/${parentIndustry.id}`"
+                  :to="`/industries/${routeId(parentIndustry)}`"
                   class="mt-2 inline-flex text-base font-semibold text-slate-900 hover:text-[#2463eb] dark:text-white"
                 >
                   {{ parentIndustry.ten_nganh }}
@@ -162,7 +160,7 @@
                   <RouterLink
                     v-for="child in childIndustries"
                     :key="child.id"
-                    :to="`/industries/${child.id}`"
+                    :to="`/industries/${routeId(child)}`"
                     class="rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-[#2463eb] hover:text-[#2463eb] dark:border-slate-700 dark:text-slate-200"
                   >
                     {{ child.ten_nganh }}
@@ -214,6 +212,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { jobService } from '@/services/api'
 import { useNotify } from '@/composables/useNotify'
+import { routeId } from '@/utils/routeIds'
 
 const route = useRoute()
 const notify = useNotify()
@@ -233,15 +232,13 @@ const loadIndustryDetail = async () => {
   loading.value = true
 
   try {
-    const [industryResponse, jobsResponse] = await Promise.all([
-      jobService.getIndustryById(route.params.id),
-      jobService.getJobs({
-        nganh_nghe_id: route.params.id,
-        per_page: 6,
-      }),
-    ])
-
+    const industryResponse = await jobService.getIndustryById(route.params.id)
     industry.value = industryResponse?.data || null
+
+    const jobsResponse = await jobService.getJobs({
+      nganh_nghe_id: industry.value?.id,
+      per_page: 6,
+    })
     industryJobs.value = extractList(jobsResponse)
   } catch (error) {
     industry.value = null

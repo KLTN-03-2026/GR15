@@ -13,6 +13,7 @@ use App\Models\TinTuyenDung;
 use App\Services\AppNotificationService;
 use App\Services\AuditLogService;
 use App\Services\Billing\FeatureAccessService;
+use App\Support\EncodedId;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Throwable;
@@ -48,6 +49,11 @@ class NhaTuyenDungTinTuyenDungController extends Controller
             'featured_activated_at',
             'featured_until',
         ]);
+    }
+
+    private function decodeRouteId(int|string $id): int
+    {
+        return EncodedId::decodeOrFail($id);
     }
 
     private function featuredJobOptions(): array
@@ -151,6 +157,10 @@ class NhaTuyenDungTinTuyenDungController extends Controller
         $job = $payload['job'] ?? [];
         $company = $payload['company'] ?? [];
 
+        $encodedJobId = isset($job['encoded_id'])
+            ? (string) $job['encoded_id']
+            : (isset($job['id']) ? EncodedId::encode((int) $job['id']) : null);
+
         $this->appNotificationService->createForUsers(
             $recipientIds,
             (string) ($payload['type'] ?? 'followed_company_job'),
@@ -158,7 +168,7 @@ class NhaTuyenDungTinTuyenDungController extends Controller
                 ? 'Công ty bạn theo dõi vừa mở lại tin tuyển dụng'
                 : 'Công ty bạn theo dõi vừa đăng tin tuyển dụng mới'),
             (string) ($payload['message'] ?? 'Công ty bạn theo dõi vừa có cập nhật tuyển dụng.'),
-            isset($job['id']) ? "/jobs/{$job['id']}" : '/followed-companies',
+            $encodedJobId ? "/jobs/{$encodedJobId}" : '/followed-companies',
             [
                 'company' => $company,
                 'job' => $job,
@@ -244,7 +254,7 @@ class NhaTuyenDungTinTuyenDungController extends Controller
         $congTy = $this->getCurrentEmployerCompany();
         $user = $this->getAuthenticatedEmployer();
 
-        if (!$this->coTheQuanLyTatCaBanGhiEmployer($user, $congTy)) {
+        if (!$this->coTheQuanLyTatCaTinTuyenDung($user, $congTy)) {
             $data['hr_phu_trach_id'] = (int) auth()->id();
         } else {
             $data['hr_phu_trach_id'] = $this->resolveValidHrPhuTrachId(
@@ -282,10 +292,11 @@ class NhaTuyenDungTinTuyenDungController extends Controller
     /**
      * Cập nhật tin tuyển dụng.
      */
-    public function update(CapNhatTinTuyenDungRequest $request, int $id): JsonResponse
+    public function update(CapNhatTinTuyenDungRequest $request, string $id): JsonResponse
     {
+        $decodedId = $this->decodeRouteId($id);
         $congTyId = $this->getCongTyId();
-        $tin = TinTuyenDung::where('cong_ty_id', $congTyId)->findOrFail($id);
+        $tin = TinTuyenDung::where('cong_ty_id', $congTyId)->findOrFail($decodedId);
         $congTy = $this->getCurrentEmployerCompany();
         $user = $this->getAuthenticatedEmployer();
         $this->abortIfCannotManageJobRecord($user, $congTy, $tin);
@@ -304,7 +315,7 @@ class NhaTuyenDungTinTuyenDungController extends Controller
         }
 
         if (array_key_exists('hr_phu_trach_id', $data)) {
-            if (!$this->coTheQuanLyTatCaBanGhiEmployer($user, $congTy)) {
+            if (!$this->coTheQuanLyTatCaTinTuyenDung($user, $congTy)) {
                 $data['hr_phu_trach_id'] = (int) auth()->id();
             } else {
                 $data['hr_phu_trach_id'] = $this->resolveValidHrPhuTrachId(
@@ -343,8 +354,9 @@ class NhaTuyenDungTinTuyenDungController extends Controller
     /**
      * Xem chi tiết tin.
      */
-    public function show(int $id): JsonResponse
+    public function show(string $id): JsonResponse
     {
+        $decodedId = $this->decodeRouteId($id);
         $congTyId = $this->getCongTyId();
         $tin = TinTuyenDung::with([
                 'nganhNghes:id,ten_nganh',
@@ -360,11 +372,13 @@ class NhaTuyenDungTinTuyenDungController extends Controller
                 'ungTuyens as ho_so_da_xem' => fn ($query) => $query->where('trang_thai', \App\Models\UngTuyen::TRANG_THAI_DA_XEM),
                 'ungTuyens as ho_so_phong_van' => fn ($query) => $query->where('trang_thai', \App\Models\UngTuyen::TRANG_THAI_DA_HEN_PHONG_VAN),
                 'ungTuyens as ho_so_qua_phong_van' => fn ($query) => $query->where('trang_thai', \App\Models\UngTuyen::TRANG_THAI_QUA_PHONG_VAN),
-                'ungTuyens as ho_so_da_nhan' => fn ($query) => $query->where('trang_thai', \App\Models\UngTuyen::TRANG_THAI_TRUNG_TUYEN),
+                'ungTuyens as ho_so_da_nhan' => fn ($query) => $query
+                    ->where('trang_thai', \App\Models\UngTuyen::TRANG_THAI_TRUNG_TUYEN)
+                    ->where('trang_thai_offer', \App\Models\UngTuyen::OFFER_DA_CHAP_NHAN),
                 'ungTuyens as ho_so_tu_choi' => fn ($query) => $query->where('trang_thai', \App\Models\UngTuyen::TRANG_THAI_TU_CHOI),
             ])
             ->where('cong_ty_id', $congTyId)
-            ->findOrFail($id);
+            ->findOrFail($decodedId);
 
         return response()->json([
             'success' => true,
@@ -372,8 +386,9 @@ class NhaTuyenDungTinTuyenDungController extends Controller
         ]);
     }
 
-    public function sponsor(Request $request, int $id): JsonResponse
+    public function sponsor(Request $request, string $id): JsonResponse
     {
+        $decodedId = $this->decodeRouteId($id);
         if (!TinTuyenDung::supportsFeaturedListing()) {
             return response()->json([
                 'success' => false,
@@ -387,7 +402,7 @@ class NhaTuyenDungTinTuyenDungController extends Controller
         ]);
 
         $congTyId = $this->getCongTyId();
-        $tin = TinTuyenDung::where('cong_ty_id', $congTyId)->findOrFail($id);
+        $tin = TinTuyenDung::where('cong_ty_id', $congTyId)->findOrFail($decodedId);
         $congTy = $this->getCurrentEmployerCompany();
         $user = $this->getAuthenticatedEmployer();
         $this->abortIfCannotManageJobRecord($user, $congTy, $tin);
@@ -514,10 +529,11 @@ class NhaTuyenDungTinTuyenDungController extends Controller
     /**
      * Bật / tắt hiển thị (đổi trạng thái).
      */
-    public function doiTrangThai(int $id): JsonResponse
+    public function doiTrangThai(string $id): JsonResponse
     {
+        $decodedId = $this->decodeRouteId($id);
         $congTyId = $this->getCongTyId();
-        $tin = TinTuyenDung::where('cong_ty_id', $congTyId)->findOrFail($id);
+        $tin = TinTuyenDung::where('cong_ty_id', $congTyId)->findOrFail($decodedId);
         $user = $this->getAuthenticatedEmployer();
         $congTy = $this->getCurrentEmployerCompany();
         $this->abortIfCannotManageJobRecord($user, $congTy, $tin);
@@ -550,10 +566,11 @@ class NhaTuyenDungTinTuyenDungController extends Controller
     /**
      * Xoá tin.
      */
-    public function destroy(int $id): JsonResponse
+    public function destroy(string $id): JsonResponse
     {
+        $decodedId = $this->decodeRouteId($id);
         $congTyId = $this->getCongTyId();
-        $tin = TinTuyenDung::where('cong_ty_id', $congTyId)->findOrFail($id);
+        $tin = TinTuyenDung::where('cong_ty_id', $congTyId)->findOrFail($decodedId);
         $user = $this->getAuthenticatedEmployer();
         $congTy = $this->getCurrentEmployerCompany();
         $this->abortIfCannotManageJobRecord($user, $congTy, $tin);

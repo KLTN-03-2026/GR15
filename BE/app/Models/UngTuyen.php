@@ -14,22 +14,11 @@ class UngTuyen extends Model
     protected $fillable = [
         'tin_tuyen_dung_id',
         'ho_so_id',
-        'hr_phu_trach_id',
         'trang_thai',
         'da_rut_don',
         'thoi_gian_rut_don',
         'thu_xin_viec',
         'thu_xin_viec_ai',
-        'ngay_hen_phong_van',
-        'vong_phong_van_hien_tai',
-        'trang_thai_tham_gia_phong_van',
-        'thoi_gian_phan_hoi_phong_van',
-        'thoi_gian_gui_nhac_lich',
-        'hinh_thuc_phong_van',
-        'nguoi_phong_van',
-        'link_phong_van',
-        'ket_qua_phong_van',
-        'rubric_danh_gia_phong_van',
         'thoi_gian_gui_offer',
         'trang_thai_offer',
         'thoi_gian_phan_hoi_offer',
@@ -90,20 +79,28 @@ class UngTuyen extends Model
         self::OFFER_TU_CHOI,
     ];
 
+    protected $appends = [
+        'ngay_hen_phong_van',
+        'vong_phong_van_hien_tai',
+        'trang_thai_tham_gia_phong_van',
+        'thoi_gian_phan_hoi_phong_van',
+        'thoi_gian_gui_nhac_lich',
+        'hinh_thuc_phong_van',
+        'ten_nguoi_phong_van',
+        'link_phong_van',
+        'ket_qua_phong_van',
+        'rubric_danh_gia_phong_van',
+    ];
+
     protected $casts = [
         'thoi_gian_ung_tuyen' => 'datetime',
         'thoi_gian_rut_don' => 'datetime',
-        'ngay_hen_phong_van' => 'datetime',
-        'thoi_gian_phan_hoi_phong_van' => 'datetime',
-        'thoi_gian_gui_nhac_lich' => 'datetime',
         'thoi_gian_gui_offer' => 'datetime',
         'thoi_gian_phan_hoi_offer' => 'datetime',
         'han_phan_hoi_offer' => 'datetime',
         'trang_thai' => 'integer',
         'trang_thai_offer' => 'integer',
-        'hr_phu_trach_id' => 'integer',
         'da_rut_don' => 'boolean',
-        'trang_thai_tham_gia_phong_van' => 'integer',
     ];
 
     /**
@@ -122,14 +119,103 @@ class UngTuyen extends Model
         return $this->belongsTo(HoSo::class, 'ho_so_id')->withTrashed(); // Lấy cả hồ sơ bị xoá mềm để lưu vết
     }
 
-    public function hrPhuTrach()
+    public function getHrPhuTrachAttribute()
     {
-        return $this->belongsTo(NguoiDung::class, 'hr_phu_trach_id');
+        return $this->tinTuyenDung?->hrPhuTrach;
     }
 
     public function interviewRounds()
     {
         return $this->hasMany(InterviewRound::class, 'ung_tuyen_id')->orderBy('thu_tu');
+    }
+
+    public function currentInterviewRound(): ?InterviewRound
+    {
+        return $this->candidateInterviewRound();
+    }
+
+    public function latestInterviewRound(): ?InterviewRound
+    {
+        $rounds = $this->relationLoaded('interviewRounds')
+            ? $this->interviewRounds
+            : $this->interviewRounds()->get();
+
+        return $rounds
+            ->sortByDesc(fn (InterviewRound $round) => sprintf(
+                '%05d-%05d',
+                (int) ($round->thu_tu ?? 0),
+                (int) ($round->id ?? 0),
+            ))
+            ->first();
+    }
+
+    public function candidateInterviewRound(): ?InterviewRound
+    {
+        $rounds = $this->relationLoaded('interviewRounds')
+            ? $this->interviewRounds
+            : $this->interviewRounds()->get();
+
+        return $rounds
+            ->filter(fn (InterviewRound $round) => $round->loai_vong !== InterviewRound::LOAI_HR && $round->ngay_hen_phong_van)
+            ->sortByDesc(fn (InterviewRound $round) => sprintf(
+                '%05d-%05d',
+                (int) ($round->thu_tu ?? 0),
+                (int) ($round->id ?? 0),
+            ))
+            ->first();
+    }
+
+    public function getNgayHenPhongVanAttribute()
+    {
+        return $this->currentInterviewRound()?->ngay_hen_phong_van;
+    }
+
+    public function getVongPhongVanHienTaiAttribute()
+    {
+        return $this->latestInterviewRound()?->loai_vong;
+    }
+
+    public function getTrangThaiThamGiaPhongVanAttribute()
+    {
+        return $this->currentInterviewRound()?->trang_thai_tham_gia;
+    }
+
+    public function getThoiGianPhanHoiPhongVanAttribute()
+    {
+        return $this->currentInterviewRound()?->thoi_gian_phan_hoi;
+    }
+
+    public function getThoiGianGuiNhacLichAttribute()
+    {
+        return $this->currentInterviewRound()?->thoi_gian_gui_nhac_lich;
+    }
+
+    public function getHinhThucPhongVanAttribute()
+    {
+        return $this->currentInterviewRound()?->hinh_thuc_phong_van;
+    }
+
+    public function getTenNguoiPhongVanAttribute(): ?string
+    {
+        $round = $this->currentInterviewRound();
+
+        // Ưu tiên FK interviewer_user_id (system user), fallback về legacy text
+        return $round?->interviewer?->ho_ten ?? $round?->nguoi_phong_van;
+    }
+
+    public function getLinkPhongVanAttribute()
+    {
+        return $this->currentInterviewRound()?->link_phong_van;
+    }
+
+    public function getKetQuaPhongVanAttribute()
+    {
+        return $this->latestInterviewRound()?->ket_qua;
+    }
+
+    public function getRubricDanhGiaPhongVanAttribute()
+    {
+        return $this->latestInterviewRound()?->rubric_danh_gia_json;
     }
 
     public function onboardingPlan()

@@ -10,7 +10,6 @@ from app.services.chatbot_intent_engine import (
     OUT_OF_SCOPE_MESSAGE,
     ensure_chat_list,
     ensure_chat_mapping,
-    extract_report_skill_hints,
     normalize_match_entries,
 )
 
@@ -170,7 +169,7 @@ def _build_user_prompt(question: str, context: dict, history: list[dict]) -> str
         + "\nHãy bám sát đúng ý định này và trả lời theo dạng ngắn gọn, có xuống dòng rõ ràng nếu cần."
         + "\nKhông tự xưng 'tôi' trong câu trả lời; dùng 'bạn', 'hồ sơ', 'ứng viên' hoặc 'hệ thống' tùy ngữ cảnh."
         + "\nKhông dùng cụm tiếng Anh phổ thông trong nội dung tư vấn; chỉ giữ tên riêng công nghệ, tên vị trí gốc, viết tắt kỹ thuật hoặc framework."
-        + "\nNếu ý định là career_path_simulator, hãy sinh lộ trình 30/60/90 ngày dựa trên hồ sơ, khoảng cách kỹ năng, vị trí gần nhất và mốc kiểm tra rõ ràng."
+        + "\nNếu ý định là career_path_simulator, hãy sinh lộ trình đúng thời gian/chủ đề người dùng hỏi; chỉ dùng khung 30/60/90 ngày khi người dùng hỏi rõ 30/60/90 ngày hoặc 3 tháng."
     )
 
 
@@ -206,11 +205,9 @@ def _extract_stream_chunk(payload: dict) -> str:
 def _compact_context(context: dict) -> dict:
     context = ensure_chat_mapping(context)
     candidate = ensure_chat_mapping(context.get("candidate_profile"))
-    report = ensure_chat_mapping(context.get("career_report"))
     matches = normalize_match_entries(context.get("top_matching_jobs"))
     related_job = ensure_chat_mapping(context.get("related_job"))
     conversation_summary = context.get("conversation_summary")
-    report_hints = extract_report_skill_hints(report)
 
     return {
         "conversation_summary": conversation_summary,
@@ -224,15 +221,6 @@ def _compact_context(context: dict) -> dict:
             "parsed_skills": ensure_chat_list(candidate.get("parsed_skills"))[:8],
             "builder_skills": ensure_chat_list(candidate.get("builder_skills"))[:8],
         },
-        "career_report": {
-            "nghe_de_xuat": report.get("nghe_de_xuat"),
-            "muc_do_phu_hop": report.get("muc_do_phu_hop"),
-            "goi_y_ky_nang_bo_sung": {
-                "skills": report_hints.get("skills", [])[:6],
-                "strength_categories": report_hints.get("strength_categories", [])[:4],
-                "recommended_roles": report_hints.get("recommended_roles", [])[:3],
-            },
-        } if report else None,
         "top_matching_jobs": [
             {
                 "job_title": item.get("job_title"),

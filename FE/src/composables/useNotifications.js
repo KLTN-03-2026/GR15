@@ -3,6 +3,7 @@ import { notificationService } from '@/services/api'
 import { getStoredUser } from '@/utils/authStorage'
 import { connectPrivateChannel, realtimeEnabled, subscribeRealtimeStatus } from '@/services/realtime'
 import { useNotify } from '@/composables/useNotify'
+import { routeId } from '@/utils/routeIds'
 
 const REFRESH_INTERVAL_MS = 60 * 1000
 
@@ -96,9 +97,9 @@ const deriveNotificationRoute = (item) => {
     return appendDeepLinkParams('/employer/interviews')
   }
 
-  const jobId = data.tin_tuyen_dung_id || data.job_id
+  const jobId = data.tin_tuyen_dung_encoded_id || data.job_encoded_id || data.encoded_id || data.tin_tuyen_dung_id || data.job_id
   if (jobId && (path === '/jobs' || path === '#')) {
-    return `/jobs/${encodeURIComponent(jobId)}`
+    return `/jobs/${encodeURIComponent(routeId(jobId))}`
   }
 
   return path
@@ -133,7 +134,7 @@ export const useNotifications = () => {
   const realtimeStatusLabel = computed(() => {
     switch (realtimeStatus.value) {
       case 'connected':
-        return 'Đang realtime'
+        return 'Đang hoạt động'
       case 'connecting':
       case 'idle':
         return 'Đang kết nối'

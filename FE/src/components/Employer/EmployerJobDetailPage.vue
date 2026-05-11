@@ -57,7 +57,7 @@
               </span>
             </div>
             <p
-              v-if="canManageJobs && !canManageAllAssignments && !isOwnedJob"
+              v-if="canManageJobs && !canManageAllJobs && !isOwnedJob"
               class="mt-4 inline-flex rounded-full bg-amber-500/15 px-3 py-1.5 text-xs font-semibold text-amber-100"
             >
               Bạn đang xem tin không thuộc phần việc của mình. Các thao tác cập nhật đã bị khóa.
@@ -721,9 +721,7 @@
         </div>
       </div>
     </template>
-
-
-</div>
+  </div>
 </template>
 
 <script setup>
@@ -740,7 +738,7 @@ import { hasBuilderCv, openCvPrintPreview } from '@/utils/profileCvBuilder'
 const route = useRoute()
 const router = useRouter()
 const notify = useNotify()
-const { ensurePermissionsLoaded, canManageJobs, canManageAllAssignments, currentEmployerId, currentInternalRoleLabel } = useEmployerCompanyPermissions()
+const { ensurePermissionsLoaded, canManageJobs, canManageAllJobs, currentEmployerId, currentInternalRoleLabel } = useEmployerCompanyPermissions()
 
 const loading = ref(false)
 const billingLoading = ref(false)
@@ -845,7 +843,7 @@ const statusCards = computed(() => {
 
 const applicationStatusMeta = getApplicationStatusMeta
 const isOwnedJob = computed(() => Number(job.value?.hr_phu_trach?.id || job.value?.hr_phu_trach_id || 0) === Number(currentEmployerId.value || 0))
-const canMutateCurrentJob = computed(() => Boolean(canManageJobs.value && (canManageAllAssignments.value || isOwnedJob.value)))
+const canMutateCurrentJob = computed(() => Boolean(canManageJobs.value && (canManageAllJobs.value || isOwnedJob.value)))
 const walletAvailable = computed(() => Number(billingWallet.value?.so_du_kha_dung || 0))
 const featuredStatusLabel = computed(() => {
   if (!job.value?.is_featured) return 'Tin đang chạy hiển thị thường'
@@ -964,15 +962,12 @@ const loadBillingContext = async () => {
 const fetchJobDetail = async () => {
   loading.value = true
   try {
-    const [jobResponse, applicationResponse] = await Promise.all([
-      employerJobService.getJobById(route.params.id),
-      employerApplicationService.getApplications({
-        tin_tuyen_dung_id: route.params.id,
-        per_page: 50,
-      }),
-    ])
-
+    const jobResponse = await employerJobService.getJobById(route.params.id)
     job.value = jobResponse?.data || null
+    const applicationResponse = await employerApplicationService.getApplications({
+      tin_tuyen_dung_id: job.value?.id,
+      per_page: 50,
+    })
     applications.value = applicationResponse?.data?.data || []
     if (job.value?.id) {
       await fetchShortlist(false)

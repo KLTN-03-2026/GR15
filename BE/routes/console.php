@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
 use App\Models\GiaoDichThanhToan;
 use App\Models\AppNotification;
+use App\Models\InterviewRound;
 use App\Models\NguoiDung;
 use App\Models\UngTuyen;
 use App\Notifications\InterviewScheduledNotification;
@@ -24,16 +25,17 @@ Artisan::command('interviews:send-reminders {--hours=24 : Khoảng thời gian t
     $until = $now->copy()->addHours($hours);
     $dryRun = (bool) $this->option('dry-run');
 
-    $applications = UngTuyen::query()
-        ->with(['hoSo.nguoiDung', 'tinTuyenDung.congTy'])
+    $rounds = InterviewRound::query()
+        ->with(['ungTuyen.hoSo.nguoiDung', 'ungTuyen.tinTuyenDung.congTy'])
         ->whereNotNull('ngay_hen_phong_van')
         ->whereNull('thoi_gian_gui_nhac_lich')
-        ->where('da_rut_don', false)
-        ->where('trang_thai', UngTuyen::TRANG_THAI_DA_HEN_PHONG_VAN)
+        ->whereHas('ungTuyen', fn ($query) => $query
+            ->where('da_rut_don', false)
+            ->where('trang_thai', UngTuyen::TRANG_THAI_DA_HEN_PHONG_VAN))
         ->where(function ($query): void {
             $query
-                ->whereNull('trang_thai_tham_gia_phong_van')
-                ->orWhereIn('trang_thai_tham_gia_phong_van', [
+                ->whereNull('trang_thai_tham_gia')
+                ->orWhereIn('trang_thai_tham_gia', [
                     UngTuyen::PHONG_VAN_CHO_XAC_NHAN,
                     UngTuyen::PHONG_VAN_DA_XAC_NHAN,
                 ]);
@@ -42,7 +44,7 @@ Artisan::command('interviews:send-reminders {--hours=24 : Khoảng thời gian t
         ->orderBy('ngay_hen_phong_van')
         ->get();
 
-    if ($applications->isEmpty()) {
+    if ($rounds->isEmpty()) {
         $this->info("Không có lịch phỏng vấn nào cần nhắc trong {$hours} giờ tới.");
         return Command::SUCCESS;
     }
@@ -51,11 +53,12 @@ Artisan::command('interviews:send-reminders {--hours=24 : Khoảng thời gian t
     $skipped = 0;
     $failed = 0;
 
-    foreach ($applications as $application) {
+    foreach ($rounds as $round) {
+        $application = $round->ungTuyen;
         $candidate = $application->hoSo?->nguoiDung;
         $jobTitle = $application->tinTuyenDung?->tieu_de ?: 'Chưa xác định';
         $candidateEmail = $candidate?->email ?: 'không có email';
-        $interviewTime = optional($application->ngay_hen_phong_van)->timezone('Asia/Ho_Chi_Minh')->format('H:i d/m/Y');
+        $interviewTime = optional($round->ngay_hen_phong_van)->timezone('Asia/Ho_Chi_Minh')->format('H:i d/m/Y');
 
         if (!$candidate || !filter_var($candidate->email, FILTER_VALIDATE_EMAIL)) {
             $skipped++;
@@ -69,16 +72,16 @@ Artisan::command('interviews:send-reminders {--hours=24 : Khoảng thời gian t
         }
 
         try {
-            $candidate->notify(new InterviewScheduledNotification($application, false, true));
+            $candidate->notify(new InterviewScheduledNotification($application, false, true, $round));
             app(AppNotificationService::class)->createForUser(
                 $candidate,
                 'candidate_interview_reminder',
                 'Nhắc lịch phỏng vấn',
                 "Bạn có lịch phỏng vấn sắp diễn ra cho vị trí {$jobTitle}.",
                 '/applications',
-                ['ung_tuyen_id' => $application->id, 'ngay_hen_phong_van' => optional($application->ngay_hen_phong_van)?->toISOString()],
+                ['ung_tuyen_id' => $application->id, 'interview_round_id' => $round->id, 'ngay_hen_phong_van' => optional($round->ngay_hen_phong_van)?->toISOString()],
             );
-            $application->forceFill(['thoi_gian_gui_nhac_lich' => now()])->save();
+            $round->forceFill(['thoi_gian_gui_nhac_lich' => now()])->save();
             $sent++;
             $this->info("Đã gửi nhắc lịch #{$application->id} tới {$candidateEmail} | {$interviewTime}");
         } catch (Throwable $exception) {
@@ -97,17 +100,18 @@ Artisan::command('interviews:notify-overdue-results {--dry-run : Chỉ liệt k�
     $dryRun = (bool) $this->option('dry-run');
     $now = now();
 
-    $applications = UngTuyen::query()
-        ->with(['hoSo.nguoiDung', 'tinTuyenDung.congTy'])
+    $rounds = InterviewRound::query()
+        ->with(['ungTuyen.hoSo.nguoiDung', 'ungTuyen.tinTuyenDung.congTy'])
         ->whereNotNull('ngay_hen_phong_van')
         ->where('ngay_hen_phong_van', '<', $now)
-        ->where('da_rut_don', false)
-        ->whereNotIn('trang_thai', UngTuyen::TRANG_THAI_CUOI)
-        ->where('trang_thai', '>=', UngTuyen::TRANG_THAI_DA_HEN_PHONG_VAN)
+        ->whereHas('ungTuyen', fn ($query) => $query
+            ->where('da_rut_don', false)
+            ->whereNotIn('trang_thai', UngTuyen::TRANG_THAI_CUOI)
+            ->where('trang_thai', '>=', UngTuyen::TRANG_THAI_DA_HEN_PHONG_VAN))
         ->orderBy('ngay_hen_phong_van')
         ->get();
 
-    if ($applications->isEmpty()) {
+    if ($rounds->isEmpty()) {
         $this->info('Không có lịch phỏng vấn quá hạn cần nhắc cập nhật kết quả.');
         return Command::SUCCESS;
     }
@@ -116,13 +120,14 @@ Artisan::command('interviews:notify-overdue-results {--dry-run : Chỉ liệt k�
     $skipped = 0;
     $failed = 0;
 
-    foreach ($applications as $application) {
+    foreach ($rounds as $round) {
+        $application = $round->ungTuyen;
         $company = $application->tinTuyenDung?->congTy;
         $jobTitle = $application->tinTuyenDung?->tieu_de ?: 'Chưa xác định';
         $candidateName = $application->hoSo?->nguoiDung?->ho_ten
             ?: $application->hoSo?->tieu_de_ho_so
             ?: "Ứng viên #{$application->ho_so_id}";
-        $interviewTime = optional($application->ngay_hen_phong_van)->timezone('Asia/Ho_Chi_Minh')->format('H:i d/m/Y');
+        $interviewTime = optional($round->ngay_hen_phong_van)->timezone('Asia/Ho_Chi_Minh')->format('H:i d/m/Y');
 
         if (!$company) {
             $skipped++;
@@ -165,8 +170,9 @@ Artisan::command('interviews:notify-overdue-results {--dry-run : Chỉ liệt k�
                     '/employer/interviews',
                     [
                         'ung_tuyen_id' => $application->id,
+                        'interview_round_id' => $round->id,
                         'tin_tuyen_dung_id' => $application->tin_tuyen_dung_id,
-                        'ngay_hen_phong_van' => optional($application->ngay_hen_phong_van)?->toISOString(),
+                        'ngay_hen_phong_van' => optional($round->ngay_hen_phong_van)?->toISOString(),
                     ],
                 );
             }

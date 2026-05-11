@@ -214,7 +214,7 @@
                   <div class="min-w-0">
                     <div class="flex flex-wrap items-center gap-3">
                       <RouterLink
-                        :to="{ name: 'JobDetail', params: { id: job.id } }"
+                        :to="{ name: 'JobDetail', params: { id: routeId(job) } }"
                         class="text-xl font-bold text-slate-900 transition group-hover:text-blue-600"
                       >
                         {{ job.tieu_de }}
@@ -296,7 +296,7 @@
                   }}
                 </button>
                 <RouterLink
-                  :to="{ name: 'JobDetail', params: { id: job.id } }"
+                  :to="{ name: 'JobDetail', params: { id: routeId(job) } }"
                   class="rounded-2xl bg-blue-600 px-5 py-3 text-center text-sm font-bold text-white transition hover:bg-blue-700"
                 >
                   Xem chi tiết
@@ -349,6 +349,7 @@ import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { jobService, savedJobService } from '@/services/api'
 import { useNotify } from '@/composables/useNotify'
 import { getAuthToken, getStoredCandidate } from '@/utils/authStorage'
+import { routeId } from '@/utils/routeIds'
 import { VIETNAM_PROVINCES_34 } from '@/constants/vietnamProvinces'
 
 const route = useRoute()

@@ -11,6 +11,7 @@ use App\Models\TinTuyenDung;
 use App\Models\UngTuyen;
 use App\Services\Ai\AiClientService;
 use App\Services\Billing\FeatureAccessService;
+use App\Support\EncodedId;
 use App\Support\ExperienceValue;
 use App\Support\SkillAliasMatcher;
 use Illuminate\Http\JsonResponse;
@@ -30,8 +31,9 @@ class NhaTuyenDungShortlistController extends Controller
     {
     }
 
-    public function index(Request $request, int $tinTuyenDungId): JsonResponse
+    public function index(Request $request, string $tinTuyenDungId): JsonResponse
     {
+        $decodedTinTuyenDungId = EncodedId::decodeOrFail($tinTuyenDungId);
         $congTy = $this->getCurrentEmployerCompany();
         $user = $this->getAuthenticatedEmployer();
 
@@ -50,7 +52,7 @@ class NhaTuyenDungShortlistController extends Controller
                 'kyNangYeuCaus.kyNang:id,ten_ky_nang',
             ])
             ->where('cong_ty_id', $congTy->id)
-            ->findOrFail($tinTuyenDungId);
+            ->findOrFail($decodedTinTuyenDungId);
         $this->abortIfCannotManageJobRecord($user, $congTy, $tin);
 
         $jobProfile = $this->buildJobProfile($tin);
@@ -162,7 +164,7 @@ class NhaTuyenDungShortlistController extends Controller
                     'ai_explanation_enabled' => $aiExplain,
                     'ai_attempt_count' => (int) ($enrichment['ai_attempt_count'] ?? 0),
                     'ai_success_count' => (int) ($enrichment['ai_success_count'] ?? 0),
-                    'permission_scope' => $this->coTheQuanLyTatCaBanGhiEmployer($user, $congTy) ? 'company' : 'owned_job',
+                    'permission_scope' => $this->coTheQuanLyTatCaTinTuyenDung($user, $congTy) ? 'company' : 'owned_job',
                     'billing' => $usage ? [
                         'feature_code' => $usage->feature_code,
                         'usage_id' => $usage->id,
@@ -173,8 +175,9 @@ class NhaTuyenDungShortlistController extends Controller
         ]);
     }
 
-    public function compare(Request $request, int $tinTuyenDungId): JsonResponse
+    public function compare(Request $request, string $tinTuyenDungId): JsonResponse
     {
+        $decodedTinTuyenDungId = EncodedId::decodeOrFail($tinTuyenDungId);
         $request->validate([
             'ho_so_ids' => ['required', 'array', 'min:2', 'max:5'],
             'ho_so_ids.*' => ['integer', 'distinct'],
@@ -196,7 +199,7 @@ class NhaTuyenDungShortlistController extends Controller
                 'kyNangYeuCaus.kyNang:id,ten_ky_nang',
             ])
             ->where('cong_ty_id', $congTy->id)
-            ->findOrFail($tinTuyenDungId);
+            ->findOrFail($decodedTinTuyenDungId);
         $this->abortIfCannotManageJobRecord($user, $congTy, $tin);
 
         $jobProfile = $this->buildJobProfile($tin);
@@ -773,6 +776,7 @@ class NhaTuyenDungShortlistController extends Controller
                 'tin_tuyen_dung_id' => (int) $tin->id,
                 'cv_profile' => $this->buildAiCvProfile($item),
                 'jd_profile' => $jdProfile,
+                'include_llm_explanation' => true,
             ];
         }
 

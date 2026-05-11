@@ -7,8 +7,9 @@ from app.providers import (
     GeminiCoverLetterProvider,
     OllamaCoverLetterProvider,
     OpenAICoverLetterProvider,
-    TemplateCoverLetterProvider,
 )
+from app.providers.template_provider import TemplateCoverLetterProvider
+from app.services.llm_timeout import TimeoutError, run_with_timeout
 from app.services.vietnamese_text import normalize_vietnamese_ai_text
 from app.services.skill_catalog import extract_skills_from_text, normalize_search_text
 
@@ -39,8 +40,24 @@ def generate_cover_letter(
             jd_profile=jd_profile or {},
             matching_profile=matching_profile or {},
         )
+        provider_name = _resolve_provider_name()
         provider = _resolve_provider()
-        content = _finalize_cover_letter(provider.generate(context))
+        try:
+            content = _finalize_cover_letter(
+                run_with_timeout(
+                    lambda: provider.generate(context),
+                    settings.ai_llm_fallback_seconds,
+                )
+            )
+        except TimeoutError:
+            provider_name = "template_timeout_fallback"
+            logger.warning(
+                "Cover letter LLM timed out ho_so_id=%s tin_tuyen_dung_id=%s timeout_seconds=%s",
+                ho_so_id,
+                tin_tuyen_dung_id,
+                settings.ai_llm_fallback_seconds,
+            )
+            content = _finalize_cover_letter(TemplateCoverLetterProvider().generate(context))
 
         if not content:
             raise RuntimeError("Provider không trả về nội dung thư xin việc.")
@@ -67,7 +84,7 @@ def generate_cover_letter(
                     "featured_skills": context.featured_skills,
                     "missing_skills": context.missing_skills[:4],
                     "diem_phu_hop": context.matching_score,
-                    "provider": _resolve_provider_name(),
+                    "provider": provider_name,
                     "skill_audit_passed": skill_audit["passed"],
                 },
             },
@@ -145,8 +162,9 @@ def _resolve_provider():
         return OpenAICoverLetterProvider()
     if provider_name == "gemini":
         return GeminiCoverLetterProvider()
-    if provider_name in {"template", "rule", "rules"}:
-        return TemplateCoverLetterProvider()
+    if provider_name in {"template", "rule", "rules", "rule_based", "local"}:
+        logger.warning("COVER_LETTER_PROVIDER=%s is non-LLM; forcing ollama.", settings.cover_letter_provider)
+        return OllamaCoverLetterProvider()
 
     logger.warning("Unknown COVER_LETTER_PROVIDER=%s, fallback to ollama LLM provider", settings.cover_letter_provider)
     return OllamaCoverLetterProvider()
@@ -154,7 +172,7 @@ def _resolve_provider():
 
 def _resolve_provider_name() -> str:
     provider_name = (settings.cover_letter_provider or "ollama").lower().strip()
-    if provider_name in {"", "llm"}:
+    if provider_name in {"", "llm", "template", "rule", "rules", "rule_based", "local"}:
         return "ollama"
     return provider_name
 

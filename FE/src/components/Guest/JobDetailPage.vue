@@ -322,9 +322,7 @@
               </div>
             </div>
           </template>
-
-
-</div>
+        </div>
 
         <div class="flex flex-col gap-3 border-t border-slate-100 px-6 py-5 sm:flex-row sm:justify-end">
           <RouterLink
@@ -582,6 +580,16 @@ const handleExistingApplicationError = async (error) => {
   return true
 }
 
+const handleAlreadyEmployedError = async (error) => {
+  if (error?.code !== 'CANDIDATE_ALREADY_EMPLOYED' && error?.data?.code !== 'CANDIDATE_ALREADY_EMPLOYED') {
+    return false
+  }
+
+  notify.warning(error?.message || error?.data?.message || 'Bạn đã nhận việc trên hệ thống nên không thể ứng tuyển thêm.')
+  applyModalOpen.value = false
+  return true
+}
+
 const submitApplication = async () => {
   if (!job.value?.id || !selectedProfileId.value || applying.value) return
 
@@ -603,6 +611,9 @@ const submitApplication = async () => {
     applyModalOpen.value = false
     resetCoverLetterDraft()
   } catch (error) {
+    if (await handleAlreadyEmployedError(error)) {
+      return
+    }
     if (await handleExistingApplicationError(error)) {
       return
     }
@@ -637,6 +648,9 @@ const generateCoverLetter = async () => {
     notify.success('Đã sinh thư ứng tuyển bằng AI. Bạn có thể chỉnh sửa trước khi nộp.')
     await loadBillingContext()
   } catch (error) {
+    if (await handleAlreadyEmployedError(error)) {
+      return
+    }
     if (await handleExistingApplicationError(error)) {
       return
     }

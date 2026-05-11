@@ -63,7 +63,7 @@
           <RouterLink
             v-for="industry in featuredIndustries"
             :key="`industry-${industry.id}`"
-            :to="`/industries/${industry.id}`"
+            :to="`/industries/${routeId(industry)}`"
             class="rounded-full border border-slate-200 bg-white/80 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-[#2463eb] hover:text-[#2463eb] dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-200"
           >
             {{ industry.ten_nganh || industry.ten_nganh_nghe }}
@@ -71,7 +71,7 @@
             <RouterLink
               v-for="skill in featuredSkills.slice(0, 4)"
               :key="`skill-${skill.id}`"
-              :to="`/skills/${skill.id}`"
+              :to="`/skills/${routeId(skill)}`"
               class="rounded-full bg-slate-900/5 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-[#2463eb]/10 hover:text-[#2463eb] dark:bg-white/5 dark:text-slate-300"
             >
               {{ skill.ten_ky_nang || skill.ten }}
@@ -245,7 +245,7 @@
               </div>
 
               <RouterLink
-                :to="`/jobs/${job.id}`"
+                :to="`/jobs/${routeId(job)}`"
                 class="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white transition-all hover:bg-[#2463eb] hover:shadow-lg hover:shadow-blue-200/60 dark:bg-white dark:text-slate-900 dark:hover:bg-[#2463eb] dark:hover:text-white"
               >
                 Xem job
@@ -312,7 +312,7 @@
           </p>
 
           <RouterLink
-            :to="`/companies/${company.id}`"
+            :to="`/companies/${routeId(company)}`"
             class="mt-5 inline-flex text-sm font-bold text-[#2463eb] hover:underline"
           >
             Xem doanh nghiệp
@@ -328,6 +328,7 @@ import { computed, onMounted, ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { useNotify } from '@/composables/useNotify'
 import { jobService } from '@/services/api'
+import { routeId } from '@/utils/routeIds'
 import { VIETNAM_PROVINCES_34 } from '@/constants/vietnamProvinces'
 
 const router = useRouter()

@@ -2058,6 +2058,14 @@ export const matchingService = {
         tin_tuyen_dung_id: tinTuyenDungId,
       })
     }),
+
+  generateMatchingBatch: (hoSoId, tinTuyenDungIds = []) =>
+    apiCall(`/ung-vien/ho-sos/${hoSoId}/matching/batch`, {
+      method: 'POST',
+      body: JSON.stringify({
+        tin_tuyen_dung_ids: tinTuyenDungIds,
+      })
+    }),
 }
 
 // === Candidate Career Report APIs ===

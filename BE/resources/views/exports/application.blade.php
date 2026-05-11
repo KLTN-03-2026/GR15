@@ -99,7 +99,7 @@
     @if($showInterview)
         <div class="section">
             <h2>Phỏng vấn</h2>
-            @if($application->ngay_hen_phong_van)
+            @if($rounds->isEmpty() && $application->ngay_hen_phong_van)
                 <div class="box">
                     <h3>Lịch phỏng vấn tổng</h3>
                     Thời gian: {{ $fmt($application->ngay_hen_phong_van) }}<br>

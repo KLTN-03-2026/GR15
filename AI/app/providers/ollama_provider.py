@@ -1,48 +1,23 @@
 from __future__ import annotations
 
 import json
-from urllib.error import URLError
-from urllib.request import Request, urlopen
 
 from app.core.config import settings
 from app.providers.base import CoverLetterContext
+from app.providers.ollama_client import generate_text
 
 
 class OllamaCoverLetterProvider:
     def generate(self, context: CoverLetterContext) -> str:
         prompt = _build_vietnamese_prompt(context)
-        payload = {
-            "model": settings.ollama_model,
-            "prompt": prompt,
-            "stream": False,
-            "options": {
-                "temperature": 0,
-                "top_p": 0.8,
-                "num_predict": settings.cover_letter_max_tokens,
-                "num_ctx": max(settings.ollama_num_ctx, 3072),
-                "num_thread": settings.ollama_num_thread,
-            },
-        }
-
-        request = Request(
-            settings.ollama_url,
-            data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-            method="POST",
+        return generate_text(
+            prompt,
+            max_tokens=settings.cover_letter_max_tokens,
+            temperature=0,
+            top_p=0.8,
+            num_ctx=max(settings.ollama_num_ctx, 3072),
+            error_context="Ollama local cho thư xin việc",
         )
-
-        try:
-            with urlopen(request, timeout=120) as response:
-                body = response.read().decode("utf-8")
-        except URLError as exc:
-            raise RuntimeError(f"Không gọi được Ollama local: {exc}") from exc
-
-        data = json.loads(body)
-        content = (data.get("response") or "").strip()
-        if not content:
-            raise RuntimeError("Ollama không trả về nội dung thư xin việc.")
-
-        return content
 
 
 def _build_vietnamese_prompt(context: CoverLetterContext) -> str:

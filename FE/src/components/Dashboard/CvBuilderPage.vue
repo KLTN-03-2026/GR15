@@ -774,9 +774,7 @@
             </button>
           </div>
         </template>
-
-
-</div>
+    </div>
 
     <div
       v-if="previewModalOpen"

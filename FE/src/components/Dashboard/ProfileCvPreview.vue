@@ -17,8 +17,8 @@
             <div class="mt-3 space-y-2 text-sm leading-6">
               <p>{{ phone }}</p>
               <p>{{ email }}</p>
-              <p>{{ targetPosition }}</p>
-              <p>{{ targetIndustry }}</p>
+              <p v-if="targetIndustry">{{ targetIndustry }}</p>
+              <p v-if="shouldShowTargetPositionMeta">Vị trí: {{ targetPosition }}</p>
             </div>
           </section>
 
@@ -111,7 +111,6 @@
       </div>
     </template>
 
-
     <template v-else-if="template === 'topcv_maroon'">
       <div class="cv-preview-grid-maroon grid grid-cols-1 md:grid-cols-[320px_minmax(0,1fr)]">
         <aside class="cv-preview-sidebar bg-[#5b3133] text-white">
@@ -128,8 +127,8 @@
             <section class="mb-7 space-y-2 text-sm leading-6">
               <p>{{ phone }}</p>
               <p>{{ email }}</p>
-              <p>{{ targetIndustry }}</p>
-              <p>{{ targetPosition }}</p>
+              <p v-if="targetIndustry">Ngành: {{ targetIndustry }}</p>
+              <p v-if="shouldShowTargetPositionMeta">Vị trí: {{ targetPosition }}</p>
             </section>
 
             <section class="mb-7">
@@ -216,7 +215,7 @@
         <header>
           <h3 class="text-[40px] font-bold leading-none text-slate-950" style="font-family: Georgia, 'Times New Roman', serif;">{{ fullName }}</h3>
           <p class="mt-3 text-xl text-slate-900" style="font-family: Georgia, 'Times New Roman', serif;">
-            {{ targetIndustry }} | {{ phone }}
+            {{ [targetIndustry ? `Ngành: ${targetIndustry}` : '', phone].filter(Boolean).join(' | ') }}
           </p>
           <p class="mt-1 text-xl text-slate-900" style="font-family: Georgia, 'Times New Roman', serif;">{{ email }}</p>
         </header>
@@ -300,6 +299,7 @@
 <script setup>
 import { computed } from 'vue'
 import {
+  cvTargetPositionOptions,
   cvSkillLevelLabel,
   cvSkillLevelPercent,
   formatCvPeriod,
@@ -350,13 +350,29 @@ const avatarInitials = computed(() =>
     .map((part) => part.charAt(0).toUpperCase())
     .join(''),
 )
-const title = computed(() => props.profile?.tieu_de_ho_so || 'Hồ sơ ứng tuyển trên hệ thống')
+const formatFreeTextLabel = (value) =>
+  String(value || '')
+    .trim()
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+
+const rawTargetPosition = computed(() => String(props.profile?.vi_tri_ung_tuyen_muc_tieu || '').trim())
+const targetPosition = computed(() => {
+  const rawValue = rawTargetPosition.value
+  if (!rawValue) return ''
+
+  return cvTargetPositionOptions.find((item) => item.value === rawValue)?.label || formatFreeTextLabel(rawValue)
+})
+const targetIndustry = computed(() => String(props.profile?.ten_nganh_nghe_muc_tieu || '').trim())
+const title = computed(() => props.profile?.tieu_de_ho_so || targetPosition.value || 'CV ứng tuyển')
 const objective = computed(() => props.profile?.muc_tieu_nghe_nghiep || 'Chưa cập nhật mục tiêu nghề nghiệp.')
 const summary = computed(() => props.profile?.mo_ta_ban_than || 'Chưa cập nhật mô tả bản thân.')
 const degreeLabel = computed(() => degreeOptions[props.profile?.trinh_do] || props.profile?.trinh_do || 'Chưa cập nhật')
 const years = computed(() => formatExperienceYears(props.profile?.kinh_nghiem_nam))
-const targetPosition = computed(() => props.profile?.vi_tri_ung_tuyen_muc_tieu || 'Đa vị trí')
-const targetIndustry = computed(() => props.profile?.ten_nganh_nghe_muc_tieu || 'Đang cập nhật')
+const shouldShowTargetPositionMeta = computed(() =>
+  Boolean(targetPosition.value && targetPosition.value !== title.value)
+)
 const skills = computed(() => Array.isArray(props.profile?.ky_nang_json) ? props.profile.ky_nang_json.filter((item) => item?.ten) : [])
 const experiences = computed(() => Array.isArray(props.profile?.kinh_nghiem_json) ? props.profile.kinh_nghiem_json.filter((item) => item?.vi_tri) : [])
 const educations = computed(() => Array.isArray(props.profile?.hoc_van_json) ? props.profile.hoc_van_json.filter((item) => item?.truong) : [])

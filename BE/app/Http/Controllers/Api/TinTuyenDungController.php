@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\NguoiDung;
 use App\Models\TinTuyenDung;
+use App\Support\EncodedId;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -147,26 +148,27 @@ class TinTuyenDungController extends Controller
     /**
      * Chi tiết tin tuyển dụng.
      */
-    public function show(Request $request, int $id): JsonResponse
+    public function show(Request $request, string $id): JsonResponse
     {
+        $decodedId = EncodedId::decodeOrFail($id);
         $tinTuyenDung = $this->buildBaseDetailQuery()
             ->where('trang_thai', TinTuyenDung::TRANG_THAI_HOAT_DONG)
             ->whereHas('congTy', function ($q) {
                 $q->where('trang_thai', \App\Models\CongTy::TRANG_THAI_HOAT_DONG);
             })
-            ->find($id);
+            ->find($decodedId);
 
         if (!$tinTuyenDung) {
             $nguoiDung = auth('sanctum')->user();
 
-            if (!$this->candidateCanViewRestrictedJob($nguoiDung, $id)) {
+            if (!$this->candidateCanViewRestrictedJob($nguoiDung, $decodedId)) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Không tìm thấy tin tuyển dụng.',
                 ], 404);
             }
 
-            $tinTuyenDung = $this->buildBaseDetailQuery()->findOrFail($id);
+            $tinTuyenDung = $this->buildBaseDetailQuery()->findOrFail($decodedId);
         }
 
         // Tăng lượt xem

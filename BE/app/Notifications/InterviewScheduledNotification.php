@@ -58,7 +58,7 @@ class InterviewScheduledNotification extends Notification
             'phone' => 'Phỏng vấn qua điện thoại',
             default => null,
         };
-        $nguoiPhongVan = trim((string) ($round?->nguoi_phong_van ?? $ungTuyen->nguoi_phong_van ?? ''));
+        $nguoiPhongVan = trim((string) ($round?->interviewer?->ho_ten ?? $round?->nguoi_phong_van ?? ''));
         $linkPhongVan = trim((string) ($round?->link_phong_van ?? $ungTuyen->link_phong_van ?? ''));
         $tenVong = trim((string) ($round?->ten_vong ?? ''));
         $thoiGian = $ngayHen

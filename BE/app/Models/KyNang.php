@@ -2,12 +2,13 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\HasEncodedId;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class KyNang extends Model
 {
-    use HasFactory;
+    use HasFactory, HasEncodedId;
 
     /**
      * Tên bảng trong database.
@@ -29,6 +30,10 @@ class KyNang extends Model
         'ten_ky_nang',
         'mo_ta',
         'icon',
+    ];
+
+    protected $appends = [
+        'encoded_id',
     ];
 
     // ==========================================

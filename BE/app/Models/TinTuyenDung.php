@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\HasEncodedId;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -9,7 +10,7 @@ use Illuminate\Support\Facades\Schema;
 
 class TinTuyenDung extends Model
 {
-    use HasFactory;
+    use HasFactory, HasEncodedId;
 
     private static ?bool $supportsFeaturedListing = null;
 
@@ -54,6 +55,7 @@ class TinTuyenDung extends Model
     ];
 
     protected $appends = [
+        'encoded_id',
         'so_luong_da_nhan',
         'so_luong_con_lai',
         'da_tuyen_du',
@@ -115,6 +117,7 @@ class TinTuyenDung extends Model
     {
         return $this->hasMany(\App\Models\UngTuyen::class, 'tin_tuyen_dung_id')
             ->where('trang_thai', \App\Models\UngTuyen::TRANG_THAI_CHAP_NHAN)
+            ->where('trang_thai_offer', \App\Models\UngTuyen::OFFER_DA_CHAP_NHAN)
             ->whereNotNull('thoi_gian_ung_tuyen');
     }
 

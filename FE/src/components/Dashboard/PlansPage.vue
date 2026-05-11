@@ -20,9 +20,7 @@
               {{ currentSubscription.ngay_het_han ? new Intl.DateTimeFormat('vi-VN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(currentSubscription.ngay_het_han)) : 'Không giới hạn' }}
             </p>
           </template>
-
-
-<p v-else class="mt-3 text-sm leading-7 text-blue-50/90">
+          <p v-else class="mt-3 text-sm leading-7 text-blue-50/90">
             Bạn đang ở lớp Free mặc định. Hệ thống sẽ dùng free quota trước rồi mới đến ví AI.
           </p>
         </div>

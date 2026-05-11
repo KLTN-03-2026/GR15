@@ -163,9 +163,7 @@
                   <template v-if="admin.la_super_admin">
                     Toàn quyền hệ thống
                   </template>
-
-
-<template v-else>
+                  <template v-else>
                     {{ admin.so_quyen_admin || 0 }}/{{ admin.tong_quyen_admin || permissionCatalog.length }} chức năng
                   </template>
                 </td>

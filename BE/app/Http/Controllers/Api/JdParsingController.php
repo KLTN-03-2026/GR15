@@ -9,6 +9,7 @@ use App\Models\TinTuyenDung;
 use App\Models\TinTuyenDungKyNang;
 use App\Models\TinTuyenDungParsing;
 use App\Services\Ai\AiClientService;
+use App\Support\EncodedId;
 use Illuminate\Http\JsonResponse;
 use RuntimeException;
 
@@ -21,8 +22,9 @@ class JdParsingController extends Controller
     ) {
     }
 
-    public function parse(int $id): JsonResponse
+    public function parse(string $id): JsonResponse
     {
+        $decodedId = EncodedId::decodeOrFail($id);
         $congTy = $this->getCurrentEmployerCompany();
         $congTyId = $congTy?->id;
 
@@ -33,7 +35,7 @@ class JdParsingController extends Controller
             ], 403);
         }
 
-        $tin = TinTuyenDung::where('cong_ty_id', $congTyId)->findOrFail($id);
+        $tin = TinTuyenDung::where('cong_ty_id', $congTyId)->findOrFail($decodedId);
         $this->abortIfCannotManageJobRecord($this->getAuthenticatedEmployer(), $congTy, $tin);
 
         try {

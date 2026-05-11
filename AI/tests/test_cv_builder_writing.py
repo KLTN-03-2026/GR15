@@ -1,12 +1,26 @@
 from app.services.cv_builder_writing import generate_cv_builder_writing
 
 
-def _use_rule_based_provider(monkeypatch) -> None:
-    monkeypatch.setattr("app.services.cv_builder_writing._resolve_provider_name", lambda: "rule_based")
+def _use_fake_ollama_provider(monkeypatch, payload: dict) -> None:
+    monkeypatch.setattr("app.services.cv_builder_writing._resolve_provider_name", lambda: "ollama")
+    monkeypatch.setattr(
+        "app.services.cv_builder_writing.generate_ollama_text",
+        lambda *_args, **_kwargs: __import__("json").dumps(payload, ensure_ascii=False),
+    )
 
 
 def test_generate_summary_suggestions(monkeypatch) -> None:
-    _use_rule_based_provider(monkeypatch)
+    _use_fake_ollama_provider(
+        monkeypatch,
+        {
+            "suggestions": [
+                "Backend Developer có 2 năm kinh nghiệm, tập trung Laravel và PostgreSQL.",
+                "Lập trình viên backend chủ động tối ưu API và dữ liệu.",
+                "Ứng viên backend định hướng phát triển sản phẩm ổn định.",
+            ],
+            "skill_suggestions": [],
+        },
+    )
 
     result = generate_cv_builder_writing(
         {
@@ -27,7 +41,16 @@ def test_generate_summary_suggestions(monkeypatch) -> None:
 
 
 def test_generate_skill_suggestions_omits_existing_skills(monkeypatch) -> None:
-    _use_rule_based_provider(monkeypatch)
+    _use_fake_ollama_provider(
+        monkeypatch,
+        {
+            "suggestions": [],
+            "skill_suggestions": [
+                {"ten": "REST API", "muc_do": "kha"},
+                {"ten": "MySQL", "muc_do": "kha"},
+            ],
+        },
+    )
 
     result = generate_cv_builder_writing(
         {

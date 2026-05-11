@@ -140,7 +140,7 @@
                 <td class="px-6 py-4">
                   <div class="flex flex-col">
                     <RouterLink
-                      :to="`/employer/jobs/${job.id}`"
+                      :to="`/employer/jobs/${routeId(job)}`"
                       class="text-sm font-semibold text-slate-900 transition hover:text-[#2463eb] dark:text-white dark:hover:text-[#7ea8ff]"
                     >
                       {{ job.tieu_de }}
@@ -150,7 +150,7 @@
                       HR phụ trách: {{ job.hr_phu_trach?.ho_ten || 'Chưa gán' }}
                     </span>
                     <span
-                      v-if="canManageJobs && !canManageAllAssignments && !isOwnedJob(job)"
+                      v-if="canManageJobs && !canManageAllJobs && !isOwnedJob(job)"
                       class="mt-2 inline-flex w-fit rounded-full bg-amber-500/10 px-2.5 py-1 text-[11px] font-semibold text-amber-300"
                     >
                       Không thuộc phần việc của bạn
@@ -195,7 +195,7 @@
                 <td class="px-6 py-4">
                   <div class="flex justify-end gap-2">
                     <RouterLink
-                      :to="`/employer/jobs/${job.id}`"
+                      :to="`/employer/jobs/${routeId(job)}`"
                       class="flex size-9 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-white"
                       title="Xem chi tiết"
                     >
@@ -274,7 +274,6 @@
         </div>
       </div>
     </template>
-
 
   <div
     v-if="showModal"
@@ -421,7 +420,7 @@
             <span class="mb-2 block text-sm font-semibold text-slate-700">HR phụ trách</span>
             <select
               v-model="jobForm.hr_phu_trach_id"
-              :disabled="!canManageAllAssignments"
+              :disabled="!canManageAllJobs"
               class="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <option value="">Tự gán theo người thao tác</option>
@@ -429,7 +428,7 @@
                 {{ member.label }}
               </option>
             </select>
-            <p v-if="!canManageAllAssignments" class="mt-2 text-xs text-slate-500">
+            <p v-if="!canManageAllJobs" class="mt-2 text-xs text-slate-500">
               Với vai trò {{ currentInternalRoleLabel }}, tin tuyển dụng mới hoặc chỉnh sửa sẽ luôn gắn cho chính bạn.
             </p>
           </label>
@@ -542,6 +541,7 @@ import { useEmployerCompanyPermissions } from '@/composables/useEmployerCompanyP
 import { useNotify } from '@/composables/useNotify'
 import { formatDateTimeVN, toDateTimeLocalInputVN } from '@/utils/dateTime'
 import { normalizeExperienceRequirementText } from '@/utils/experience'
+import { routeId } from '@/utils/routeIds'
 import { VIETNAM_PROVINCES_34 } from '@/constants/vietnamProvinces'
 
 const notify = useNotify()
@@ -551,7 +551,7 @@ const {
   assignableMembers,
   ensurePermissionsLoaded,
   currentEmployerId,
-  canManageAllAssignments,
+  canManageAllJobs,
 } = useEmployerCompanyPermissions()
 
 const loading = ref(false)
@@ -822,9 +822,9 @@ const getRemainingSlots = (job) => Number(job?.so_luong_con_lai || Math.max(Numb
 const isQuotaFull = (job) => Boolean(job?.da_tuyen_du) || (Number(job?.so_luong_tuyen || 0) > 0 && getRemainingSlots(job) <= 0)
 const canDeleteJob = (job) => getSubmittedApplicationCount(job) === 0
 const isOwnedJob = (job) => Number(job?.hr_phu_trach?.id || job?.hr_phu_trach_id || 0) === Number(currentEmployerId.value || 0)
-const canMutateJob = (job) => Boolean(canManageJobs.value && (canManageAllAssignments.value || isOwnedJob(job)))
+const canMutateJob = (job) => Boolean(canManageJobs.value && (canManageAllJobs.value || isOwnedJob(job)))
 const ownershipHint = computed(() =>
-  canManageJobs.value && !canManageAllAssignments.value
+  canManageJobs.value && !canManageAllJobs.value
     ? `Vai trò ${currentInternalRoleLabel.value} chỉ có thể thao tác trên các tin tuyển dụng mình phụ trách.`
     : ''
 )

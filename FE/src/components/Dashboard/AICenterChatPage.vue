@@ -114,7 +114,7 @@
         </div>
         <div class="flex items-center gap-3">
           <span class="inline-flex h-2.5 w-2.5 rounded-full bg-emerald-400"></span>
-          <span class="text-xs font-bold uppercase tracking-[0.28em] text-slate-500">AI Agent Online</span>
+          <span class="max-w-[420px] truncate text-xs font-bold uppercase tracking-[0.18em] text-slate-500">AI AGENT ONLINE</span>
         </div>
       </header>
 
@@ -328,6 +328,13 @@ const chatStatusTone = computed(() =>
     ? 'bg-blue-500/15 text-blue-200 border-blue-500/30'
     : 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-900 dark:text-slate-300 dark:border-slate-700'
 )
+const activeChatContextLabel = computed(() => {
+  const session = activeChatSession.value
+  if (!session) return 'Chọn CV và tin tuyển dụng'
+  const cvTitle = session.ho_so?.tieu_de_ho_so || 'CV đang chọn'
+  const jobTitle = session.tin_tuyen_dung?.tieu_de
+  return jobTitle ? `${cvTitle} · ${jobTitle}` : cvTitle
+})
 
 const messageBubbleClass = (role) =>
   role === 'user'

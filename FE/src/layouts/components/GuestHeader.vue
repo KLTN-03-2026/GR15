@@ -61,9 +61,7 @@
             </div>
           </div>
         </template>
-
-
-<template v-else>
+        <template v-else>
           <RouterLink to="/login" class="hidden h-10 items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800 sm:flex">
             Đăng nhập
           </RouterLink>

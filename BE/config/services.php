@@ -37,7 +37,12 @@ return [
 
     'ai_service' => [
         'base_url' => env('AI_SERVICE_URL', 'http://127.0.0.1:8001'),
-        'timeout' => env('AI_SERVICE_TIMEOUT', 120),
+        'timeout' => env('AI_SERVICE_TIMEOUT', 90),
+        'matching_timeout' => env('AI_MATCHING_TIMEOUT', 10),
+        'parse_timeout' => env('AI_PARSE_TIMEOUT', 60),
+        'generation_timeout' => env('AI_GENERATION_TIMEOUT', 75),
+        'chat_timeout' => env('AI_CHAT_TIMEOUT', 60),
+        'stream_timeout' => env('AI_STREAM_TIMEOUT', 90),
     ],
 
     'google' => [

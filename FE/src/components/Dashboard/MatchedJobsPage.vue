@@ -194,7 +194,10 @@
             </span>
           </div>
 
-          <p v-if="item.explanation" class="text-sm leading-7 text-slate-500 dark:text-slate-400 line-clamp-2">
+          <p
+            v-if="item.explanation"
+            class="max-h-28 overflow-y-auto pr-2 text-sm leading-7 text-slate-500 scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent dark:text-slate-400 dark:scrollbar-thumb-slate-700"
+          >
             {{ item.explanation }}
           </p>
 
@@ -205,13 +208,13 @@
             </div>
             <div class="flex items-center gap-2">
               <RouterLink
-                :to="{ name: 'JobDetail', params: { id: item.tin_tuyen_dung?.id } }"
+                :to="{ name: 'JobDetail', params: { id: routeId(item.tin_tuyen_dung) } }"
                 class="px-4 py-2 rounded-lg text-sm font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
               >
                 Xem chi tiết
               </RouterLink>
               <RouterLink
-                :to="{ name: 'JobDetail', params: { id: item.tin_tuyen_dung?.id } }"
+                :to="{ name: 'JobDetail', params: { id: routeId(item.tin_tuyen_dung) } }"
                 class="bg-[#2463eb] text-white px-5 py-2 rounded-lg text-sm font-bold hover:bg-[#2463eb]/90 transition-all shadow-md shadow-[#2463eb]/20"
               >
                 Ứng tuyển ngay
@@ -250,6 +253,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { jobService, matchingService, profileService, savedJobService } from '@/services/api'
 import { useNotify } from '@/composables/useNotify'
+import { routeId } from '@/utils/routeIds'
 
 const notify = useNotify()
 
@@ -478,8 +482,9 @@ const regenerateMatches = async () => {
       return
     }
 
-    await Promise.allSettled(
-      jobs.map((job) => matchingService.generateMatching(Number(selectedProfileId.value), job.id))
+    await matchingService.generateMatchingBatch(
+      Number(selectedProfileId.value),
+      jobs.map((job) => Number(job.id)).filter(Boolean)
     )
 
     await fetchMatches(1)

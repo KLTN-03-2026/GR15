@@ -13,6 +13,13 @@ it('exports candidate application dossier as a server-side pdf', function () {
     $job = createJobForCompany($company, ['tieu_de' => 'Backend Developer Laravel']);
     $application = createApplicationForCandidate($candidate, $job, [], [
         'trang_thai' => UngTuyen::TRANG_THAI_DA_HEN_PHONG_VAN,
+    ]);
+    InterviewRound::create([
+        'ung_tuyen_id' => $application->id,
+        'thu_tu' => 1,
+        'ten_vong' => 'Technical Interview',
+        'loai_vong' => 'technical',
+        'trang_thai' => InterviewRound::TRANG_THAI_DA_LEN_LICH,
         'ngay_hen_phong_van' => now()->addDays(3),
     ]);
 
@@ -47,7 +54,7 @@ it('exports employer offer interview and onboarding documents with ownership che
         'loai_vong' => 'technical',
         'trang_thai' => InterviewRound::TRANG_THAI_HOAN_THANH,
         'ngay_hen_phong_van' => now()->subDays(2),
-        'ket_qua' => 'Pass',
+        'ket_qua' => InterviewRound::KET_QUA_DAT,
     ]);
 
     $plan = OnboardingPlan::create([

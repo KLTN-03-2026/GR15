@@ -31,6 +31,53 @@ class CoverLetterController extends Controller
         return Carbon::now('Asia/Ho_Chi_Minh')->utc();
     }
 
+    private function findAcceptedEmploymentForUser(int $userId): ?UngTuyen
+    {
+        return UngTuyen::query()
+            ->with(['tinTuyenDung.congTy', 'hoSo.nguoiDung'])
+            ->whereHas('hoSo', function ($query) use ($userId) {
+                $query->withTrashed()->where('nguoi_dung_id', $userId);
+            })
+            ->whereNotNull('thoi_gian_ung_tuyen')
+            ->where('da_rut_don', false)
+            ->where('trang_thai', UngTuyen::TRANG_THAI_TRUNG_TUYEN)
+            ->where('trang_thai_offer', UngTuyen::OFFER_DA_CHAP_NHAN)
+            ->latest('thoi_gian_phan_hoi_offer')
+            ->latest('updated_at')
+            ->first();
+    }
+
+    private function acceptedEmploymentResponse(UngTuyen $employment, TinTuyenDung $targetJob): JsonResponse
+    {
+        $employmentCompany = $employment->tinTuyenDung?->congTy;
+        $targetCompany = $targetJob->congTy;
+        $sameCompany = $employmentCompany && $targetCompany && (int) $employmentCompany->id === (int) $targetCompany->id;
+        $companyName = $employmentCompany?->ten_cong_ty ?: 'một công ty';
+        $jobTitle = $employment->tinTuyenDung?->tieu_de ?: 'một vị trí';
+
+        $message = $sameCompany
+            ? "Bạn đã trúng tuyển và nhận việc tại {$companyName} cho vị trí {$jobTitle}. Hệ thống xem bạn đã có việc nên không thể ứng tuyển thêm vị trí khác tại công ty này."
+            : "Bạn đã trúng tuyển và nhận việc tại {$companyName} cho vị trí {$jobTitle}. Hệ thống xem bạn đã có việc nên không thể tiếp tục ứng tuyển tin mới.";
+
+        return response()->json([
+            'success' => false,
+            'code' => 'CANDIDATE_ALREADY_EMPLOYED',
+            'message' => $message,
+            'data' => [
+                'employment_application_id' => $employment->id,
+                'employment_company_id' => $employmentCompany?->id,
+                'employment_company_name' => $employmentCompany?->ten_cong_ty,
+                'employment_job_id' => $employment->tin_tuyen_dung_id,
+                'employment_job_title' => $employment->tinTuyenDung?->tieu_de,
+                'target_company_id' => $targetCompany?->id,
+                'target_company_name' => $targetCompany?->ten_cong_ty,
+                'target_job_id' => $targetJob->id,
+                'target_job_title' => $targetJob->tieu_de,
+                'same_company' => $sameCompany,
+            ],
+        ], 409);
+    }
+
     public function generate(Request $request): JsonResponse
     {
         /** @var SuDungTinhNangAi|null $billingUsage */
@@ -47,6 +94,11 @@ class CoverLetterController extends Controller
 
         $tin = TinTuyenDung::with(['parsing', 'kyNangYeuCaus.kyNang', 'congTy'])
             ->findOrFail((int) $request->tin_tuyen_dung_id);
+
+        $acceptedEmployment = $this->findAcceptedEmploymentForUser((int) $request->user()->id);
+        if ($acceptedEmployment) {
+            return $this->acceptedEmploymentResponse($acceptedEmployment, $tin);
+        }
 
         $tin->loadCount([
             'acceptedApplications as so_luong_da_nhan',
@@ -260,10 +312,16 @@ class CoverLetterController extends Controller
         }
 
         $tin = TinTuyenDung::query()
+            ->with('congTy')
             ->withCount([
                 'acceptedApplications as so_luong_da_nhan',
             ])
             ->findOrFail((int) $ungTuyen->tin_tuyen_dung_id);
+
+        $acceptedEmployment = $this->findAcceptedEmploymentForUser((int) $request->user()->id);
+        if ($acceptedEmployment && (int) $acceptedEmployment->id !== (int) $ungTuyen->id) {
+            return $this->acceptedEmploymentResponse($acceptedEmployment, $tin);
+        }
 
         if ($tin->so_luong_con_lai <= 0) {
             return response()->json([

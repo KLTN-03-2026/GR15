@@ -108,7 +108,7 @@
               <div class="flex items-center justify-between border-t border-slate-200 pt-5 dark:border-slate-800">
                 <p class="text-base font-bold text-slate-900 dark:text-white">{{ formatSalary(featuredMatch.tin_tuyen_dung) }}</p>
                 <RouterLink
-                  :to="{ name: 'JobDetail', params: { id: featuredMatch.tin_tuyen_dung?.id } }"
+                  :to="{ name: 'JobDetail', params: { id: routeId(featuredMatch.tin_tuyen_dung) } }"
                   class="rounded-xl bg-gradient-to-r from-blue-600 to-indigo-500 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-blue-500/20 transition-all hover:from-blue-500 hover:to-indigo-400"
                 >
                   Ứng tuyển ngay
@@ -146,7 +146,7 @@
               <div class="mt-5 flex items-center justify-between border-t border-slate-200 pt-4 dark:border-slate-800">
                 <span class="text-xs text-slate-500 dark:text-slate-500">Xem thêm chi tiết và ứng tuyển từ trang job</span>
                 <RouterLink
-                  :to="{ name: 'JobDetail', params: { id: item.tin_tuyen_dung?.id } }"
+                  :to="{ name: 'JobDetail', params: { id: routeId(item.tin_tuyen_dung) } }"
                   class="rounded-lg bg-blue-600/10 px-4 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-600 hover:text-white dark:text-blue-300"
                 >
                   Xem job
@@ -199,7 +199,7 @@
                 </span>
                 <RouterLink
                   v-if="application.tin_tuyen_dung?.id"
-                  :to="{ name: 'JobDetail', params: { id: application.tin_tuyen_dung.id } }"
+                  :to="{ name: 'JobDetail', params: { id: routeId(application.tin_tuyen_dung) } }"
                   class="font-semibold text-[#2463eb] hover:underline"
                 >
                   Xem job
@@ -248,6 +248,7 @@ import { applicationService, followCompanyService, matchingService, profileServi
 import { useNotify } from '@/composables/useNotify'
 import { getStoredCandidate } from '@/utils/authStorage'
 import { getApplicationStatusLabel } from '@/utils/applicationStatus'
+import { routeId } from '@/utils/routeIds'
 
 const notify = useNotify()
 

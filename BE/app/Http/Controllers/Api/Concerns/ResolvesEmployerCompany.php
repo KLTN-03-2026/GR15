@@ -34,14 +34,22 @@ trait ResolvesEmployerCompany
         return $user->laChuSoHuuCongTy($congTy->id);
     }
 
-    protected function coTheQuanLyTatCaBanGhiEmployer(?NguoiDung $user, ?CongTy $congTy): bool
+    protected function coTheQuanLyTatCaTinTuyenDung(?NguoiDung $user, ?CongTy $congTy): bool
     {
         if (!$user || !$congTy) {
             return false;
         }
 
-        return $user->coVaiTroNoiBoCongTy(CongTy::VAI_TRO_NOI_BO_OWNER, $congTy)
-            || $user->coQuyenNoiBoCongTy(['members', 'jobs', 'applications'], $congTy);
+        return $user->coVaiTroNoiBoCongTy(CongTy::VAI_TRO_NOI_BO_OWNER, $congTy);
+    }
+
+    protected function coTheQuanLyTatCaUngTuyen(?NguoiDung $user, ?CongTy $congTy): bool
+    {
+        if (!$user || !$congTy) {
+            return false;
+        }
+
+        return $user->coVaiTroNoiBoCongTy(CongTy::VAI_TRO_NOI_BO_OWNER, $congTy);
     }
 
     protected function coTheQuanLyTinTheoOwnership(?NguoiDung $user, ?CongTy $congTy, ?TinTuyenDung $tin): bool
@@ -50,7 +58,7 @@ trait ResolvesEmployerCompany
             return false;
         }
 
-        if ($this->coTheQuanLyTatCaBanGhiEmployer($user, $congTy)) {
+        if ($this->coTheQuanLyTatCaTinTuyenDung($user, $congTy)) {
             return true;
         }
 
@@ -63,13 +71,11 @@ trait ResolvesEmployerCompany
             return false;
         }
 
-        if ($this->coTheQuanLyTatCaBanGhiEmployer($user, $congTy)) {
+        if ($this->coTheQuanLyTatCaUngTuyen($user, $congTy)) {
             return true;
         }
 
-        if ((int) ($ungTuyen->hr_phu_trach_id ?? 0) === (int) $user->id) {
-            return true;
-        }
+
 
         $ungTuyen->loadMissing('tinTuyenDung:id,hr_phu_trach_id');
 

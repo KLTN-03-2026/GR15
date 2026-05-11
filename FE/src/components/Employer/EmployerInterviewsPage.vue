@@ -245,13 +245,13 @@
                     {{ formatSubmittedDateTime(application.thoi_gian_ung_tuyen) }}
                   </p>
                 </div>
-                <div class="rounded-xl bg-slate-50 px-4 py-3 dark:bg-slate-800/70 min-h-[96px] h-full">
+                <div v-if="!hasInterviewRounds(application)" class="rounded-xl bg-slate-50 px-4 py-3 dark:bg-slate-800/70 min-h-[96px] h-full">
                   <p class="text-[10px] font-bold uppercase tracking-[0.22em] text-slate-400">Lịch phỏng vấn</p>
                   <p class="mt-2 text-sm font-semibold leading-7 text-slate-900 dark:text-white">
                     {{ formatDateTime(application.ngay_hen_phong_van) }}
                   </p>
                 </div>
-                <div class="rounded-xl bg-slate-50 px-4 py-3 dark:bg-slate-800/70 min-h-[96px] h-full">
+                <div v-if="!hasInterviewRounds(application)" class="rounded-xl bg-slate-50 px-4 py-3 dark:bg-slate-800/70 min-h-[96px] h-full">
                   <p class="text-[10px] font-bold uppercase tracking-[0.22em] text-slate-400">Hình thức</p>
                   <p class="mt-2 text-sm font-semibold leading-7 text-slate-900 dark:text-white">
                     {{ interviewModeLabel(application.hinh_thuc_phong_van) }}
@@ -259,9 +259,9 @@
                 </div>
               </div>
 
-              <div v-if="application.nguoi_phong_van" class="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:bg-slate-800/70 dark:text-slate-300">
+              <div v-if="application.ten_nguoi_phong_van && !hasInterviewRounds(application)" class="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:bg-slate-800/70 dark:text-slate-300">
                 <span class="font-semibold text-slate-900 dark:text-white">Người phỏng vấn:</span>
-                <span class="ml-2 break-words">{{ application.nguoi_phong_van }}</span>
+                <span class="ml-2 break-words">{{ application.ten_nguoi_phong_van }}</span>
               </div>
 
               <div
@@ -288,10 +288,16 @@
                     :class="timelineStatusClasses(item.status)"
                   >
                     <div class="flex items-start gap-3">
-                      <span class="material-symbols-outlined mt-0.5 text-[20px]">{{ item.icon || 'radio_button_checked' }}</span>
+                      <div class="flex h-11 w-11 shrink-0 flex-col items-center justify-center rounded-xl bg-white/70 text-center dark:bg-slate-950/40">
+                        <span class="text-[10px] font-black leading-none opacity-70">#{{ item.order }}</span>
+                        <span class="material-symbols-outlined mt-0.5 text-[18px]">{{ item.icon || 'radio_button_checked' }}</span>
+                      </div>
                       <div class="min-w-0 flex-1">
-                        <div class="flex flex-wrap items-center gap-2">
-                          <p class="font-bold">{{ item.title }}</p>
+                        <div class="flex flex-wrap items-start gap-2">
+                          <p class="min-w-0 flex-1 break-words font-bold">{{ item.title }}</p>
+                          <span class="rounded-full bg-white/60 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide dark:bg-slate-950/40">
+                            {{ timelineGroupLabel(item.group) }}
+                          </span>
                           <span class="rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide dark:bg-slate-950/40">
                             {{ timelineStatusLabel(item.status) }}
                           </span>
@@ -309,7 +315,7 @@
                 <span class="font-semibold text-slate-900 dark:text-white">HR phụ trách:</span>
                 <span class="ml-2 break-words">{{ application.hr_phu_trach?.ho_ten || application.tin_tuyen_dung?.hr_phu_trach?.ho_ten || 'Chưa gán' }}</span>
                 <span
-                  v-if="canProcessApplications && !canManageAllAssignments && !isOwnedApplication(application)"
+                  v-if="canProcessApplications && !canManageAllApplications && !isOwnedApplication(application)"
                   class="ml-2 inline-flex rounded-full bg-amber-500/10 px-2.5 py-1 text-[11px] font-semibold text-amber-300"
                 >
                   Không thuộc phần việc của bạn
@@ -317,7 +323,7 @@
               </div>
 
               <div
-                v-if="application.ngay_hen_phong_van"
+                v-if="application.ngay_hen_phong_van && !hasInterviewRounds(application)"
                 class="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:bg-slate-800/70 dark:text-slate-300"
               >
                 <span class="font-semibold text-slate-900 dark:text-white">Phản hồi ứng viên:</span>
@@ -358,7 +364,7 @@
                 </button>
               </div>
 
-              <div v-if="application.link_phong_van" class="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:bg-slate-800/70 dark:text-slate-300">
+              <div v-if="application.link_phong_van && !hasInterviewRounds(application)" class="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:bg-slate-800/70 dark:text-slate-300">
                 <span class="font-semibold text-slate-900 dark:text-white">Link / địa điểm:</span>
                 <a
                   v-if="isUrl(application.link_phong_van)"
@@ -372,9 +378,9 @@
                 <span v-else class="ml-2 break-words">{{ application.link_phong_van }}</span>
               </div>
 
-              <div v-if="application.ket_qua_phong_van" class="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:bg-slate-800/70 dark:text-slate-300">
+              <div v-if="application.ket_qua_phong_van && !hasInterviewRounds(application)" class="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:bg-slate-800/70 dark:text-slate-300">
                 <span class="font-semibold text-slate-900 dark:text-white">Kết quả phỏng vấn:</span>
-                <span class="ml-2">{{ application.ket_qua_phong_van }}</span>
+                <span class="ml-2">{{ roundResultLabel(application.ket_qua_phong_van) }}</span>
               </div>
 
               <div
@@ -509,8 +515,8 @@
               >
                 {{ interviewAttendanceMeta(application.trang_thai_tham_gia_phong_van).label }}
               </span>
-              <p v-if="application.nguoi_phong_van" class="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                Người phỏng vấn: {{ application.nguoi_phong_van }}
+              <p v-if="application.ten_nguoi_phong_van" class="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                Người phỏng vấn: {{ application.ten_nguoi_phong_van }}
               </p>
             </div>
           </div>
@@ -573,10 +579,6 @@
                   <button class="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-bold text-slate-600 transition hover:bg-slate-50 hover:text-[#2463eb] dark:text-slate-300 dark:hover:bg-slate-800" type="button" @click="scrollModalToSection('copilot')">
                     <span class="material-symbols-outlined text-[18px]">auto_awesome</span>
                     Interview Copilot
-                  </button>
-                  <button class="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-bold text-slate-600 transition hover:bg-slate-50 hover:text-[#2463eb] dark:text-slate-300 dark:hover:bg-slate-800" type="button" @click="scrollModalToSection('interview-basic')">
-                    <span class="material-symbols-outlined text-[18px]">event</span>
-                    Lịch hẹn chung
                   </button>
                   <button class="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-bold text-slate-600 transition hover:bg-slate-50 hover:text-[#2463eb] dark:text-slate-300 dark:hover:bg-slate-800" type="button" @click="scrollModalToSection('offer')">
                     <span class="material-symbols-outlined text-[18px]">workspace_premium</span>
@@ -677,12 +679,23 @@
                       {{ roundTypeLabel(round.loai_vong) }} • {{ formatDateTime(round.ngay_hen_phong_van) }}
                     </p>
                   </div>
-                  <span class="rounded-full px-2.5 py-1 text-[11px] font-bold" :class="roundStatusMeta(round.trang_thai).classes">
+                  <span
+                    v-if="roundResultMeta(round.ket_qua)"
+                    class="rounded-full px-2.5 py-1 text-[11px] font-bold"
+                    :class="roundResultMeta(round.ket_qua).classes"
+                  >
+                    {{ roundResultMeta(round.ket_qua).label }}
+                  </span>
+                  <span v-else class="rounded-full px-2.5 py-1 text-[11px] font-bold" :class="roundStatusMeta(round.trang_thai).classes">
                     {{ roundStatusMeta(round.trang_thai).label }}
                   </span>
                 </div>
-                <p v-if="round.nguoi_phong_van" class="mt-2 text-xs text-slate-500 dark:text-slate-400">Interviewer: {{ round.nguoi_phong_van }}</p>
-                <p class="mt-2 text-xs" :class="interviewAttendanceMeta(round.trang_thai_tham_gia).classes">
+                <p v-if="round.interviewer?.ho_ten" class="mt-2 text-xs text-slate-500 dark:text-slate-400">Interviewer: {{ round.interviewer.ho_ten }}</p>
+                <p
+                  v-if="shouldShowRoundAttendance(round)"
+                  class="mt-2 inline-flex rounded-full px-2.5 py-1 text-xs font-bold"
+                  :class="interviewAttendanceMeta(round.trang_thai_tham_gia).classes"
+                >
                   {{ interviewAttendanceMeta(round.trang_thai_tham_gia).label }}
                 </p>
               </button>
@@ -696,6 +709,7 @@
               <div>
                 <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Tên vòng</label>
                 <input v-model="roundForm.ten_vong" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-violet-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white" placeholder="Vòng 1 - HR screening">
+                <p v-if="firstRoundError('ten_vong')" class="mt-2 text-xs font-semibold text-rose-600 dark:text-rose-300">{{ firstRoundError('ten_vong') }}</p>
               </div>
               <div>
                 <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Loại vòng</label>
@@ -707,10 +721,12 @@
                   <option value="culture">Culture fit</option>
                   <option value="other">Khác</option>
                 </select>
+                <p v-if="firstRoundError('loai_vong')" class="mt-2 text-xs font-semibold text-rose-600 dark:text-rose-300">{{ firstRoundError('loai_vong') }}</p>
               </div>
               <div>
                 <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Thời gian</label>
                 <input v-model="roundForm.ngay_hen_phong_van" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-violet-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white" type="datetime-local">
+                <p v-if="firstRoundError('ngay_hen_phong_van')" class="mt-2 text-xs font-semibold text-rose-600 dark:text-rose-300">{{ firstRoundError('ngay_hen_phong_van') }}</p>
               </div>
               <div>
                 <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Hình thức</label>
@@ -720,34 +736,61 @@
                   <option value="offline">Trực tiếp</option>
                   <option value="phone">Điện thoại</option>
                 </select>
+                <p v-if="firstRoundError('hinh_thuc_phong_van')" class="mt-2 text-xs font-semibold text-rose-600 dark:text-rose-300">{{ firstRoundError('hinh_thuc_phong_van') }}</p>
               </div>
               <div>
                 <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Interviewer</label>
-                <input v-model="roundForm.nguoi_phong_van" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-violet-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white" placeholder="Tên người phỏng vấn">
+                <select v-model="roundForm.interviewer_user_id" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-violet-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white">
+                  <option value="">Chưa chọn</option>
+                  <option v-for="option in roundInterviewerOptions" :key="option.value" :value="option.value">
+                    {{ option.label }}
+                  </option>
+                </select>
+
+                <p v-if="firstRoundError('interviewer_user_id')" class="mt-2 text-xs font-semibold text-rose-600 dark:text-rose-300">{{ firstRoundError('interviewer_user_id') }}</p>
               </div>
               <div>
-                <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Trạng thái vòng</label>
+                <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Tiến độ vòng</label>
                 <select v-model="roundForm.trang_thai" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-violet-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white">
                   <option :value="0">Đã lên lịch</option>
                   <option :value="1">Hoàn thành</option>
                   <option :value="2">Đã hủy</option>
                 </select>
+                <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                  Tiến độ dùng để biết vòng đang mở, đã xong hay đã hủy. Khi chọn kết quả Đậu/Rớt, hệ thống tự xem vòng là Hoàn thành.
+                </p>
+                <p v-if="firstRoundError('trang_thai')" class="mt-2 text-xs font-semibold text-rose-600 dark:text-rose-300">{{ firstRoundError('trang_thai') }}</p>
               </div>
               <div class="md:col-span-2">
                 <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Link / địa điểm</label>
                 <input v-model="roundForm.link_phong_van" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-violet-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white" placeholder="https://meet.google.com/... hoặc địa điểm">
+                <p v-if="firstRoundError('link_phong_van')" class="mt-2 text-xs font-semibold text-rose-600 dark:text-rose-300">{{ firstRoundError('link_phong_van') }}</p>
               </div>
               <div>
                 <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Điểm</label>
                 <input v-model="roundForm.diem_so" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-violet-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white" min="0" max="10" type="number">
+                <p v-if="firstRoundError('diem_so')" class="mt-2 text-xs font-semibold text-rose-600 dark:text-rose-300">{{ firstRoundError('diem_so') }}</p>
               </div>
               <div>
                 <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Kết quả</label>
-                <input v-model="roundForm.ket_qua" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-violet-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white" placeholder="Qua vòng / cần cân nhắc...">
+                <select v-model="roundForm.ket_qua" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-violet-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white">
+                  <option value="">Chưa chọn</option>
+                  <option v-for="option in ROUND_RESULT_OPTIONS" :key="option.value" :value="option.value">
+                    {{ option.label }}
+                  </option>
+                  <option v-if="roundForm.ket_qua && !ROUND_RESULT_OPTIONS.some((option) => option.value === roundForm.ket_qua)" :value="roundForm.ket_qua">
+                    {{ roundForm.ket_qua }} (dữ liệu cũ)
+                  </option>
+                </select>
+                <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                  Kết quả là quyết định tuyển dụng của riêng vòng này.
+                </p>
+                <p v-if="firstRoundError('ket_qua')" class="mt-2 text-xs font-semibold text-rose-600 dark:text-rose-300">{{ firstRoundError('ket_qua') }}</p>
               </div>
               <div class="md:col-span-2">
                 <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Ghi chú vòng</label>
                 <textarea v-model="roundForm.ghi_chu" class="min-h-[90px] w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-violet-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white" placeholder="Ghi chú riêng cho vòng này..." />
+                <p v-if="firstRoundError('ghi_chu')" class="mt-2 text-xs font-semibold text-rose-600 dark:text-rose-300">{{ firstRoundError('ghi_chu') }}</p>
               </div>
             </div>
 
@@ -957,97 +1000,6 @@
             </div>
           </div>
 
-          <div class="md:col-span-2 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900" data-modal-section="interview-basic">
-            <div class="mb-5">
-              <p class="text-xs font-black uppercase tracking-[0.2em] text-slate-500">Lịch hẹn chung</p>
-              <h4 class="mt-2 text-base font-black text-slate-900 dark:text-white">Thông tin phỏng vấn ở cấp ứng tuyển</h4>
-              <p class="mt-1 text-sm leading-6 text-slate-600 dark:text-slate-300">
-                Dùng cho lịch hẹn tổng quát của đơn. Nếu quy trình có nhiều vòng, hãy ưu tiên cập nhật trong từng vòng phỏng vấn phía trên.
-              </p>
-            </div>
-            <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <div class="md:col-span-2">
-            <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Ngày hẹn phỏng vấn</label>
-            <input
-              v-model="form.ngay_hen_phong_van"
-              :disabled="!canProcessApplications"
-              class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-900 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed"
-              type="datetime-local"
-            >
-          </div>
-
-          <div>
-            <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Hình thức phỏng vấn</label>
-            <select
-              v-model="form.hinh_thuc_phong_van"
-              :disabled="!canProcessApplications"
-              class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-900 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              <option value="">Chưa chọn</option>
-              <option value="online">Online</option>
-              <option value="offline">Trực tiếp</option>
-              <option value="phone">Điện thoại</option>
-            </select>
-          </div>
-
-          <div>
-            <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Người phỏng vấn</label>
-            <select
-              v-model="form.nguoi_phong_van"
-              :disabled="!canProcessApplications"
-              class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-900 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              <option value="">Chọn người phỏng vấn</option>
-              <option v-for="option in interviewerOptions" :key="option.value" :value="option.value">
-                {{ option.label }}
-              </option>
-            </select>
-            <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">
-              Chỉ hiển thị các HR nội bộ hiện có của công ty.
-            </p>
-          </div>
-
-          <div>
-            <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">HR phụ trách</label>
-            <select
-              v-model="form.hr_phu_trach_id"
-              :disabled="!canManageAllAssignments || !canProcessApplications"
-              class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-900 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              <option value="">Tự gán theo người xử lý</option>
-              <option v-for="member in assignableMembers" :key="member.id" :value="String(member.id)">
-                {{ member.label }}
-              </option>
-            </select>
-            <p v-if="!canManageAllAssignments" class="mt-2 text-xs text-slate-500 dark:text-slate-400">
-              Với vai trò {{ currentInternalRoleLabel }}, đơn ứng tuyển sẽ luôn được gán cho chính bạn khi cập nhật.
-            </p>
-          </div>
-
-          <div class="md:col-span-2">
-            <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Link meeting / địa điểm</label>
-            <input
-              v-model="form.link_phong_van"
-              :disabled="!canProcessApplications"
-              class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-900 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed"
-              placeholder="https://meet.google.com/... hoặc địa điểm phỏng vấn"
-              type="text"
-            >
-          </div>
-
-          <div class="md:col-span-2">
-            <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Kết quả phỏng vấn</label>
-            <input
-              v-model="form.ket_qua_phong_van"
-              :disabled="!canProcessApplications"
-              class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-900 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed"
-              placeholder="Ví dụ: Qua vòng 1, cần thêm bài test..."
-              type="text"
-            >
-          </div>
-            </div>
-          </div>
-
           <div class="md:col-span-2 rounded-2xl border border-emerald-100 bg-emerald-50 p-4 dark:border-emerald-500/20 dark:bg-emerald-500/10" data-modal-section="offer">
             <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div>
@@ -1223,7 +1175,7 @@
                       <p class="font-bold text-slate-900 dark:text-white">{{ task.tieu_de }}</p>
                       <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
                         {{ task.nguoi_phu_trach === 'candidate' ? 'Ứng viên phụ trách' : 'HR phụ trách' }}
-                        <span v-if="task.han_hoan_tat"> • hạn {{ task.han_hoan_tat }}</span>
+                        <span v-if="task.han_hoan_tat"> • hạn {{ formatOnboardingDate(task.han_hoan_tat) }}</span>
                       </p>
                     </div>
                     <div class="flex flex-wrap gap-2">
@@ -1387,8 +1339,9 @@ import { useEmployerCompanyPermissions } from '@/composables/useEmployerCompanyP
 import { useNotify } from '@/composables/useNotify'
 import { getAuthToken } from '@/utils/authStorage'
 import { connectPrivateChannel } from '@/services/realtime'
-import { formatDateTimeVN, formatHistoricalDateTimeVN, toDateTimeLocalInputVN } from '@/utils/dateTime'
+import { formatDateTimeVN, formatDateVN, formatHistoricalDateTimeVN, toDateTimeLocalInputVN } from '@/utils/dateTime'
 import { formatExperienceYears } from '@/utils/experience'
+import { extractApiFieldErrors } from '@/utils/apiErrors'
 import {
   APPLICATION_STATUS,
   APPLICATION_STATUS_OPTIONS,
@@ -1409,7 +1362,7 @@ const {
   companyMembers,
   ensurePermissionsLoaded,
   currentEmployerId,
-  canManageAllAssignments,
+  canManageAllApplications,
 } = useEmployerCompanyPermissions()
 
 const loading = ref(false)
@@ -1444,6 +1397,7 @@ const billingWallet = ref(null)
 const billingPricing = ref([])
 const billingEntitlements = ref([])
 let applicationRealtimeChannel = null
+let realtimeRefreshTimer = null
 
 const cleanDeepLinkQueryKeys = [
   'highlight_application_id',
@@ -1469,17 +1423,19 @@ const hrFilterOptions = computed(() => ([
   ...assignableMembers.value,
 ]))
 
-const interviewerOptions = computed(() => {
+const roundInterviewerOptions = computed(() => {
   const options = companyMembers.value.map((member) => ({
-    value: String(member?.ho_ten || '').trim(),
+    value: String(member?.id || ''),
     label: `${member?.ho_ten || 'HR'}${member?.ten_vai_tro_noi_bo ? ` (${member.ten_vai_tro_noi_bo})` : ''}`,
+    name: String(member?.ho_ten || '').trim(),
   })).filter((item) => item.value)
 
-  const currentValue = String(form.nguoi_phong_van || '').trim()
-  if (currentValue && !options.some((item) => item.value === currentValue)) {
+  const currentId = currentEmployerId.value ? String(currentEmployerId.value) : ''
+  if (currentId && !options.some((item) => item.value === currentId)) {
     options.unshift({
-      value: currentValue,
-      label: `${currentValue} (dữ liệu cũ)`,
+      value: currentId,
+      label: 'Tự gán tôi',
+      name: '',
     })
   }
 
@@ -1490,10 +1446,8 @@ const form = reactive({
   trang_thai: 0,
   ngay_hen_phong_van: '',
   hinh_thuc_phong_van: '',
-  nguoi_phong_van: '',
   link_phong_van: '',
   ket_qua_phong_van: '',
-  hr_phu_trach_id: '',
   ghi_chu: '',
 })
 
@@ -1505,13 +1459,14 @@ const roundForm = reactive({
   trang_thai: 0,
   ngay_hen_phong_van: '',
   hinh_thuc_phong_van: '',
-  nguoi_phong_van: '',
   interviewer_user_id: '',
   link_phong_van: '',
   ket_qua: '',
   diem_so: '',
   ghi_chu: '',
 })
+
+const roundFieldErrors = reactive({})
 
 const offerForm = reactive({
   ghi_chu_offer: '',
@@ -1539,6 +1494,11 @@ const onboardingTaskForm = reactive({
 const statusOptions = [
   { value: '', label: 'Tất cả trạng thái' },
   ...APPLICATION_STATUS_OPTIONS,
+]
+
+const ROUND_RESULT_OPTIONS = [
+  { value: 'pass', label: 'Đậu' },
+  { value: 'fail', label: 'Rớt' },
 ]
 
 const activeTemplate = computed(() => notificationTemplates.value?.[Number(form.trang_thai)] || null)
@@ -1668,6 +1628,38 @@ const roundStatusMeta = (value) => {
   }
 }
 
+const roundResultLabel = (value) => ({
+  pass: 'Đậu',
+  fail: 'Rớt',
+}[value] || value || 'Chưa cập nhật')
+
+const roundResultMeta = (value) => {
+  switch (value) {
+    case 'pass':
+      return { label: 'Đậu', classes: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' }
+    case 'fail':
+      return { label: 'Rớt', classes: 'bg-rose-500/10 text-rose-700 dark:text-rose-300' }
+    default:
+      return null
+  }
+}
+
+const isInternalRound = (round) => round?.loai_vong === 'hr'
+const shouldShowRoundAttendance = (round) => !isInternalRound(round) && !round?.ket_qua
+
+const clearRoundFieldErrors = () => {
+  Object.keys(roundFieldErrors).forEach((key) => delete roundFieldErrors[key])
+}
+
+const setRoundFieldErrors = (errors = {}) => {
+  clearRoundFieldErrors()
+  Object.entries(errors || {}).forEach(([field, messages]) => {
+    roundFieldErrors[field] = Array.isArray(messages) ? messages : [messages]
+  })
+}
+
+const firstRoundError = (field) => roundFieldErrors[field]?.[0] || ''
+
 const isUrl = (value) => /^https?:\/\//i.test(String(value || '').trim())
 
 const degreeLabel = (value) => {
@@ -1692,8 +1684,14 @@ const formatSubmittedDateTime = (value) => {
   return formatHistoricalDateTimeVN(value, 'Chưa cập nhật')
 }
 
-const timelineDate = (item) =>
-  formatDateTimeVN(item?.occurred_at || item?.scheduled_at || item?.due_at, 'Chưa cập nhật')
+const isDateOnlyValue = (value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''))
+
+const timelineDate = (item) => {
+  const value = item?.occurred_at || item?.scheduled_at || item?.due_at
+  return isDateOnlyValue(value)
+    ? formatDateVN(value, 'Chưa cập nhật')
+    : formatDateTimeVN(value, 'Chưa cập nhật')
+}
 
 const timelineStatusClasses = (status) => ({
   completed: 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300',
@@ -1708,6 +1706,15 @@ const timelineStatusLabel = (status) => ({
   pending: 'Sắp tới',
   cancelled: 'Đã dừng',
 }[status] || 'Theo dõi')
+
+const timelineGroupLabel = (group) => ({
+  application: 'Hồ sơ',
+  interview: 'Phỏng vấn',
+  offer: 'Offer',
+  onboarding: 'Onboarding',
+}[group] || 'Quy trình')
+
+const formatOnboardingDate = (value, fallback = 'Chưa cập nhật') => formatDateVN(value, fallback)
 
 const formatDateTimeInput = (value) => {
   return toDateTimeLocalInputVN(value)
@@ -1724,7 +1731,7 @@ const isOwnedApplication = (application) => {
 const canMutateApplication = (application) => Boolean(
   canProcessApplications.value
   && !application?.da_rut_don
-  && (canManageAllAssignments.value || isOwnedApplication(application)),
+  && (canManageAllApplications.value || isOwnedApplication(application)),
 )
 const canUseInterviewCopilotFor = (application) => Boolean(
   canMutateApplication(application)
@@ -1770,6 +1777,9 @@ const candidateName = (application) =>
   || application?.ho_so?.nguoi_dung?.email
   || 'Ứng viên'
 
+const hasInterviewRounds = (application) =>
+  Array.isArray(application?.interview_rounds) && application.interview_rounds.length > 0
+
 const isInterviewResultOverdue = (application) => {
   if (!application?.ngay_hen_phong_van || application?.da_rut_don || isFinalApplicationStatus(application)) {
     return false
@@ -1779,7 +1789,7 @@ const isInterviewResultOverdue = (application) => {
     && new Date(application.ngay_hen_phong_van).getTime() < Date.now()
 }
 const ownershipHint = computed(() =>
-  canProcessApplications.value && !canManageAllAssignments.value
+  canProcessApplications.value && !canManageAllApplications.value
     ? `Vai trò ${currentInternalRoleLabel.value} chỉ có thể xử lý các đơn ứng tuyển mình phụ trách.`
     : ''
 )
@@ -1893,10 +1903,18 @@ const loadBillingContext = async () => {
 const fetchApplications = async () => {
   loading.value = true
   try {
+    const selectedId = selectedApplication.value?.id
     const response = await employerApplicationService.getApplications(filters)
     const payload = response?.data || {}
     applications.value = payload.data || []
     pagination.value = payload
+
+    if (selectedId) {
+      const freshSelected = applications.value.find((item) => Number(item.id) === Number(selectedId))
+      if (freshSelected) {
+        selectedApplication.value = freshSelected
+      }
+    }
   } catch (error) {
     applications.value = []
     pagination.value = null
@@ -1907,8 +1925,58 @@ const fetchApplications = async () => {
 }
 
 const refreshApplicationsRealtime = async () => {
-  if (loading.value) return
+  if (loading.value) {
+    scheduleApplicationsRealtimeRefresh(500)
+    return
+  }
+
   await fetchApplications()
+}
+
+const scheduleApplicationsRealtimeRefresh = (delay = 250) => {
+  if (realtimeRefreshTimer) {
+    window.clearTimeout(realtimeRefreshTimer)
+  }
+
+  realtimeRefreshTimer = window.setTimeout(() => {
+    realtimeRefreshTimer = null
+    void refreshApplicationsRealtime()
+  }, delay)
+}
+
+const employerRealtimeMessage = (event) => {
+  const title = event?.payload?.tin_tuyen_dung_tieu_de
+  const prefix = title ? `Pipeline "${title}"` : 'Pipeline ứng tuyển'
+  const type = event?.type || ''
+  const payload = event?.payload || {}
+
+  if (type === 'interview_round_response' || type === 'interview_round_response_email' || type === 'interview_response' || type === 'interview_response_email') {
+    return `${prefix} vừa nhận phản hồi phỏng vấn từ ứng viên.`
+  }
+
+  if (type === 'interview_round_created') {
+    return payload.is_internal_interview_round
+      ? `${prefix} vừa có vòng HR screening nội bộ.`
+      : `${prefix} vừa có vòng phỏng vấn mới.`
+  }
+
+  if (type === 'interview_round_rescheduled') {
+    return `${prefix} vừa được cập nhật lịch phỏng vấn.`
+  }
+
+  if (type === 'interview_round_updated') {
+    return `${prefix} vừa được cập nhật kết quả vòng phỏng vấn.`
+  }
+
+  if (type === 'offer_accepted' || type === 'offer_accepted_email') {
+    return `${prefix} vừa có ứng viên chấp nhận offer.`
+  }
+
+  if (type === 'offer_declined' || type === 'offer_declined_email') {
+    return `${prefix} vừa có ứng viên từ chối offer.`
+  }
+
+  return `${prefix} vừa có cập nhật realtime.`
 }
 
 const handleApplicationHighlight = async () => {
@@ -1983,10 +2051,8 @@ const openModal = (application, options = {}) => {
   form.trang_thai = Number(application.trang_thai ?? 0)
   form.ngay_hen_phong_van = formatDateTimeInput(application.ngay_hen_phong_van)
   form.hinh_thuc_phong_van = application.hinh_thuc_phong_van || ''
-  form.nguoi_phong_van = application.nguoi_phong_van || ''
   form.link_phong_van = application.link_phong_van || ''
   form.ket_qua_phong_van = application.ket_qua_phong_van || ''
-  form.hr_phu_trach_id = application.hr_phu_trach?.id ? String(application.hr_phu_trach.id) : ''
   form.ghi_chu = application.ghi_chu || ''
   offerForm.ghi_chu_offer = application.ghi_chu_offer || ''
   offerForm.link_offer = application.link_offer || ''
@@ -2041,10 +2107,8 @@ const closeModal = () => {
   form.trang_thai = 0
   form.ngay_hen_phong_van = ''
   form.hinh_thuc_phong_van = ''
-  form.nguoi_phong_van = ''
   form.link_phong_van = ''
   form.ket_qua_phong_van = ''
-  form.hr_phu_trach_id = ''
   form.ghi_chu = ''
   offerForm.ghi_chu_offer = ''
   offerForm.link_offer = ''
@@ -2095,6 +2159,7 @@ const setSelectedOnboardingPlan = (plan) => {
 }
 
 const resetRoundForm = () => {
+  clearRoundFieldErrors()
   selectedRoundId.value = ''
   roundForm.id = ''
   roundForm.thu_tu = ''
@@ -2103,7 +2168,6 @@ const resetRoundForm = () => {
   roundForm.trang_thai = 0
   roundForm.ngay_hen_phong_van = ''
   roundForm.hinh_thuc_phong_van = ''
-  roundForm.nguoi_phong_van = ''
   roundForm.interviewer_user_id = ''
   roundForm.link_phong_van = ''
   roundForm.ket_qua = ''
@@ -2112,6 +2176,7 @@ const resetRoundForm = () => {
 }
 
 const selectRound = (round) => {
+  clearRoundFieldErrors()
   selectedRoundId.value = String(round?.id || '')
   roundForm.id = round?.id || ''
   roundForm.thu_tu = round?.thu_tu || ''
@@ -2120,7 +2185,6 @@ const selectRound = (round) => {
   roundForm.trang_thai = Number(round?.trang_thai || 0)
   roundForm.ngay_hen_phong_van = formatDateTimeInput(round?.ngay_hen_phong_van)
   roundForm.hinh_thuc_phong_van = round?.hinh_thuc_phong_van || ''
-  roundForm.nguoi_phong_van = round?.nguoi_phong_van || ''
   roundForm.interviewer_user_id = round?.interviewer_user_id ? String(round.interviewer_user_id) : ''
   roundForm.link_phong_van = round?.link_phong_van || ''
   roundForm.ket_qua = round?.ket_qua || ''
@@ -2251,12 +2315,6 @@ const saveApplication = async () => {
   try {
     await employerApplicationService.updateStatus(selectedApplication.value.id, {
       trang_thai: Number(form.trang_thai),
-      ngay_hen_phong_van: form.ngay_hen_phong_van || null,
-      hinh_thuc_phong_van: form.hinh_thuc_phong_van || null,
-      nguoi_phong_van: form.nguoi_phong_van || null,
-      link_phong_van: form.link_phong_van || null,
-      ket_qua_phong_van: form.ket_qua_phong_van || null,
-      hr_phu_trach_id: form.hr_phu_trach_id ? Number(form.hr_phu_trach_id) : null,
       ghi_chu: form.ghi_chu || null,
     })
 
@@ -2283,18 +2341,28 @@ const refreshSelectedApplicationRounds = async () => {
   }
 }
 
+const applyFreshApplication = (application) => {
+  if (!application?.id) return
+
+  selectedApplication.value = application
+  applications.value = applications.value.map((item) =>
+    Number(item.id) === Number(application.id) ? application : item
+  )
+}
+
 const saveInterviewRound = async () => {
   if (!selectedApplication.value?.id || !roundForm.ten_vong || roundSaving.value) return
 
+  clearRoundFieldErrors()
   roundSaving.value = true
   const payload = {
     thu_tu: roundForm.thu_tu ? Number(roundForm.thu_tu) : null,
     ten_vong: roundForm.ten_vong,
     loai_vong: roundForm.loai_vong || 'hr',
-    trang_thai: Number(roundForm.trang_thai || 0),
+    trang_thai: roundForm.ket_qua ? 1 : Number(roundForm.trang_thai || 0),
     ngay_hen_phong_van: roundForm.ngay_hen_phong_van || null,
     hinh_thuc_phong_van: roundForm.hinh_thuc_phong_van || null,
-    nguoi_phong_van: roundForm.nguoi_phong_van || null,
+    // nguoi_phong_van removed - use interviewer_user_id instead
     interviewer_user_id: roundForm.interviewer_user_id ? Number(roundForm.interviewer_user_id) : null,
     link_phong_van: roundForm.link_phong_van || null,
     ket_qua: roundForm.ket_qua || null,
@@ -2307,14 +2375,15 @@ const saveInterviewRound = async () => {
       ? await employerApplicationService.updateInterviewRound(selectedApplication.value.id, roundForm.id, payload)
       : await employerApplicationService.createInterviewRound(selectedApplication.value.id, payload)
     const savedRound = response?.data
+    applyFreshApplication(response?.application)
     notify.success(response?.message || 'Đã lưu vòng phỏng vấn.')
-    await refreshSelectedApplicationRounds()
     await fetchApplications()
     if (savedRound?.id) {
       const freshRound = (selectedApplication.value?.interview_rounds || []).find((round) => Number(round.id) === Number(savedRound.id)) || savedRound
       selectRound(freshRound)
     }
   } catch (error) {
+    setRoundFieldErrors(extractApiFieldErrors(error))
     notify.apiError(error, 'Không lưu được vòng phỏng vấn.')
   } finally {
     roundSaving.value = false
@@ -2326,9 +2395,9 @@ const deleteInterviewRound = async (round) => {
 
   roundDeletingId.value = round.id
   try {
-    await employerApplicationService.deleteInterviewRound(selectedApplication.value.id, round.id)
+    const response = await employerApplicationService.deleteInterviewRound(selectedApplication.value.id, round.id)
+    applyFreshApplication(response?.application)
     notify.success('Đã xóa vòng phỏng vấn.')
-    await refreshSelectedApplicationRounds()
     await fetchApplications()
     resetRoundForm()
   } catch (error) {
@@ -2485,6 +2554,7 @@ const saveOnboardingPlan = async () => {
     })
     setSelectedOnboardingPlan(response?.data)
     notify.success(response?.message || 'Đã lưu onboarding.')
+    await fetchApplications()
   } catch (error) {
     notify.apiError(error, 'Không lưu được onboarding.')
   } finally {
@@ -2508,6 +2578,7 @@ const createOnboardingTask = async () => {
     onboardingTaskForm.han_hoan_tat = ''
     onboardingTaskForm.nguoi_phu_trach = 'candidate'
     notify.success('Đã thêm checklist onboarding.')
+    await fetchApplications()
   } catch (error) {
     notify.apiError(error, 'Không thêm được checklist onboarding.')
   } finally {
@@ -2523,6 +2594,7 @@ const updateOnboardingTaskStatus = async (task, status) => {
       trang_thai: status,
     })
     setSelectedOnboardingPlan(response?.data)
+    await fetchApplications()
   } catch (error) {
     notify.apiError(error, 'Không cập nhật được checklist.')
   } finally {
@@ -2537,6 +2609,7 @@ const deleteOnboardingTask = async (task) => {
     const response = await employerApplicationService.deleteOnboardingTask(selectedApplication.value.id, task.id)
     setSelectedOnboardingPlan(response?.data)
     notify.info('Đã xóa checklist onboarding.')
+    await fetchApplications()
   } catch (error) {
     notify.apiError(error, 'Không xóa được checklist.')
   } finally {
@@ -2566,26 +2639,23 @@ onMounted(async () => {
   if (companyId) {
     applicationRealtimeChannel = connectPrivateChannel(`company.${companyId}`)
     applicationRealtimeChannel?.listen('.application.changed', (event) => {
-      const title = event?.payload?.tin_tuyen_dung_tieu_de
-      notify.info(title ? `Pipeline "${title}" vừa có cập nhật realtime.` : 'Pipeline ứng tuyển vừa có cập nhật realtime.')
-      void refreshApplicationsRealtime()
+      notify.info(employerRealtimeMessage(event))
+      scheduleApplicationsRealtimeRefresh()
     })
   }
 })
 
 onUnmounted(() => {
+  if (realtimeRefreshTimer) {
+    window.clearTimeout(realtimeRefreshTimer)
+    realtimeRefreshTimer = null
+  }
+
   if (applicationRealtimeChannel) {
     applicationRealtimeChannel.stopListening('.application.changed')
     applicationRealtimeChannel = null
   }
 })
 
-watch(() => form.hr_phu_trach_id, (value) => {
-  if (!value || form.nguoi_phong_van) return
 
-  const selectedMember = companyMembers.value.find((member) => String(member?.id) === String(value))
-  if (selectedMember?.ho_ten) {
-    form.nguoi_phong_van = selectedMember.ho_ten
-  }
-})
 </script>

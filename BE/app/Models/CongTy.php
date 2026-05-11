@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\HasEncodedId;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Schema;
@@ -9,7 +10,7 @@ use Illuminate\Support\Str;
 
 class CongTy extends Model
 {
-    use HasFactory;
+    use HasFactory, HasEncodedId;
 
     protected $table = 'cong_tys';
 
@@ -32,6 +33,10 @@ class CongTy extends Model
         'nguoi_dung_id' => 'integer',
         'nganh_nghe_id' => 'integer',
         'trang_thai' => 'integer',
+    ];
+
+    protected $appends = [
+        'encoded_id',
     ];
 
     // ==========================================
@@ -145,10 +150,6 @@ class CongTy extends Model
             ->withTimestamps();
     }
 
-    public function vaiTroNoiBos()
-    {
-        return $this->hasMany(CongTyVaiTroNoiBo::class, 'cong_ty_id');
-    }
 
     /**
      * Ngành nghề chính.

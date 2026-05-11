@@ -445,6 +445,9 @@ Route::post('v1/ung-vien/ho-sos/{id}/parse', [CvParsingController::class, 'parse
 Route::post('v1/ung-vien/ho-sos/{id}/matching', [MatchingController::class, 'generate'])
     ->middleware(['auth:sanctum', 'role:ung_vien'])
     ->name('ung-vien.ho-sos.matching');
+Route::post('v1/ung-vien/ho-sos/{id}/matching/batch', [MatchingController::class, 'generateBatch'])
+    ->middleware(['auth:sanctum', 'role:ung_vien'])
+    ->name('ung-vien.ho-sos.matching.batch');
 
 // Sinh báo cáo tư vấn nghề nghiệp
 Route::post('v1/ung-vien/ho-sos/{id}/career-report', [CareerReportController::class, 'generate'])

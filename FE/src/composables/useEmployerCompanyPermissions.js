@@ -126,7 +126,8 @@ export const useEmployerCompanyPermissions = () => {
   const canManageJobs = computed(() => Boolean(permissions.value.jobs))
   const canProcessApplications = computed(() => Boolean(permissions.value.applications || permissions.value.interviews || permissions.value.offers || permissions.value.onboarding))
   const canManageMembers = computed(() => Boolean(permissions.value.members))
-  const canManageAllAssignments = computed(() => Boolean(permissions.value.members || permissions.value.jobs || permissions.value.applications))
+  const canManageAllJobs = computed(() => currentInternalRole.value === 'owner')
+  const canManageAllApplications = computed(() => currentInternalRole.value === 'owner')
   const canViewCompanyAuditLogs = computed(() => Boolean(permissions.value.audit_logs))
 
   return {
@@ -143,7 +144,8 @@ export const useEmployerCompanyPermissions = () => {
     canManageJobs,
     canProcessApplications,
     canManageMembers,
-    canManageAllAssignments,
+    canManageAllJobs,
+    canManageAllApplications,
     canViewCompanyAuditLogs,
     permissionsLoading: readonly(loading),
     permissionsLoaded: readonly(loaded),

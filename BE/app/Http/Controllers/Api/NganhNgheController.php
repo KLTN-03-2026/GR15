@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\NganhNghe;
+use App\Support\EncodedId;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -97,8 +98,9 @@ class NganhNgheController extends Controller
      * GET /api/v1/nganh-nghes/{id}
      * Chi tiết ngành nghề.
      */
-    public function show(int $id): JsonResponse
+    public function show(string $id): JsonResponse
     {
+        $decodedId = EncodedId::decodeOrFail($id);
         $nganhNghe = NganhNghe::where('trang_thai', NganhNghe::TRANG_THAI_HIEN_THI)
             ->with([
                 'danhMucCha:id,ten_nganh,slug',
@@ -107,7 +109,7 @@ class NganhNgheController extends Controller
                         ->select('id', 'ten_nganh', 'slug', 'icon', 'danh_muc_cha_id');
                 },
             ])
-            ->findOrFail($id);
+            ->findOrFail($decodedId);
 
         return response()->json([
             'success' => true,

@@ -4,6 +4,7 @@ namespace App\Events;
 
 use App\Models\NguoiDung;
 use App\Models\TinTuyenDung;
+use App\Support\EncodedId;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
@@ -88,6 +89,7 @@ class FollowedCompanyJobActivated implements ShouldBroadcastNow
             ],
             'job' => [
                 'id' => (int) $job->id,
+                'encoded_id' => EncodedId::encode((int) $job->id),
                 'title' => (string) $job->tieu_de,
                 'created_at' => $createdAt,
                 'published_at' => $publishedAt,

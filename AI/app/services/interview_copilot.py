@@ -1,6 +1,13 @@
 from __future__ import annotations
 
+import json
+import re
+
 from app.core.config import settings
+from app.core.logger import get_logger
+from app.providers.gemini_client import generate_text
+from app.providers.ollama_client import generate_text as generate_ollama_text
+from app.services.llm_timeout import TimeoutError, run_with_timeout
 from app.services.skill_catalog import normalize_search_text
 from app.services.vietnamese_text import (
     normalize_vietnamese_ai_text,
@@ -8,7 +15,9 @@ from app.services.vietnamese_text import (
 )
 
 
-MODEL_VERSION = f"interview_copilot_v1.0::rule_based::{settings.local_llm_model}"
+logger = get_logger(__name__)
+
+MODEL_VERSION = f"interview_copilot_v1.1::{settings.interview_copilot_provider}"
 
 
 def generate_interview_copilot(ung_tuyen_id: int, application_context: dict | None = None) -> dict:
@@ -21,7 +30,7 @@ def generate_interview_copilot(ung_tuyen_id: int, application_context: dict | No
     matched_skills = _match_skills(job_skills, candidate_skills)
     missing_skills = [skill for skill in job_skills if skill not in matched_skills]
 
-    data = {
+    evidence = {
         "ung_tuyen_id": ung_tuyen_id,
         "candidate_summary": normalize_vietnamese_ai_text(
             _candidate_summary(context, matched_skills, missing_skills),
@@ -31,12 +40,35 @@ def generate_interview_copilot(ung_tuyen_id: int, application_context: dict | No
         "questions": _normalize_question_groups(_question_groups(job, candidate, matched_skills, missing_skills)),
         "rubric": _normalize_rubric(_rubric(job, missing_skills)),
         "red_flags": normalize_vietnamese_text_list(_red_flags(candidate, missing_skills)),
-        "model_version": MODEL_VERSION,
     }
+    provider = _resolve_provider_name()
+
+    try:
+        data = run_with_timeout(
+            lambda: _generate_copilot_with_llm("generate", context, evidence, provider),
+            settings.ai_llm_fallback_seconds,
+        )
+    except TimeoutError:
+        provider = "rule_timeout_fallback"
+        logger.warning(
+            "Interview copilot generate LLM timed out ung_tuyen_id=%s timeout_seconds=%s",
+            ung_tuyen_id,
+            settings.ai_llm_fallback_seconds,
+        )
+        data = evidence.copy()
+    except Exception as exc:
+        logger.exception("Interview copilot generate failed provider=%s", provider)
+        return {
+            "success": False,
+            "model_version": _model_version(provider),
+            "data": {},
+            "error": str(exc),
+        }
+    data["model_version"] = _model_version(provider)
 
     return {
         "success": True,
-        "model_version": MODEL_VERSION,
+        "model_version": _model_version(provider),
         "data": data,
         "error": None,
     }
@@ -58,7 +90,7 @@ def evaluate_interview_copilot(
     note_text = str(notes.get("notes") or "").strip()
     decision = str(notes.get("decision") or "").strip()
 
-    data = {
+    evidence = {
         "ung_tuyen_id": ung_tuyen_id,
         "summary": normalize_vietnamese_ai_text(_evaluation_summary(context, note_text, average), ensure_punctuation=True),
         "strengths": normalize_vietnamese_text_list(_evaluation_strengths(note_text, scores, average)),
@@ -70,14 +102,137 @@ def evaluate_interview_copilot(
             trim_tail=False,
             ensure_punctuation=True,
         ),
-        "model_version": MODEL_VERSION,
     }
+    provider = _resolve_provider_name()
+
+    try:
+        data = run_with_timeout(
+            lambda: _generate_copilot_with_llm("evaluate", {**context, "interview_notes": notes}, evidence, provider),
+            settings.ai_llm_fallback_seconds,
+        )
+    except TimeoutError:
+        provider = "rule_timeout_fallback"
+        logger.warning(
+            "Interview copilot evaluate LLM timed out ung_tuyen_id=%s timeout_seconds=%s",
+            ung_tuyen_id,
+            settings.ai_llm_fallback_seconds,
+        )
+        data = evidence.copy()
+    except Exception as exc:
+        logger.exception("Interview copilot evaluate failed provider=%s", provider)
+        return {
+            "success": False,
+            "model_version": _model_version(provider),
+            "data": {},
+            "error": str(exc),
+        }
+    data["model_version"] = _model_version(provider)
 
     return {
         "success": True,
-        "model_version": MODEL_VERSION,
+        "model_version": _model_version(provider),
         "data": data,
         "error": None,
+    }
+
+
+def _resolve_provider_name() -> str:
+    provider = (settings.interview_copilot_provider or "ollama").strip().lower()
+    if provider == "gemini":
+        return "gemini"
+    if provider in {"", "llm", "ollama", "template", "rule", "rules", "rule_based", "local"}:
+        if provider in {"template", "rule", "rules", "rule_based", "local"}:
+            logger.warning("INTERVIEW_COPILOT_PROVIDER=%s is non-LLM; forcing ollama.", settings.interview_copilot_provider)
+        return "ollama"
+    logger.warning("Unknown INTERVIEW_COPILOT_PROVIDER=%s, forcing ollama.", settings.interview_copilot_provider)
+    return "ollama"
+
+
+def _model_version(provider: str) -> str:
+    if provider == "rule_timeout_fallback":
+        return "interview_copilot_v1.1::rule_timeout_fallback::internal"
+    model = settings.gemini_model if provider == "gemini" else settings.ollama_model
+    return f"interview_copilot_v1.1::{provider}::{model}"
+
+
+def _generate_copilot_with_llm(mode: str, context: dict, evidence: dict, provider: str) -> dict:
+    prompt = _build_llm_prompt(mode, context, evidence)
+    if provider == "gemini":
+        raw = generate_text(
+            system_prompt=(
+                "Bạn là trợ lý phỏng vấn cho nhà tuyển dụng. "
+                "Chỉ trả về JSON hợp lệ, tiếng Việt, không markdown, không bịa dữ liệu ngoài JSON."
+            ),
+            user_prompt=prompt,
+            max_tokens=settings.interview_copilot_max_tokens,
+            temperature=0.2,
+        )
+    else:
+        raw = generate_ollama_text(
+            prompt,
+            max_tokens=settings.interview_copilot_max_tokens,
+            temperature=0.2,
+            top_p=0.8,
+            num_ctx=max(settings.ollama_num_ctx, 4096),
+            error_context="Ollama local cho interview copilot",
+        )
+    return _normalize_llm_payload(raw, evidence, mode)
+
+
+def _build_llm_prompt(mode: str, context: dict, evidence: dict) -> str:
+    if mode == "evaluate":
+        schema = '{"summary":"...","strengths":["..."],"concerns":["..."],"next_steps":["..."],"recommendation":"..."}'
+        task = "Đánh giá ghi chú phỏng vấn và đề xuất bước tiếp theo cho nhà tuyển dụng."
+    else:
+        schema = '{"candidate_summary":"...","focus_areas":["..."],"questions":[{"group":"...","items":["..."]}],"rubric":[{"criterion":"...","weight":"...","signals":["..."]}],"red_flags":["..."]}'
+        task = "Tạo interview copilot để nhà tuyển dụng phỏng vấn ứng viên theo CV/JD."
+
+    return (
+        "Bạn là trợ lý phỏng vấn cho hệ thống tuyển dụng.\n"
+        f"Nhiệm vụ: {task}\n"
+        "Quy tắc:\n"
+        "- Chỉ trả về JSON hợp lệ theo schema, không markdown, không code block.\n"
+        "- Viết tiếng Việt rõ ràng, ngắn gọn, bám sát dữ liệu.\n"
+        "- Không bịa kỹ năng, kinh nghiệm, công ty hoặc kết quả ngoài JSON.\n"
+        "- Nếu dữ liệu thiếu, nêu là cần xác minh thêm.\n"
+        f"Schema: {schema}\n"
+        f"Dữ liệu gốc: {json.dumps(context, ensure_ascii=False)}\n"
+        f"Gợi ý cấu trúc nội bộ để tham khảo: {json.dumps(evidence, ensure_ascii=False)}"
+    )
+
+
+def _normalize_llm_payload(raw: str, evidence: dict, mode: str) -> dict:
+    text = raw.strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*", "", text)
+        text = re.sub(r"\s*```$", "", text)
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        match = re.search(r"\{.*\}", text, flags=re.DOTALL)
+        if not match:
+            raise
+        payload = json.loads(match.group(0))
+    if not isinstance(payload, dict):
+        raise RuntimeError("LLM trả về JSON không phải object.")
+
+    if mode == "evaluate":
+        return {
+            "ung_tuyen_id": evidence["ung_tuyen_id"],
+            "summary": normalize_vietnamese_ai_text(str(payload.get("summary") or evidence.get("summary") or ""), ensure_punctuation=True),
+            "strengths": normalize_vietnamese_text_list(payload.get("strengths") or evidence.get("strengths") or []),
+            "concerns": normalize_vietnamese_text_list(payload.get("concerns") or evidence.get("concerns") or []),
+            "next_steps": normalize_vietnamese_text_list(payload.get("next_steps") or evidence.get("next_steps") or []),
+            "recommendation": normalize_vietnamese_ai_text(str(payload.get("recommendation") or evidence.get("recommendation") or ""), ensure_punctuation=True),
+        }
+
+    return {
+        "ung_tuyen_id": evidence["ung_tuyen_id"],
+        "candidate_summary": normalize_vietnamese_ai_text(str(payload.get("candidate_summary") or evidence.get("candidate_summary") or ""), ensure_punctuation=True),
+        "focus_areas": normalize_vietnamese_text_list(payload.get("focus_areas") or evidence.get("focus_areas") or []),
+        "questions": _normalize_question_groups(payload.get("questions") or evidence.get("questions") or []),
+        "rubric": _normalize_rubric(payload.get("rubric") or evidence.get("rubric") or []),
+        "red_flags": normalize_vietnamese_text_list(payload.get("red_flags") or evidence.get("red_flags") or []),
     }
 
 
@@ -204,7 +359,7 @@ def _normalize_rubric(rubric: list[dict]) -> list[dict]:
                     ensure_punctuation=False,
                 ),
                 "expectation": normalize_vietnamese_ai_text(
-                    str(item.get("expectation") or ""),
+                    str(item.get("expectation") or "; ".join(item.get("signals") or [])),
                     keep_blank_lines=False,
                     trim_tail=False,
                     ensure_punctuation=True,

@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from collections import Counter
 import json
-from json import JSONDecodeError
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
 from app.core.config import settings
 from app.core.logger import get_logger
 from app.providers.gemini_client import generate_text as generate_gemini_text
+from app.providers.ollama_client import generate_text as generate_ollama_text
+from app.services.llm_timeout import TimeoutError, run_with_timeout
 from app.services.skill_catalog import SKILL_CATALOG, normalize_search_text
 from app.services.vietnamese_text import (
     normalize_vietnamese_ai_text,
@@ -254,16 +255,32 @@ def generate_career_report(
             ),
             ensure_punctuation=False,
         )
-
+        provider_name = _resolve_provider_name()
         try:
-            llm_report = _generate_llm_report_text(reasoning_context, report_outline)
+            llm_report = run_with_timeout(
+                lambda: _generate_llm_report_text(reasoning_context, report_outline, provider_name),
+                settings.ai_llm_fallback_seconds,
+            )
             if llm_report:
                 bao_cao_chi_tiet = normalize_vietnamese_ai_text(llm_report, ensure_punctuation=False)
             else:
-                bao_cao_chi_tiet = template_report
-        except Exception as exc:
-            logger.warning("Career report LLM reasoning fallback to template: %s", exc)
+                raise RuntimeError("LLM không trả về nội dung career report.")
+        except TimeoutError:
+            provider_name = "template_timeout_fallback"
+            logger.warning(
+                "Career report LLM timed out ho_so_id=%s timeout_seconds=%s",
+                ho_so_id,
+                settings.ai_llm_fallback_seconds,
+            )
             bao_cao_chi_tiet = template_report
+        except Exception as exc:
+            logger.exception("Career report LLM reasoning failed.")
+            return {
+                "success": False,
+                "model_version": MODEL_VERSION,
+                "data": {},
+                "error": str(exc),
+            }
 
         return {
             "success": True,
@@ -282,6 +299,7 @@ def generate_career_report(
                     ],
                 },
                 "bao_cao_chi_tiet": bao_cao_chi_tiet,
+                "provider": provider_name,
                 "model_version": MODEL_VERSION,
             },
             "error": None,
@@ -641,11 +659,19 @@ def _portfolio_suggestions(primary_role: str | None, gaps: list[str]) -> list[st
     return suggestions
 
 
-def _generate_llm_report_text(reasoning_context: dict, report_outline: dict) -> str | None:
-    provider = (settings.career_report_provider or "template").lower().strip()
+def _resolve_provider_name() -> str:
+    provider = (settings.career_report_provider or "ollama").lower().strip()
     if provider in {"", "template", "rule", "rules"}:
-        return None
+        logger.warning("CAREER_REPORT_PROVIDER=%s is non-LLM; forcing ollama.", provider)
+        return "ollama"
+    if provider in {"openai", "gemini", "ollama"}:
+        return provider
+    logger.warning("Unknown CAREER_REPORT_PROVIDER=%s, forcing ollama.", provider)
+    return "ollama"
 
+
+def _generate_llm_report_text(reasoning_context: dict, report_outline: dict, provider: str | None = None) -> str | None:
+    provider = provider or _resolve_provider_name()
     prompt = _build_llm_report_prompt(reasoning_context, report_outline)
     if provider == "openai":
         return _generate_openai_report(prompt)
@@ -654,8 +680,7 @@ def _generate_llm_report_text(reasoning_context: dict, report_outline: dict) -> 
     if provider == "ollama":
         return _generate_ollama_report(prompt)
 
-    logger.warning("Unknown CAREER_REPORT_PROVIDER=%s, fallback to template", provider)
-    return None
+    return _generate_ollama_report(prompt)
 
 
 def _build_llm_report_prompt(reasoning_context: dict, report_outline: dict) -> str:
@@ -803,43 +828,14 @@ def _generate_gemini_report(prompt: str) -> str:
 
 
 def _generate_ollama_report(prompt: str) -> str:
-    payload = {
-        "model": settings.ollama_model,
-        "prompt": prompt,
-        "stream": False,
-        "keep_alive": settings.ollama_keep_alive,
-        "options": {
-            "temperature": 0,
-            "top_p": 0.8,
-            "num_predict": settings.career_report_max_tokens,
-            "num_ctx": max(settings.ollama_num_ctx, 3072),
-            "num_thread": settings.ollama_num_thread,
-        },
-    }
-    request = Request(
-        settings.ollama_url,
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-        method="POST",
+    content = generate_ollama_text(
+        prompt,
+        max_tokens=settings.career_report_max_tokens,
+        temperature=0,
+        top_p=0.8,
+        num_ctx=max(settings.ollama_num_ctx, 3072),
+        error_context="Ollama local cho Career Report",
     )
-
-    try:
-        with urlopen(request, timeout=120) as response:
-            body = response.read().decode("utf-8")
-    except URLError as exc:
-        raise RuntimeError(f"Không gọi được Ollama local cho Career Report: {exc}") from exc
-
-    try:
-        data = json.loads(body)
-    except JSONDecodeError as exc:
-        raise RuntimeError("Ollama trả về dữ liệu Career Report không hợp lệ.") from exc
-
-    if data.get("error"):
-        raise RuntimeError(f"Ollama báo lỗi khi sinh Career Report: {data['error']}")
-
-    content = (data.get("response") or "").strip()
-    if not content:
-        raise RuntimeError("Ollama không trả về nội dung Career Report.")
     return _finalize_llm_report_text(content)
 
 

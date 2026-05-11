@@ -86,7 +86,7 @@
               </h2>
               <RouterLink
                 v-if="company.nganh_nghe?.id"
-                :to="`/industries/${company.nganh_nghe.id}`"
+                :to="`/industries/${routeId(company.nganh_nghe)}`"
                 class="truncate text-sm text-slate-500 transition hover:text-[#2463eb]"
               >
                 {{ company.nganh_nghe?.ten_nganh || 'Doanh nghiệp công nghệ' }}
@@ -113,7 +113,7 @@
           <div class="mt-5 flex items-center justify-between gap-3">
             <p class="line-clamp-2 text-sm text-slate-500">{{ company.dia_chi || 'Địa chỉ đang cập nhật' }}</p>
             <RouterLink
-              :to="`/companies/${company.id}`"
+              :to="`/companies/${routeId(company)}`"
               class="shrink-0 rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white transition hover:bg-[#2463eb] dark:bg-white dark:text-slate-900 dark:hover:bg-[#2463eb] dark:hover:text-white"
             >
               Xem chi tiết
@@ -156,6 +156,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { jobService } from '@/services/api'
 import { useNotify } from '@/composables/useNotify'
+import { routeId } from '@/utils/routeIds'
 
 const route = useRoute()
 const router = useRouter()

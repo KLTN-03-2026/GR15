@@ -114,7 +114,7 @@
               Xem việc
             </RouterLink>
             <RouterLink
-              :to="`/industries/${industry.id}`"
+              :to="`/industries/${routeId(industry)}`"
               class="shrink-0 rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white transition hover:bg-[#2463eb] dark:bg-white dark:text-slate-900 dark:hover:bg-[#2463eb] dark:hover:text-white"
             >
               Chi tiết
@@ -135,6 +135,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { jobService } from '@/services/api'
 import { useNotify } from '@/composables/useNotify'
+import { routeId } from '@/utils/routeIds'
 
 const route = useRoute()
 const router = useRouter()

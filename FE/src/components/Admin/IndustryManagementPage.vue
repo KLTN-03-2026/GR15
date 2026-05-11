@@ -232,7 +232,6 @@
       </div>
     </template>
 
-
     <div class="grid gap-5 lg:grid-cols-2">
       <div class="space-y-2 lg:col-span-2">
         <label class="block text-sm font-semibold text-slate-700">Tên ngành nghề</label>

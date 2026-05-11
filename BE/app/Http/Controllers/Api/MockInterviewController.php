@@ -11,13 +11,13 @@ use App\Models\HoSo;
 use App\Models\KetQuaMatching;
 use App\Models\SuDungTinhNangAi;
 use App\Models\TinTuyenDung;
-use App\Models\TuVanNgheNghiep;
 use App\Services\Ai\AiClientService;
 use App\Services\Billing\FeatureAccessService;
 use App\Support\ApiErrorMessage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -482,7 +482,6 @@ class MockInterviewController extends Controller
             now()->addMinutes(5),
             function () use ($nguoiDungId, $session): array {
                 $candidateProfile = [];
-                $careerReport = null;
                 $topMatches = [];
                 $relatedJob = null;
 
@@ -498,6 +497,8 @@ class MockInterviewController extends Controller
                             'ho_ten' => $hoSo->nguoiDung?->ho_ten,
                             'parsed_name' => $hoSo->parsing?->parsed_name,
                             'tieu_de_ho_so' => $hoSo->tieu_de_ho_so,
+                            'vi_tri_ung_tuyen_muc_tieu' => $hoSo->vi_tri_ung_tuyen_muc_tieu,
+                            'ten_nganh_nghe_muc_tieu' => $hoSo->ten_nganh_nghe_muc_tieu,
                             'kinh_nghiem_nam' => $hoSo->kinh_nghiem_nam,
                             'trinh_do' => $hoSo->trinh_do,
                             'parsed_skills' => collect($hoSo->parsing?->parsed_skills_json ?? [])
@@ -507,16 +508,12 @@ class MockInterviewController extends Controller
                                 ->all(),
                         ];
 
-                        $careerReport = TuVanNgheNghiep::query()
-                            ->where('ho_so_id', $hoSo->id)
-                            ->latest('created_at')
-                            ->first();
-
                         $topMatches = KetQuaMatching::query()
                             ->with('tinTuyenDung:id,tieu_de')
                             ->where('ho_so_id', $hoSo->id)
+                            ->where('tin_tuyen_dung_id', $session->related_tin_tuyen_dung_id)
                             ->orderByDesc('diem_phu_hop')
-                            ->limit(2)
+                            ->limit(1)
                             ->get()
                             ->map(function (KetQuaMatching $item): array {
                                 return [
@@ -560,11 +557,6 @@ class MockInterviewController extends Controller
 
                 return [
                     'candidate_profile' => $candidateProfile,
-                    'career_report' => $careerReport ? [
-                        'nghe_de_xuat' => $careerReport->nghe_de_xuat,
-                        'muc_do_phu_hop' => $careerReport->muc_do_phu_hop,
-                        'goi_y_ky_nang_bo_sung' => $careerReport->goi_y_ky_nang_bo_sung,
-                    ] : null,
                     'top_matching_jobs' => $topMatches,
                     'related_job' => $relatedJob,
                 ];
@@ -593,6 +585,11 @@ class MockInterviewController extends Controller
     private function processAnswer(int $userId, array $validated, AiClientService $aiClient): array
     {
         $session = $this->resolveSession($userId, (int) $validated['session_id']);
+        if ((int) $session->status !== 1) {
+            throw ValidationException::withMessages([
+                'session_id' => 'Phiên phỏng vấn đã kết thúc, không thể gửi thêm câu trả lời.',
+            ]);
+        }
         $currentQuestion = $this->latestInterviewQuestion($session->id);
 
         $userMessage = AiChatMessage::create([
@@ -735,6 +732,13 @@ class MockInterviewController extends Controller
 
     private function persistInterviewReport(int $userId, AiChatSession $session, AiClientService $aiClient): AiInterviewReport
     {
+        $existingReport = AiInterviewReport::query()
+            ->where('session_id', $session->id)
+            ->first();
+        if ($existingReport) {
+            return $existingReport->fresh(['session:id,title,status', 'tinTuyenDung:id,tieu_de']);
+        }
+
         $context = $this->buildInterviewContext($userId, $session);
         $transcript = $this->buildTranscript($session->id, withMetadata: true);
 

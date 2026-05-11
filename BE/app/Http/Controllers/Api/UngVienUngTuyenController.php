@@ -63,6 +63,53 @@ class UngVienUngTuyenController extends Controller
         ], 401);
     }
 
+    private function findAcceptedEmploymentForUser(int $userId): ?UngTuyen
+    {
+        return UngTuyen::query()
+            ->with(['tinTuyenDung.congTy', 'hoSo.nguoiDung'])
+            ->whereHas('hoSo', function ($query) use ($userId) {
+                $query->withTrashed()->where('nguoi_dung_id', $userId);
+            })
+            ->whereNotNull('thoi_gian_ung_tuyen')
+            ->where('da_rut_don', false)
+            ->where('trang_thai', UngTuyen::TRANG_THAI_TRUNG_TUYEN)
+            ->where('trang_thai_offer', UngTuyen::OFFER_DA_CHAP_NHAN)
+            ->latest('thoi_gian_phan_hoi_offer')
+            ->latest('updated_at')
+            ->first();
+    }
+
+    private function acceptedEmploymentResponse(UngTuyen $employment, TinTuyenDung $targetJob): JsonResponse
+    {
+        $employmentCompany = $employment->tinTuyenDung?->congTy;
+        $targetCompany = $targetJob->congTy;
+        $sameCompany = $employmentCompany && $targetCompany && (int) $employmentCompany->id === (int) $targetCompany->id;
+        $companyName = $employmentCompany?->ten_cong_ty ?: 'một công ty';
+        $jobTitle = $employment->tinTuyenDung?->tieu_de ?: 'một vị trí';
+
+        $message = $sameCompany
+            ? "Bạn đã trúng tuyển và nhận việc tại {$companyName} cho vị trí {$jobTitle}. Hệ thống xem bạn đã có việc nên không thể ứng tuyển thêm vị trí khác tại công ty này."
+            : "Bạn đã trúng tuyển và nhận việc tại {$companyName} cho vị trí {$jobTitle}. Hệ thống xem bạn đã có việc nên không thể tiếp tục ứng tuyển tin mới.";
+
+        return response()->json([
+            'success' => false,
+            'code' => 'CANDIDATE_ALREADY_EMPLOYED',
+            'message' => $message,
+            'data' => [
+                'employment_application_id' => $employment->id,
+                'employment_company_id' => $employmentCompany?->id,
+                'employment_company_name' => $employmentCompany?->ten_cong_ty,
+                'employment_job_id' => $employment->tin_tuyen_dung_id,
+                'employment_job_title' => $employment->tinTuyenDung?->tieu_de,
+                'target_company_id' => $targetCompany?->id,
+                'target_company_name' => $targetCompany?->ten_cong_ty,
+                'target_job_id' => $targetJob->id,
+                'target_job_title' => $targetJob->tieu_de,
+                'same_company' => $sameCompany,
+            ],
+        ], 409);
+    }
+
     private function broadcastApplicationChanged(UngTuyen $application, string $changeType, array $payload = []): void
     {
         $event = ApplicationChanged::fromApplication($application, $changeType, $payload);
@@ -160,7 +207,14 @@ class UngVienUngTuyenController extends Controller
 
         $ungTuyens = $query->paginate((int) $request->get('per_page', 10));
         $ungTuyens->getCollection()->transform(function (UngTuyen $ungTuyen) {
-            $ungTuyen->setAttribute('application_timeline', $this->applicationTimelineService->build($ungTuyen));
+            $ungTuyen->setAttribute('application_timeline', $this->applicationTimelineService->build($ungTuyen, false));
+            $ungTuyen->makeHidden(['ghi_chu']);
+            $ungTuyen->setRelation(
+                'interviewRounds',
+                $ungTuyen->interviewRounds
+                    ->filter(fn (InterviewRound $round) => $round->loai_vong !== InterviewRound::LOAI_HR)
+                    ->values(),
+            );
 
             return $ungTuyen;
         });
@@ -186,7 +240,7 @@ class UngVienUngTuyenController extends Controller
         $hoSoId = (int) $request->ho_so_id;
 
         // 1. Kiểm tra tin tuyển dụng có còn hoạt động không
-        $tin = TinTuyenDung::find($tinId);
+        $tin = TinTuyenDung::with('congTy')->find($tinId);
         if ($tin->trang_thai != 1 || ($tin->ngay_het_han && \Carbon\Carbon::parse($tin->ngay_het_han)->isPast())) {
             return response()->json([
                 'success' => false,
@@ -200,6 +254,11 @@ class UngVienUngTuyenController extends Controller
                 'success' => false,
                 'message' => 'Công ty tuyển dụng đang bị khóa hoặc chưa duyệt.'
             ], 400);
+        }
+
+        $acceptedEmployment = $this->findAcceptedEmploymentForUser($userId);
+        if ($acceptedEmployment) {
+            return $this->acceptedEmploymentResponse($acceptedEmployment, $tin);
         }
 
         $tin->loadCount([
@@ -416,10 +475,13 @@ class UngVienUngTuyenController extends Controller
                 'hoSo' => function ($q) {
                     $q->withTrashed()->select('id', 'nguoi_dung_id', 'tieu_de_ho_so', 'file_cv');
                 },
+                'interviewRounds.interviewer:id,ho_ten,email',
             ])
             ->firstOrFail();
 
-        if (!$ungTuyen->ngay_hen_phong_van) {
+        $round = $ungTuyen->currentInterviewRound();
+
+        if (!$round?->ngay_hen_phong_van) {
             return response()->json([
                 'success' => false,
                 'message' => 'Ứng tuyển này chưa có lịch phỏng vấn để xác nhận.',
@@ -433,7 +495,7 @@ class UngVienUngTuyenController extends Controller
             ], 422);
         }
 
-        if ($ungTuyen->ngay_hen_phong_van->isPast()) {
+        if ($round->ngay_hen_phong_van->isPast()) {
             return response()->json([
                 'success' => false,
                 'message' => 'Lịch phỏng vấn đã qua nên không thể cập nhật xác nhận tham gia nữa.',
@@ -441,11 +503,11 @@ class UngVienUngTuyenController extends Controller
         }
 
         $before = $this->applicationAuditSnapshot($ungTuyen);
-        $ungTuyen->fill([
-            'trang_thai_tham_gia_phong_van' => (int) $request->input('trang_thai_tham_gia_phong_van'),
-            'thoi_gian_phan_hoi_phong_van' => $this->nowUtc(),
-        ]);
-        $ungTuyen->save();
+        $status = (int) $request->input('trang_thai_tham_gia_phong_van');
+        $round->forceFill([
+            'trang_thai_tham_gia' => $status,
+            'thoi_gian_phan_hoi' => $this->nowUtc(),
+        ])->save();
         $this->auditLogService->logModelAction(
             actor: $request->user(),
             action: 'candidate_interview_responded',
@@ -456,14 +518,15 @@ class UngVienUngTuyenController extends Controller
             after: $this->applicationAuditSnapshot($ungTuyen),
             metadata: [
                 'scope' => 'candidate_application',
-                'response_status' => (int) $ungTuyen->trang_thai_tham_gia_phong_van,
+                'interview_round_id' => $round->id,
+                'response_status' => $status,
             ],
             request: $request,
         );
-        $this->notifyEmployerAboutCandidateInterviewResponse($ungTuyen);
+        $this->notifyEmployerAboutCandidateInterviewRoundResponse($ungTuyen, $round->fresh());
         $this->broadcastApplicationChanged($ungTuyen, 'interview_response');
 
-        $message = (int) $ungTuyen->trang_thai_tham_gia_phong_van === UngTuyen::PHONG_VAN_DA_XAC_NHAN
+        $message = $status === UngTuyen::PHONG_VAN_DA_XAC_NHAN
             ? 'Bạn đã xác nhận tham gia phỏng vấn.'
             : 'Bạn đã báo không thể tham gia buổi phỏng vấn này.';
 
@@ -476,6 +539,7 @@ class UngVienUngTuyenController extends Controller
                 'hoSo' => function ($q) {
                     $q->withTrashed()->select('id', 'nguoi_dung_id', 'tieu_de_ho_so', 'file_cv');
                 },
+                'interviewRounds.interviewer:id,ho_ten,email',
             ]),
         ]);
     }
@@ -524,10 +588,6 @@ class UngVienUngTuyenController extends Controller
         $round->forceFill([
             'trang_thai_tham_gia' => $status,
             'thoi_gian_phan_hoi' => $this->nowUtc(),
-        ])->save();
-        $ungTuyen->forceFill([
-            'trang_thai_tham_gia_phong_van' => $status,
-            'thoi_gian_phan_hoi_phong_van' => $this->nowUtc(),
         ])->save();
 
         $this->auditLogService->logModelAction(
@@ -735,6 +795,8 @@ class UngVienUngTuyenController extends Controller
                 'hoSo' => function ($query) {
                     $query->withTrashed()->with('nguoiDung');
                 },
+                'tinTuyenDung.congTy',
+                'interviewRounds.interviewer:id,ho_ten,email',
             ])
             ->findOrFail($id);
 
@@ -745,7 +807,9 @@ class UngVienUngTuyenController extends Controller
             return redirect($this->buildInterviewResponseRedirectUrl('invalid', $id));
         }
 
-        if (!$ungTuyen->ngay_hen_phong_van) {
+        $round = $ungTuyen->currentInterviewRound();
+
+        if (!$round?->ngay_hen_phong_van) {
             return redirect($this->buildInterviewResponseRedirectUrl('missing_schedule', $id));
         }
 
@@ -753,7 +817,7 @@ class UngVienUngTuyenController extends Controller
             return redirect($this->buildInterviewResponseRedirectUrl('locked', $id));
         }
 
-        if ($ungTuyen->ngay_hen_phong_van->isPast()) {
+        if ($round->ngay_hen_phong_van->isPast()) {
             return redirect($this->buildInterviewResponseRedirectUrl('expired', $id));
         }
 
@@ -768,12 +832,11 @@ class UngVienUngTuyenController extends Controller
             return redirect($this->buildInterviewResponseRedirectUrl('invalid', $id));
         }
 
-        $ungTuyen->fill([
-            'trang_thai_tham_gia_phong_van' => $status,
-            'thoi_gian_phan_hoi_phong_van' => $this->nowUtc(),
-        ]);
-        $ungTuyen->save();
-        $this->notifyEmployerAboutCandidateInterviewResponse($ungTuyen);
+        $round->forceFill([
+            'trang_thai_tham_gia' => $status,
+            'thoi_gian_phan_hoi' => $this->nowUtc(),
+        ])->save();
+        $this->notifyEmployerAboutCandidateInterviewRoundResponse($ungTuyen, $round->fresh());
         $this->broadcastApplicationChanged($ungTuyen, 'interview_response_email');
 
         return redirect($this->buildInterviewResponseRedirectUrl(
@@ -831,10 +894,6 @@ class UngVienUngTuyenController extends Controller
         $round->forceFill([
             'trang_thai_tham_gia' => $status,
             'thoi_gian_phan_hoi' => $this->nowUtc(),
-        ])->save();
-        $ungTuyen->forceFill([
-            'trang_thai_tham_gia_phong_van' => $status,
-            'thoi_gian_phan_hoi_phong_van' => $this->nowUtc(),
         ])->save();
         $this->notifyEmployerAboutCandidateInterviewRoundResponse($ungTuyen->fresh(['tinTuyenDung.congTy', 'hoSo.nguoiDung']), $round->fresh());
         $this->broadcastApplicationChanged($ungTuyen->fresh(), 'interview_round_response_email', [
@@ -947,24 +1006,12 @@ class UngVienUngTuyenController extends Controller
 
     private function notifyEmployerAboutCandidateInterviewResponse(UngTuyen $ungTuyen): void
     {
-        $ungTuyen->loadMissing(['tinTuyenDung.congTy', 'hoSo.nguoiDung']);
-        $company = $ungTuyen->tinTuyenDung?->congTy;
+        $ungTuyen->loadMissing(['interviewRounds', 'tinTuyenDung.congTy', 'hoSo.nguoiDung']);
+        $round = $ungTuyen->currentInterviewRound();
 
-        if (!$company) {
-            return;
+        if ($round) {
+            $this->notifyEmployerAboutCandidateInterviewRoundResponse($ungTuyen, $round);
         }
-
-        $candidateName = $ungTuyen->hoSo?->nguoiDung?->ho_ten ?: 'Ứng viên';
-        $accepted = (int) $ungTuyen->trang_thai_tham_gia_phong_van === UngTuyen::PHONG_VAN_DA_XAC_NHAN;
-
-        $this->appNotificationService->createForUsers(
-            $this->appNotificationService->recruitmentRecipients($company, $ungTuyen->hr_phu_trach_id),
-            $accepted ? 'employer_interview_confirmed' : 'employer_interview_declined',
-            $accepted ? 'Ứng viên xác nhận tham gia phỏng vấn' : 'Ứng viên báo không tham gia phỏng vấn',
-            "{$candidateName} đã " . ($accepted ? 'xác nhận tham gia' : 'báo không thể tham gia') . " lịch phỏng vấn.",
-            '/employer/interviews',
-            ['ung_tuyen_id' => $ungTuyen->id],
-        );
     }
 
     private function notifyEmployerAboutCandidateInterviewRoundResponse(UngTuyen $ungTuyen, InterviewRound $round): void
@@ -980,7 +1027,7 @@ class UngVienUngTuyenController extends Controller
         $accepted = (int) $round->trang_thai_tham_gia === UngTuyen::PHONG_VAN_DA_XAC_NHAN;
 
         $this->appNotificationService->createForUsers(
-            $this->appNotificationService->recruitmentRecipients($company, $ungTuyen->hr_phu_trach_id ?: $ungTuyen->tinTuyenDung?->hr_phu_trach_id),
+            $this->appNotificationService->recruitmentRecipients($company, $ungTuyen->tinTuyenDung?->hr_phu_trach_id),
             $accepted ? 'employer_interview_round_confirmed' : 'employer_interview_round_declined',
             $accepted ? 'Ứng viên xác nhận vòng phỏng vấn' : 'Ứng viên báo không tham gia vòng phỏng vấn',
             "{$candidateName} đã " . ($accepted ? 'xác nhận tham gia' : 'báo không thể tham gia') . " {$round->ten_vong}.",
@@ -1002,7 +1049,7 @@ class UngVienUngTuyenController extends Controller
         $jobTitle = $ungTuyen->tinTuyenDung?->tieu_de ?: 'vị trí ứng tuyển';
 
         $this->appNotificationService->createForUsers(
-            $this->appNotificationService->recruitmentRecipients($company, $ungTuyen->hr_phu_trach_id ?: $ungTuyen->tinTuyenDung?->hr_phu_trach_id),
+            $this->appNotificationService->recruitmentRecipients($company, $ungTuyen->tinTuyenDung?->hr_phu_trach_id),
             $accepted ? 'employer_offer_accepted' : 'employer_offer_declined',
             $accepted ? 'Ứng viên đã chấp nhận offer' : 'Ứng viên đã từ chối offer',
             "{$candidateName} đã " . ($accepted ? 'chấp nhận' : 'từ chối') . " đề nghị nhận việc cho vị trí {$jobTitle}.",
@@ -1023,7 +1070,7 @@ class UngVienUngTuyenController extends Controller
         $candidateName = $ungTuyen->hoSo?->nguoiDung?->ho_ten ?: 'Ứng viên';
 
         $this->appNotificationService->createForUsers(
-            $this->appNotificationService->recruitmentRecipients($company, $ungTuyen->hr_phu_trach_id),
+            $this->appNotificationService->recruitmentRecipients($company, $ungTuyen->tinTuyenDung?->hr_phu_trach_id),
             'employer_application_withdrawn',
             'Ứng viên đã rút đơn',
             "{$candidateName} đã rút đơn ứng tuyển.",

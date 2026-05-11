@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\KyNang;
+use App\Support\EncodedId;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -56,9 +57,9 @@ class KyNangController extends Controller
      * GET /api/v1/ky-nangs/{id}
      * Chi tiết kỹ năng.
      */
-    public function show(int $id): JsonResponse
+    public function show(string $id): JsonResponse
     {
-        $kyNang = KyNang::findOrFail($id);
+        $kyNang = KyNang::findOrFail(EncodedId::decodeOrFail($id));
 
         return response()->json([
             'success' => true,

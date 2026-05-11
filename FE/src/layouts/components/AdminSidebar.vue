@@ -64,9 +64,7 @@
           <span v-if="!collapsed" class="material-symbols-outlined ml-auto text-[17px]">lock</span>
         </button>
       </template>
-
-
-</nav>
+    </nav>
   </aside>
 </template>
 

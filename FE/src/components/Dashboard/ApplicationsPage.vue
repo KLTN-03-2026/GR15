@@ -146,6 +146,16 @@
                   Cập nhật CV
                 </button>
                 <button
+                  class="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                  type="button"
+                  @click="toggleApplicationCollapsed(application)"
+                >
+                  <span class="material-symbols-outlined text-[16px]">
+                    {{ isApplicationCollapsed(application) ? 'unfold_more' : 'unfold_less' }}
+                  </span>
+                  {{ isApplicationCollapsed(application) ? 'Mở rộng' : 'Thu gọn' }}
+                </button>
+                <button
                   class="inline-flex items-center gap-2 rounded-lg border border-blue-200 px-3 py-2 text-xs font-semibold text-blue-700 transition hover:bg-blue-50 disabled:opacity-60 dark:border-blue-500/20 dark:text-blue-300 dark:hover:bg-blue-500/10"
                   :disabled="exportingApplicationId === `${application.id}:full`"
                   type="button"
@@ -156,7 +166,7 @@
                 </button>
                 <RouterLink
                   v-if="application.tin_tuyen_dung?.id"
-                  :to="{ name: 'JobDetail', params: { id: application.tin_tuyen_dung.id } }"
+                  :to="{ name: 'JobDetail', params: { id: routeId(application.tin_tuyen_dung) } }"
                   class="text-slate-400 transition hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300"
                 >
                   <span class="material-symbols-outlined">chevron_right</span>
@@ -164,6 +174,7 @@
               </div>
             </div>
 
+            <template v-if="!isApplicationCollapsed(application)">
             <div
               v-if="application.application_timeline?.length"
               :data-application-section="`${application.id}:timeline`"
@@ -189,10 +200,16 @@
                   :class="timelineStatusClasses(item.status)"
                 >
                   <div class="flex items-start gap-3">
-                    <span class="material-symbols-outlined mt-0.5 text-[20px]">{{ item.icon || 'radio_button_checked' }}</span>
+                    <div class="flex h-11 w-11 shrink-0 flex-col items-center justify-center rounded-xl bg-white/70 text-center dark:bg-slate-950/40">
+                      <span class="text-[10px] font-black leading-none opacity-70">#{{ item.order }}</span>
+                      <span class="material-symbols-outlined mt-0.5 text-[18px]">{{ item.icon || 'radio_button_checked' }}</span>
+                    </div>
                     <div class="min-w-0 flex-1">
-                      <div class="flex flex-wrap items-center gap-2">
-                        <p class="font-bold">{{ item.title }}</p>
+                      <div class="flex flex-wrap items-start gap-2">
+                        <p class="min-w-0 flex-1 break-words font-bold">{{ item.title }}</p>
+                        <span class="rounded-full bg-white/60 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide dark:bg-slate-950/40">
+                          {{ timelineGroupLabel(item.group) }}
+                        </span>
                         <span class="rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide dark:bg-slate-950/40">
                           {{ timelineStatusLabel(item.status) }}
                         </span>
@@ -241,10 +258,21 @@
                     <div>
                       <div class="flex flex-wrap items-center gap-2">
                         <p class="font-bold text-slate-900 dark:text-white">{{ round.ten_vong }}</p>
-                        <span class="rounded-full px-2.5 py-1 text-[11px] font-bold" :class="roundStatusMeta(round.trang_thai).classes">
+                        <span
+                          v-if="roundResultMeta(round.ket_qua)"
+                          class="rounded-full px-2.5 py-1 text-[11px] font-bold"
+                          :class="roundResultMeta(round.ket_qua).classes"
+                        >
+                          {{ roundResultMeta(round.ket_qua).label }}
+                        </span>
+                        <span v-else class="rounded-full px-2.5 py-1 text-[11px] font-bold" :class="roundStatusMeta(round.trang_thai).classes">
                           {{ roundStatusMeta(round.trang_thai).label }}
                         </span>
-                        <span class="rounded-full px-2.5 py-1 text-[11px] font-bold" :class="interviewAttendanceMeta(round.trang_thai_tham_gia).classes">
+                        <span
+                          v-if="shouldShowRoundAttendance(round)"
+                          class="rounded-full px-2.5 py-1 text-[11px] font-bold"
+                          :class="interviewAttendanceMeta(round.trang_thai_tham_gia).classes"
+                        >
                           {{ interviewAttendanceMeta(round.trang_thai_tham_gia).label }}
                         </span>
                       </div>
@@ -252,14 +280,14 @@
                         {{ roundTypeLabel(round.loai_vong) }} • {{ formatDateTime(round.ngay_hen_phong_van) }}
                         <span v-if="round.hinh_thuc_phong_van">• {{ round.hinh_thuc_phong_van === 'online' ? 'Online' : round.hinh_thuc_phong_van === 'offline' ? 'Trực tiếp' : 'Điện thoại' }}</span>
                       </p>
-                      <p v-if="round.nguoi_phong_van" class="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                        Người phỏng vấn: {{ round.nguoi_phong_van }}
+                      <p v-if="round.interviewer?.ho_ten" class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                        Người phỏng vấn: {{ round.interviewer.ho_ten }}
                       </p>
                       <p v-if="round.link_phong_van" class="mt-1 break-words text-xs text-slate-500 dark:text-slate-400">
                         Link / địa điểm: {{ round.link_phong_van }}
                       </p>
                       <p v-if="round.ket_qua" class="mt-2 text-xs font-semibold text-slate-600 dark:text-slate-300">
-                        Kết quả: {{ round.ket_qua }}
+                        Kết quả: {{ roundResultLabel(round.ket_qua) }}
                       </p>
                     </div>
 
@@ -309,8 +337,8 @@
                     {{ formatDateTime(application.ngay_hen_phong_van) }}
                     <span v-if="application.hinh_thuc_phong_van">• {{ application.hinh_thuc_phong_van === 'online' ? 'Online' : application.hinh_thuc_phong_van === 'offline' ? 'Trực tiếp' : 'Điện thoại' }}</span>
                   </p>
-                  <p v-if="application.nguoi_phong_van" class="text-xs text-slate-500 dark:text-slate-400">
-                    Người phỏng vấn: {{ application.nguoi_phong_van }}
+                  <p v-if="application.ten_nguoi_phong_van" class="text-xs text-slate-500 dark:text-slate-400">
+                    Người phỏng vấn: {{ application.ten_nguoi_phong_van }}
                   </p>
                   <p v-if="application.link_phong_van" class="text-xs text-slate-500 dark:text-slate-400 break-words">
                     Link / địa điểm: {{ application.link_phong_van }}
@@ -396,24 +424,28 @@
                   <p v-if="application.ghi_chu_offer" class="text-sm leading-6 text-slate-600 dark:text-slate-300">
                     {{ application.ghi_chu_offer }}
                   </p>
-                  <a
-                    v-if="application.link_offer"
-                    :href="application.link_offer"
-                    class="inline-flex text-xs font-bold text-emerald-700 underline underline-offset-4 dark:text-emerald-300"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    Xem tài liệu offer
-                  </a>
-                  <button
-                    v-if="canExportDocument(application, 'offer')"
-                    class="ml-0 inline-flex text-xs font-bold text-emerald-700 underline underline-offset-4 disabled:opacity-60 dark:text-emerald-300"
-                    :disabled="exportingApplicationId === `${application.id}:offer`"
-                    type="button"
-                    @click="downloadApplicationExport(application, 'offer')"
-                  >
-                    {{ exportingApplicationId === `${application.id}:offer` ? 'Đang tạo offer PDF...' : 'Tải offer PDF' }}
-                  </button>
+                  <div class="flex flex-wrap items-center gap-3">
+                    <a
+                      v-if="application.link_offer"
+                      :href="application.link_offer"
+                      class="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-white px-3 py-2 text-xs font-bold text-emerald-700 transition hover:bg-emerald-50 dark:border-emerald-500/20 dark:bg-slate-950/40 dark:text-emerald-300"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <span class="material-symbols-outlined text-[16px]">open_in_new</span>
+                      Xem tài liệu offer
+                    </a>
+                    <button
+                      v-if="canExportDocument(application, 'offer')"
+                      class="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-white px-3 py-2 text-xs font-bold text-emerald-700 transition hover:bg-emerald-50 disabled:opacity-60 dark:border-emerald-500/20 dark:bg-slate-950/40 dark:text-emerald-300"
+                      :disabled="exportingApplicationId === `${application.id}:offer`"
+                      type="button"
+                      @click="downloadApplicationExport(application, 'offer')"
+                    >
+                      <span class="material-symbols-outlined text-[16px]">picture_as_pdf</span>
+                      {{ exportingApplicationId === `${application.id}:offer` ? 'Đang tạo...' : 'Tải offer PDF' }}
+                    </button>
+                  </div>
                   <p v-if="application.thoi_gian_phan_hoi_offer" class="text-xs text-slate-500 dark:text-slate-400">
                     Đã phản hồi lúc {{ formatDateTime(application.thoi_gian_phan_hoi_offer) }}
                   </p>
@@ -452,7 +484,7 @@
                 <div>
                   <p class="text-sm font-bold text-slate-900 dark:text-white">Onboarding nhận việc</p>
                   <p class="mt-1 text-sm text-slate-600 dark:text-slate-300">
-                    Ngày bắt đầu: {{ application.onboarding_plan.ngay_bat_dau || 'HR sẽ cập nhật' }}
+                    Ngày bắt đầu: {{ formatOnboardingDate(application.onboarding_plan.ngay_bat_dau) }}
                     <span v-if="application.onboarding_plan.dia_diem_lam_viec">• {{ application.onboarding_plan.dia_diem_lam_viec }}</span>
                   </p>
                   <p v-if="application.onboarding_plan.loi_chao_mung" class="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">
@@ -500,7 +532,7 @@
                     <p class="text-sm font-bold text-slate-900 dark:text-white">{{ task.tieu_de }}</p>
                     <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
                       {{ task.nguoi_phu_trach === 'candidate' ? 'Bạn phụ trách' : 'HR phụ trách' }}
-                      <span v-if="task.han_hoan_tat">• hạn {{ task.han_hoan_tat }}</span>
+                      <span v-if="task.han_hoan_tat">• hạn {{ formatOnboardingDate(task.han_hoan_tat) }}</span>
                     </p>
                   </div>
                   <div v-if="task.nguoi_phu_trach === 'candidate'" class="flex flex-wrap gap-2">
@@ -527,6 +559,7 @@
                 </div>
               </div>
             </div>
+            </template>
           </div>
         </div>
       </div>
@@ -634,9 +667,7 @@
               <div class="mt-2 text-right text-xs text-slate-400 dark:text-slate-500">{{ coverLetter.length }}/5000</div>
             </div>
           </template>
-
-
-</div>
+        </div>
 
         <div class="flex flex-col gap-3 border-t border-slate-100 px-6 py-5 dark:border-slate-800 sm:flex-row sm:justify-end">
           <button
@@ -670,6 +701,7 @@ import { getStoredUser } from '@/utils/authStorage'
 import { connectPrivateChannel } from '@/services/realtime'
 import { formatDateTimeVN, formatDateVN, formatHistoricalDateVN } from '@/utils/dateTime'
 import { formatExperienceYears } from '@/utils/experience'
+import { routeId } from '@/utils/routeIds'
 import {
   APPLICATION_STATUS,
   OFFER_STATUS,
@@ -700,6 +732,7 @@ const exportingApplicationId = ref(null)
 const loadingProfiles = ref(false)
 const applications = ref([])
 const profiles = ref([])
+const collapsedApplications = reactive({})
 const activeStatus = ref(STATUS_ALL)
 const editModalOpen = ref(false)
 const selectedApplication = ref(null)
@@ -733,6 +766,7 @@ const cleanDeepLinkQueryKeys = [
   'onboarding_plan_id',
   'onboarding_task_id',
 ]
+let realtimeRefreshTimer = null
 
 const statusTabs = computed(() => [
   { value: STATUS_ALL, label: 'Tất cả', total: statusTotals.all },
@@ -798,8 +832,14 @@ const formatAppliedDate = (value) => {
 
 const formatDateTime = (value) => formatDateTimeVN(value, 'Chưa lên lịch')
 
-const timelineDate = (item) =>
-  formatDateTimeVN(item?.occurred_at || item?.scheduled_at || item?.due_at, 'Chưa cập nhật')
+const isDateOnlyValue = (value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''))
+
+const timelineDate = (item) => {
+  const value = item?.occurred_at || item?.scheduled_at || item?.due_at
+  return isDateOnlyValue(value)
+    ? formatDateVN(value, 'Chưa cập nhật')
+    : formatDateTimeVN(value, 'Chưa cập nhật')
+}
 
 const timelineStatusClasses = (status) => ({
   completed: 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300',
@@ -814,6 +854,22 @@ const timelineStatusLabel = (status) => ({
   pending: 'Sắp tới',
   cancelled: 'Đã dừng',
 }[status] || 'Theo dõi')
+
+const timelineGroupLabel = (group) => ({
+  application: 'Hồ sơ',
+  interview: 'Phỏng vấn',
+  offer: 'Offer',
+  onboarding: 'Onboarding',
+}[group] || 'Quy trình')
+
+const formatOnboardingDate = (value, fallback = 'HR sẽ cập nhật') => formatDateVN(value, fallback)
+
+const isApplicationCollapsed = (application) => Boolean(collapsedApplications[application?.id])
+
+const toggleApplicationCollapsed = (application) => {
+  if (!application?.id) return
+  collapsedApplications[application.id] = !collapsedApplications[application.id]
+}
 
 const interviewAttendanceMeta = (status) => {
   switch (Number(status)) {
@@ -851,13 +907,16 @@ const isInterviewResponseLocked = (application) => {
 const canRespondInterview = (application) => {
   if (isInterviewResponseLocked(application)) return false
   if (!application?.ngay_hen_phong_van || !application?.id) return false
+  if (Number(application?.trang_thai_tham_gia_phong_van) !== 0) return false
   const interviewTime = new Date(application.ngay_hen_phong_van)
   if (Number.isNaN(interviewTime.getTime())) return false
   return interviewTime.getTime() > Date.now()
 }
 
 const sortedInterviewRounds = (application) =>
-  [...(application?.interview_rounds || [])].sort((a, b) => Number(a.thu_tu || 0) - Number(b.thu_tu || 0))
+  [...(application?.interview_rounds || [])]
+    .filter((round) => round?.loai_vong !== 'hr')
+    .sort((a, b) => Number(a.thu_tu || 0) - Number(b.thu_tu || 0))
 
 const roundTypeLabel = (value) => ({
   hr: 'HR screening',
@@ -879,10 +938,30 @@ const roundStatusMeta = (value) => {
   }
 }
 
+const roundResultLabel = (value) => ({
+  pass: 'Đậu',
+  fail: 'Rớt',
+}[value] || value || 'Chưa cập nhật')
+
+const roundResultMeta = (value) => {
+  switch (value) {
+    case 'pass':
+      return { label: 'Đậu', classes: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' }
+    case 'fail':
+      return { label: 'Rớt', classes: 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300' }
+    default:
+      return null
+  }
+}
+
+const shouldShowRoundAttendance = (round) => round?.loai_vong !== 'hr' && !round?.ket_qua
+
 const canRespondInterviewRound = (application, round) => {
   if (isInterviewResponseLocked(application)) return false
+  if (round?.loai_vong === 'hr') return false
   if (!round?.ngay_hen_phong_van || !round?.id) return false
   if (Number(round.trang_thai || 0) !== 0) return false
+  if (Number(round.trang_thai_tham_gia) !== 0) return false
   const interviewTime = new Date(round.ngay_hen_phong_van)
   if (Number.isNaN(interviewTime.getTime())) return false
   return interviewTime.getTime() > Date.now()
@@ -1002,8 +1081,52 @@ const fetchStatusTotals = async () => {
 }
 
 const refreshApplicationsRealtime = async () => {
-  if (loading.value) return
+  if (loading.value) {
+    scheduleApplicationsRealtimeRefresh(500)
+    return
+  }
+
   await Promise.all([fetchApplications(pagination.current_page), fetchStatusTotals()])
+}
+
+const scheduleApplicationsRealtimeRefresh = (delay = 250) => {
+  if (realtimeRefreshTimer) {
+    window.clearTimeout(realtimeRefreshTimer)
+  }
+
+  realtimeRefreshTimer = window.setTimeout(() => {
+    realtimeRefreshTimer = null
+    void refreshApplicationsRealtime()
+  }, delay)
+}
+
+const candidateRealtimeMessage = (event) => {
+  const title = event?.payload?.tin_tuyen_dung_tieu_de
+  const prefix = title ? `Ứng tuyển "${title}"` : 'Đơn ứng tuyển của bạn'
+  const type = event?.type || ''
+  const payload = event?.payload || {}
+
+  if (payload.is_internal_interview_round) {
+    return `${prefix} vừa được nhà tuyển dụng xử lý.`
+  }
+
+  if (type === 'interview_round_created') {
+    return `${prefix} có lịch phỏng vấn mới.`
+  }
+
+  if (type === 'interview_round_rescheduled') {
+    return `${prefix} vừa được cập nhật lịch phỏng vấn.`
+  }
+
+  if (type === 'interview_round_updated') {
+    return `${prefix} vừa được cập nhật vòng phỏng vấn.`
+  }
+
+  if (type === 'offer_sent') {
+    return `${prefix} vừa nhận offer từ nhà tuyển dụng.`
+  }
+
+  return `${prefix} vừa được cập nhật realtime.`
 }
 
 const selectStatus = async (status) => {
@@ -1273,6 +1396,7 @@ const updateOnboardingTask = async (application, task, status) => {
         : item
     )
     notify.success('Đã cập nhật checklist onboarding.')
+    await fetchApplications(pagination.current_page)
   } catch (error) {
     notify.apiError(error, 'Không cập nhật được checklist onboarding.')
   } finally {
@@ -1308,14 +1432,18 @@ onMounted(async () => {
   if (user?.id) {
     applicationRealtimeChannel = connectPrivateChannel(`user.${user.id}`)
     applicationRealtimeChannel?.listen('.application.changed', (event) => {
-      const title = event?.payload?.tin_tuyen_dung_tieu_de
-      notify.info(title ? `Ứng tuyển "${title}" vừa được cập nhật realtime.` : 'Đơn ứng tuyển của bạn vừa được cập nhật realtime.')
-      void refreshApplicationsRealtime()
+      notify.info(candidateRealtimeMessage(event))
+      scheduleApplicationsRealtimeRefresh()
     })
   }
 })
 
 onUnmounted(() => {
+  if (realtimeRefreshTimer) {
+    window.clearTimeout(realtimeRefreshTimer)
+    realtimeRefreshTimer = null
+  }
+
   if (applicationRealtimeChannel) {
     applicationRealtimeChannel.stopListening('.application.changed')
     applicationRealtimeChannel = null

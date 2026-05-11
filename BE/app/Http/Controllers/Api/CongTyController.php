@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\CongTy;
 use App\Models\NguoiDung;
+use App\Support\EncodedId;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -103,8 +104,9 @@ class CongTyController extends Controller
      * GET /api/v1/cong-tys/{id}
      * Chi tiết công ty.
      */
-    public function show(int $id): JsonResponse
+    public function show(string $id): JsonResponse
     {
+        $decodedId = EncodedId::decodeOrFail($id);
         $nguoiDung = auth('sanctum')->user();
         $followedCompanyIds = $this->getFollowedCompanyIds($nguoiDung);
 
@@ -135,7 +137,7 @@ class CongTyController extends Controller
                 }
             ])
             ->where('trang_thai', CongTy::TRANG_THAI_HOAT_DONG)
-            ->findOrFail($id);
+            ->findOrFail($decodedId);
 
         return response()->json([
             'success' => true,

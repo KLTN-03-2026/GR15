@@ -1,25 +1,25 @@
 from __future__ import annotations
 
 import json
+from queue import Empty, Queue
+import re
 import time
 from typing import Iterator
 
 from app.core.config import settings
 from app.core.logger import get_logger
-from app.providers.chat_ollama_provider import OllamaChatProvider
 from app.providers.chat_gemini_provider import GeminiChatProvider
+from app.providers.chat_ollama_provider import OllamaChatProvider
 from app.providers.chat_openai_provider import OpenAIChatProvider
 from app.services.chatbot_intent_engine import (
-    DETERMINISTIC_INTENTS,
     INTENT_OUT_OF_SCOPE,
-    MODEL_PREFERRED_INTENTS,
     OUT_OF_SCOPE_MESSAGE,
     build_template_answer,
     ensure_chat_mapping,
     normalize_chat_history_items,
     resolve_intent,
-    should_use_fast_path,
 )
+from app.services.llm_timeout import TimeoutError, run_with_timeout
 from app.services.skill_catalog import normalize_search_text
 from app.services.vietnamese_text import normalize_vietnamese_ai_text
 
@@ -36,11 +36,15 @@ def generate_career_chat_reply(
     context: dict | None = None,
     force_model: bool = False,
 ) -> dict:
-    logger.info("Generate chatbot reply for session_id=%s", session_id)
     history = normalize_chat_history_items(history)
     context = ensure_chat_mapping(context)
     intent = resolve_intent(message, history=history, context=context)
     context = {**context, "_chat_intent": intent}
+    logger.info(
+        "Generate chatbot reply session_id=%s intent=%s provider_path=resolver",
+        session_id,
+        intent,
+    )
 
     if intent == INTENT_OUT_OF_SCOPE:
         return {
@@ -55,25 +59,26 @@ def generate_career_chat_reply(
             "error": None,
         }
 
-    template_provider = _resolve_template_provider(message, intent=intent)
-    if template_provider:
-        answer = _normalize_answer(build_template_answer(message, context, history, intent))
-        return {
-            "success": True,
-            "model_version": f"{MODEL_VERSION}::{template_provider}",
-            "data": {
-                "answer": answer,
-                "provider": template_provider,
-                "guardrail_triggered": False,
-                "intent": intent,
-            },
-            "error": None,
-        }
-
     provider_name, provider = _resolve_provider()
+    logger.info(
+        "Generate chatbot reply session_id=%s intent=%s provider=%s",
+        session_id,
+        intent,
+        provider_name,
+    )
 
     try:
-        answer = _normalize_answer(provider.generate(message, context, history))
+        answer = _normalize_answer(_generate_with_timeout(provider, message, context, history))
+    except TimeoutError:
+        provider_name = "template_timeout_fallback"
+        logger.warning(
+            "Chatbot LLM timed out session_id=%s intent=%s fallback_provider=%s timeout_seconds=%s",
+            session_id,
+            intent,
+            provider_name,
+            settings.chatbot_llm_fallback_seconds,
+        )
+        answer = _normalize_answer(build_template_answer(message, context, history, intent))
     except Exception as exc:
         logger.exception("Required chat LLM provider failed. provider=%s", provider_name)
         return {
@@ -82,10 +87,6 @@ def generate_career_chat_reply(
             "data": {},
             "error": f"Không thể gọi LLM cho chatbot: {exc}",
         }
-
-    if _looks_like_provider_guardrail(answer) or _looks_off_intent(answer, intent=intent):
-        answer = _normalize_answer(build_template_answer(message, context, history, intent))
-        provider_name = "template_fallback"
 
     return {
         "success": True,
@@ -112,6 +113,7 @@ def stream_career_chat_reply(
     context = ensure_chat_mapping(context)
     intent = resolve_intent(message, history=history, context=context)
     context = {**context, "_chat_intent": intent}
+    logger.info("Stream chatbot reply session_id=%s intent=%s", session_id, intent)
 
     if intent == INTENT_OUT_OF_SCOPE:
         yield _sse_event(
@@ -137,33 +139,13 @@ def stream_career_chat_reply(
         )
         return
 
-    template_provider = _resolve_template_provider(message, intent=intent)
-    if template_provider:
-        answer = _normalize_answer(build_template_answer(message, context, history, intent))
-        yield _sse_event(
-            "meta",
-            {
-                "success": True,
-                "model_version": f"{MODEL_VERSION}::{template_provider}",
-                "provider": template_provider,
-                "guardrail_triggered": False,
-                "intent": intent,
-            },
-        )
-        yield from _emit_chunked_sse(answer)
-        yield _sse_event(
-            "done",
-            {
-                "answer": answer,
-                "model_version": f"{MODEL_VERSION}::{template_provider}",
-                "provider": template_provider,
-                "guardrail_triggered": False,
-                "intent": intent,
-            },
-        )
-        return
-
     provider_name, provider = _resolve_provider()
+    logger.info(
+        "Stream chatbot reply session_id=%s intent=%s provider=%s",
+        session_id,
+        intent,
+        provider_name,
+    )
 
     model_version = f"{MODEL_VERSION}::{provider_name}"
 
@@ -181,16 +163,50 @@ def stream_career_chat_reply(
     chunks: list[str] = []
     try:
         if hasattr(provider, "stream"):
-            for chunk in provider.stream(message, context, history):
+            stream_iter = _stream_with_first_chunk_timeout(provider, message, context, history)
+            for chunk in stream_iter:
                 if chunk:
                     chunks.append(chunk)
                     yield _sse_event("chunk", {"content": chunk})
         else:
-            answer = _normalize_answer(provider.generate(message, context, history))
+            answer = _normalize_answer(_generate_with_timeout(provider, message, context, history))
             for chunk in _chunk_text(answer):
                 chunks.append(chunk)
                 yield _sse_event("chunk", {"content": chunk})
                 time.sleep(0.035)
+    except TimeoutError:
+        provider_name = "template_timeout_fallback"
+        model_version = f"{MODEL_VERSION}::{provider_name}"
+        logger.warning(
+            "Chatbot stream LLM timed out session_id=%s intent=%s fallback_provider=%s timeout_seconds=%s",
+            session_id,
+            intent,
+            provider_name,
+            settings.chatbot_llm_fallback_seconds,
+        )
+        final_answer = _normalize_answer(build_template_answer(message, context, history, intent))
+        yield _sse_event(
+            "meta",
+            {
+                "success": True,
+                "model_version": model_version,
+                "provider": provider_name,
+                "guardrail_triggered": False,
+                "intent": intent,
+            },
+        )
+        yield from _emit_chunked_sse(final_answer)
+        yield _sse_event(
+            "done",
+            {
+                "answer": final_answer,
+                "model_version": model_version,
+                "provider": provider_name,
+                "guardrail_triggered": False,
+                "intent": intent,
+            },
+        )
+        return
     except Exception as exc:
         yield _sse_event(
             "error",
@@ -206,11 +222,6 @@ def stream_career_chat_reply(
     final_answer = _normalize_answer(
         "".join(chunks).strip() if provider_name in {"ollama", "openai", "gemini"} else " ".join(chunks).strip()
     )
-    if _looks_like_provider_guardrail(final_answer) or _looks_off_intent(final_answer, intent=intent):
-        provider_name = "template_fallback"
-        model_version = f"{MODEL_VERSION}::{provider_name}"
-        final_answer = _normalize_answer(build_template_answer(message, context, history, intent))
-
     yield _sse_event(
         "done",
         {
@@ -235,14 +246,47 @@ def _resolve_provider():
     return "ollama", OllamaChatProvider()
 
 
-def _resolve_template_provider(message: str, *, intent: str) -> str | None:
-    if should_use_fast_path(message, intent=intent):
-        return "fast_template"
+def _generate_with_timeout(provider, message: str, context: dict, history: list[dict]) -> str:
+    return run_with_timeout(
+        lambda: provider.generate(message, context, history),
+        settings.chatbot_llm_fallback_seconds,
+    )
 
-    if intent in DETERMINISTIC_INTENTS and intent not in MODEL_PREFERRED_INTENTS:
-        return "intent_template"
 
-    return None
+def _stream_with_first_chunk_timeout(provider, message: str, context: dict, history: list[dict]) -> Iterator[str]:
+    queue: Queue[tuple[str, str | BaseException | None]] = Queue()
+    sentinel = ("done", None)
+
+    def worker() -> None:
+        try:
+            for chunk in provider.stream(message, context, history):
+                if chunk:
+                    queue.put(("chunk", chunk))
+            queue.put(sentinel)
+        except BaseException as exc:  # noqa: BLE001 - surface provider exception to SSE handler
+            queue.put(("error", exc))
+
+    from concurrent.futures import ThreadPoolExecutor
+
+    executor = ThreadPoolExecutor(max_workers=1)
+    executor.submit(worker)
+    first_chunk_seen = False
+    try:
+        while True:
+            try:
+                kind, payload = queue.get(timeout=settings.chatbot_llm_fallback_seconds if not first_chunk_seen else None)
+            except Empty:
+                raise TimeoutError()
+
+            if kind == "done":
+                return
+            if kind == "error":
+                raise payload if isinstance(payload, BaseException) else RuntimeError("Chatbot stream failed.")
+
+            first_chunk_seen = True
+            yield str(payload or "")
+    finally:
+        executor.shutdown(wait=False, cancel_futures=True)
 
 
 def _chunk_text(text: str, chunk_size: int = 60) -> list[str]:
@@ -252,21 +296,20 @@ def _chunk_text(text: str, chunk_size: int = 60) -> list[str]:
     chunks: list[str] = []
     current = ""
 
-    for line in text.splitlines(keepends=True):
-        tentative = f"{current}{line}"
-        if len(tentative) <= chunk_size:
+    tokens = re.split(r"(\s+)", text)
+    for token in tokens:
+        if not token:
+            continue
+        tentative = f"{current}{token}"
+        if len(tentative) <= chunk_size or not current:
             current = tentative
+            if current.endswith(("\n", ". ", "! ", "? ", ": ")):
+                chunks.append(current)
+                current = ""
             continue
 
-        if current:
-            chunks.append(current)
-            current = ""
-
-        while len(line) > chunk_size:
-            chunks.append(line[:chunk_size])
-            line = line[chunk_size:]
-
-        current = line
+        chunks.append(current)
+        current = token
 
     if current:
         chunks.append(current)
@@ -274,8 +317,8 @@ def _chunk_text(text: str, chunk_size: int = 60) -> list[str]:
     return chunks
 
 
-def _emit_chunked_sse(text: str, delay_seconds: float = 0.04) -> Iterator[str]:
-    for chunk in _chunk_text(text):
+def _emit_chunked_sse(text: str, delay_seconds: float = 0.075) -> Iterator[str]:
+    for chunk in _chunk_text(text, chunk_size=42):
         yield _sse_event("chunk", {"content": chunk})
         time.sleep(delay_seconds)
 

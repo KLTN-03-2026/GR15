@@ -28,7 +28,7 @@ class OnboardingService
             [
                 'cong_ty_id' => (int) $company->id,
                 'nguoi_dung_id' => (int) $candidate->id,
-                'hr_phu_trach_id' => $application->hr_phu_trach_id,
+                'hr_phu_trach_id' => $application->tinTuyenDung?->hr_phu_trach_id,
                 'ngay_bat_dau' => now('Asia/Ho_Chi_Minh')->addDays(14)->toDateString(),
                 'dia_diem_lam_viec' => $job->dia_diem_lam_viec,
                 'trang_thai' => OnboardingPlan::TRANG_THAI_DANG_CHUAN_BI,

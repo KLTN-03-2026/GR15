@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import unittest
+import time
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from app.services.chatbot import generate_career_chat_reply
@@ -170,8 +172,12 @@ class ChatbotRegressionTests(unittest.TestCase):
         self.assertIn("- Backend Developer Laravel", answer)
         self.assertNotIn("Giai đoạn 1", answer)
 
-    def test_job_recommendation_reply_uses_template_even_when_force_model_true(self) -> None:
-        with patch("app.services.chatbot._resolve_provider") as mocked_provider:
+    def test_job_recommendation_reply_uses_llm_provider_first(self) -> None:
+        class FakeProvider:
+            def generate(self, message, context, history):
+                return "Gợi ý công việc nên xem:\n- Backend Developer Laravel."
+
+        with patch("app.services.chatbot._resolve_provider", return_value=("ollama", FakeProvider())) as mocked_provider:
             response = generate_career_chat_reply(
                 1,
                 "Trong hệ thống hiện có job nào gần nhất với hồ sơ của tôi?",
@@ -180,12 +186,34 @@ class ChatbotRegressionTests(unittest.TestCase):
                 force_model=True,
             )
 
-        mocked_provider.assert_not_called()
+        mocked_provider.assert_called_once()
         self.assertTrue(response["success"])
         self.assertEqual(response["data"]["intent"], INTENT_JOB_RECOMMENDATION)
-        self.assertIn(response["data"]["provider"], {"fast_template", "intent_template"})
+        self.assertEqual(response["data"]["provider"], "ollama")
         self.assertIn("Gợi ý công việc nên xem:", response["data"]["answer"])
         self.assertNotIn("Mô phỏng lộ trình nghề nghiệp 30/60/90 ngày:", response["data"]["answer"])
+
+    def test_chatbot_uses_template_only_after_llm_timeout(self) -> None:
+        class SlowProvider:
+            def generate(self, message, context, history):
+                time.sleep(0.05)
+                return "Phản hồi chậm từ LLM."
+
+        with (
+            patch("app.services.chatbot._resolve_provider", return_value=("ollama", SlowProvider())),
+            patch("app.services.chatbot.settings", SimpleNamespace(chatbot_llm_fallback_seconds=0.01)),
+        ):
+            response = generate_career_chat_reply(
+                1,
+                "Trong hệ thống hiện có job nào gần nhất với hồ sơ của tôi?",
+                history=[],
+                context=self.context,
+                force_model=True,
+            )
+
+        self.assertTrue(response["success"])
+        self.assertEqual(response["data"]["provider"], "template_timeout_fallback")
+        self.assertIn("Gợi ý công việc nên xem:", response["data"]["answer"])
 
     def test_next_step_answer_is_actionable(self) -> None:
         answer = build_template_answer(

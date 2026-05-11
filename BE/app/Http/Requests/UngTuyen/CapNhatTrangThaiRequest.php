@@ -46,11 +46,6 @@ class CapNhatTrangThaiRequest extends FormRequest
                 'string',
                 Rule::in(['online', 'offline', 'phone']),
             ],
-            'nguoi_phong_van' => [
-                'nullable',
-                'string',
-                'max:255',
-            ],
             'link_phong_van' => [
                 'nullable',
                 'string',
@@ -60,11 +55,6 @@ class CapNhatTrangThaiRequest extends FormRequest
                 'nullable',
                 'string',
                 'max:255'
-            ],
-            'hr_phu_trach_id' => [
-                'nullable',
-                'integer',
-                'exists:nguoi_dungs,id',
             ],
             'ghi_chu' => [
                 'nullable',
@@ -108,10 +98,8 @@ class CapNhatTrangThaiRequest extends FormRequest
             'trang_thai' => 'trạng thái',
             'ngay_hen_phong_van' => 'ngày giờ hẹn phỏng vấn',
             'hinh_thuc_phong_van' => 'hình thức phỏng vấn',
-            'nguoi_phong_van' => 'người phỏng vấn',
             'link_phong_van' => 'link phỏng vấn',
             'ket_qua_phong_van' => 'kết quả phỏng vấn',
-            'hr_phu_trach_id' => 'HR phụ trách',
             'ghi_chu' => 'ghi chú',
         ];
     }

@@ -5,10 +5,14 @@ import json
 import math
 import re
 from difflib import SequenceMatcher
+from urllib.error import URLError
+from urllib.request import Request, urlopen
 
 from app.core.config import settings
 from app.core.logger import get_logger
 from app.providers.gemini_client import generate_text
+from app.providers.ollama_client import generate_text as generate_ollama_text
+from app.services.llm_timeout import TimeoutError, run_with_timeout
 from app.services.skill_catalog import SKILL_CATALOG, canonical_skill_display_name, canonicalize_skill_name, normalize_search_text
 
 
@@ -194,6 +198,7 @@ def match_cv_jd(
     *,
     cv_profile: dict | None = None,
     jd_profile: dict | None = None,
+    include_llm_explanation: bool = True,
 ) -> dict:
     logger.info("Matching ho_so_id=%s tin_tuyen_dung_id=%s", ho_so_id, tin_tuyen_dung_id)
 
@@ -317,6 +322,7 @@ def match_cv_jd(
             candidate_level_info=candidate_level_info,
             chi_tiet_diem=chi_tiet_diem,
             score_explanation_items=score_explanation_items,
+            include_llm_explanation=include_llm_explanation,
         )
 
         return {
@@ -874,6 +880,7 @@ def _build_match_explanation_payload(
     candidate_level_info: dict,
     chi_tiet_diem: dict,
     score_explanation_items: list[dict],
+    include_llm_explanation: bool = True,
 ) -> dict:
     fallback_explanation = _build_explanation(
         diem_phu_hop=diem_phu_hop,
@@ -889,12 +896,18 @@ def _build_match_explanation_payload(
         level_info=level_info,
     )
 
-    provider = (settings.match_explanation_provider or "gemini").strip().lower()
-    if provider not in {"gemini", "template", "rule", "rules", "rule_based", "local"}:
-        logger.warning("Unknown MATCH_EXPLANATION_PROVIDER=%s, fallback to gemini", settings.match_explanation_provider)
-        provider = "gemini"
+    if not include_llm_explanation:
+        return {
+            "explanation": fallback_explanation,
+            "explanation_provider": "rule_based_batch",
+        }
 
-    if provider != "gemini":
+    provider = (settings.match_explanation_provider or "ollama").strip().lower()
+    if provider not in {"ollama", "gemini", "template", "rule", "rules", "rule_based", "local"}:
+        logger.warning("Unknown MATCH_EXPLANATION_PROVIDER=%s, fallback to ollama", settings.match_explanation_provider)
+        provider = "ollama"
+
+    if provider not in {"ollama", "gemini"}:
         return {
             "explanation": fallback_explanation,
             "explanation_provider": "rule_based",
@@ -942,19 +955,43 @@ def _build_match_explanation_payload(
     }
 
     try:
-        gemini_payload = _generate_gemini_match_explanation(context)
+        timeout_seconds = max(1.0, float(settings.ai_llm_fallback_seconds))
+        logger.info(
+            "Generating match explanation provider=%s timeout_seconds=%s",
+            provider,
+            timeout_seconds,
+        )
+        llm_payload = run_with_timeout(
+            lambda: _generate_llm_match_explanation(context, provider),
+            timeout_seconds,
+        )
         return {
-            "explanation": gemini_payload["explanation"],
-            "strengths": gemini_payload["strengths"],
-            "weaknesses": gemini_payload["weaknesses"],
-            "risks": gemini_payload["risks"],
-            "questions": gemini_payload["questions"],
-            "recommendation": gemini_payload["recommendation"],
-            "explanation_provider": "gemini",
-            "explanation_model": settings.gemini_model,
+            "explanation": llm_payload["explanation"],
+            "strengths": llm_payload["strengths"],
+            "weaknesses": llm_payload["weaknesses"],
+            "risks": llm_payload["risks"],
+            "questions": llm_payload["questions"],
+            "recommendation": llm_payload["recommendation"],
+            "explanation_provider": provider,
+            "explanation_model": settings.gemini_model if provider == "gemini" else settings.ollama_model,
+        }
+    except TimeoutError:
+        logger.warning(
+            "%s match explanation timed out after %.1fs, fallback to deterministic explanation.",
+            provider,
+            float(settings.ai_llm_fallback_seconds),
+        )
+        return {
+            "explanation": fallback_explanation,
+            "explanation_provider": "template_timeout_fallback",
+            "explanation_error": f"{provider} quá {settings.ai_llm_fallback_seconds}s chưa phản hồi.",
         }
     except Exception as exc:
-        logger.exception("Gemini match explanation failed, fallback to deterministic explanation.")
+        logger.warning(
+            "%s match explanation failed, fallback to deterministic explanation: %s",
+            provider,
+            exc,
+        )
         return {
             "explanation": fallback_explanation,
             "explanation_provider": "rule_based_fallback",
@@ -962,33 +999,51 @@ def _build_match_explanation_payload(
         }
 
 
-def _generate_gemini_match_explanation(context: dict) -> dict:
-    raw = generate_text(
-        system_prompt=(
-            "Bạn là trợ lý tuyển dụng viết giải thích so sánh CV-JD. "
-            "Chỉ dùng dữ liệu JSON đầu vào, không bịa thêm kỹ năng, số năm, công ty, chứng chỉ hoặc thành tích. "
-            "Điểm số đã được hệ thống tính sẵn, không tự tính lại và không thay đổi điểm. "
-            "Viết tiếng Việt rõ ràng, trung lập, hữu ích cho HR. "
-            "Chỉ trả về JSON hợp lệ, không markdown."
-        ),
-        user_prompt=_build_gemini_match_explanation_prompt(context),
+def _generate_llm_match_explanation(context: dict, provider: str) -> dict:
+    if provider == "gemini":
+        raw = generate_text(
+            system_prompt=(
+                "Bạn là trợ lý tuyển dụng viết giải thích so sánh CV-JD. "
+                "Chỉ dùng dữ liệu JSON đầu vào, không bịa thêm kỹ năng, số năm, công ty, chứng chỉ hoặc thành tích. "
+                "Điểm số đã được hệ thống tính sẵn, không tự tính lại và không thay đổi điểm. "
+                "Viết tiếng Việt rõ ràng, trung lập, hữu ích cho HR. "
+                "Chỉ trả về JSON hợp lệ, không markdown."
+            ),
+            user_prompt=_build_match_explanation_prompt(context),
+            max_tokens=max(settings.match_explanation_max_tokens, 700),
+            temperature=0,
+            format_json=True,
+        )
+        return _normalize_llm_match_explanation(raw)
+
+    raw = generate_ollama_text(
+        _build_match_explanation_prompt(context),
         max_tokens=settings.match_explanation_max_tokens,
-        temperature=0.25,
+        temperature=0,
+        top_p=0.8,
+        num_ctx=max(settings.ollama_num_ctx, 3072),
+        format_json=True,
+        error_context="Ollama local cho match explanation",
     )
+
+    return _normalize_llm_match_explanation(raw)
+
+
+def _normalize_llm_match_explanation(raw: str) -> dict:
     payload = _parse_json_payload(raw)
 
     explanation = _replace_decimal_year_phrases(str(payload.get("explanation") or "").strip())
-    strengths = [_replace_decimal_year_phrases(item) for item in _normalize_gemini_list(payload.get("strengths"))]
-    weaknesses = [_replace_decimal_year_phrases(item) for item in _normalize_gemini_list(payload.get("weaknesses"))]
-    risks = [_replace_decimal_year_phrases(item) for item in _normalize_gemini_list(payload.get("risks"))]
+    strengths = [_replace_decimal_year_phrases(item) for item in _normalize_llm_list(payload.get("strengths"))]
+    weaknesses = [_replace_decimal_year_phrases(item) for item in _normalize_llm_list(payload.get("weaknesses"))]
+    risks = [_replace_decimal_year_phrases(item) for item in _normalize_llm_list(payload.get("risks"))]
     questions = [
         _replace_decimal_year_phrases(item)
-        for item in _normalize_gemini_list(payload.get("questions") or payload.get("interview_questions"))
+        for item in _normalize_llm_list(payload.get("questions") or payload.get("interview_questions"))
     ]
     recommendation = _replace_decimal_year_phrases(str(payload.get("recommendation") or "").strip())
 
     if not explanation or not strengths or not weaknesses or not recommendation:
-        raise RuntimeError("Gemini không trả về explanation/strengths/weaknesses/recommendation hợp lệ.")
+        raise RuntimeError("Ollama không trả về explanation/strengths/weaknesses/recommendation hợp lệ.")
 
     return {
         "explanation": explanation,
@@ -1000,23 +1055,30 @@ def _generate_gemini_match_explanation(context: dict) -> dict:
     }
 
 
-def _build_gemini_match_explanation_prompt(context: dict) -> str:
+def _build_match_explanation_prompt(context: dict) -> str:
     schema = {
-        "explanation": "2-4 câu giải thích tổng quan, nhắc các điểm số/chênh lệch quan trọng đã có trong JSON.",
-        "strengths": ["Điểm mạnh cụ thể dựa trên matched skills, kinh nghiệm, học vấn hoặc dữ liệu CV."],
-        "weaknesses": ["Điểm thiếu hoặc cần xác minh dựa trên missing skills/điểm thấp."],
-        "risks": ["Rủi ro tuyển dụng hoặc dữ liệu chưa đủ, nếu có."],
-        "questions": ["Câu hỏi phỏng vấn nên hỏi để xác minh gap hoặc điểm mạnh."],
-        "recommendation": "Khuyến nghị ngắn cho HR: ưu tiên/phỏng vấn/kiểm tra thêm/chưa nên ưu tiên.",
+        "explanation": "Chuỗi 2-4 câu.",
+        "strengths": ["Chuỗi điểm mạnh 1", "Chuỗi điểm mạnh 2"],
+        "weaknesses": ["Chuỗi điểm thiếu/cần xác minh 1", "Chuỗi điểm thiếu/cần xác minh 2"],
+        "risks": ["Chuỗi rủi ro hoặc dữ liệu chưa đủ"],
+        "questions": ["Chuỗi câu hỏi phỏng vấn"],
+        "recommendation": "Chuỗi khuyến nghị ngắn cho HR.",
     }
     return (
+        "Bạn là trợ lý tuyển dụng viết giải thích so sánh CV-JD. "
+        "Chỉ dùng dữ liệu JSON đầu vào, không bịa thêm kỹ năng, số năm, công ty, chứng chỉ hoặc thành tích. "
+        "Điểm số đã được hệ thống tính sẵn, không tự tính lại và không thay đổi điểm. "
+        "Viết tiếng Việt rõ ràng, trung lập, hữu ích cho HR. "
+        "Chỉ trả về một JSON object hợp lệ, không markdown, không giải thích ngoài JSON.\n"
         "Hãy viết giải thích cho HR dựa trên dữ liệu sau.\n"
         "Quy tắc:\n"
         "- Không thay đổi điểm số và không thêm thông tin ngoài JSON.\n"
         "- Nếu dữ liệu thiếu, hãy nói cần xác minh thay vì suy đoán.\n"
         "- Nhắc rõ kỹ năng khớp/thiếu quan trọng, kinh nghiệm và yếu tố làm điểm tăng/giảm.\n"
         "- Khi nói về kinh nghiệm dưới 1 năm, dùng label tháng trong JSON, ví dụ 0.25 năm phải viết là 3 tháng; 0.5 năm phải viết là 6 tháng.\n"
-        "- Trả về đúng JSON theo schema.\n"
+        "- Tất cả key và string phải dùng dấu nháy kép.\n"
+        "- Không dùng dấu phẩy cuối mảng/object.\n"
+        "- Trả về đủ 6 key đúng tên: explanation, strengths, weaknesses, risks, questions, recommendation.\n"
         f"Schema: {json.dumps(schema, ensure_ascii=False)}\n"
         f"Dữ liệu: {json.dumps(context, ensure_ascii=False)}"
     )
@@ -1037,12 +1099,12 @@ def _parse_json_payload(raw: str) -> dict:
         payload = json.loads(match.group(0))
 
     if not isinstance(payload, dict):
-        raise RuntimeError("Gemini trả về JSON không phải object.")
+        raise RuntimeError("LLM trả về JSON không phải object.")
 
     return payload
 
 
-def _normalize_gemini_list(value: object) -> list[str]:
+def _normalize_llm_list(value: object) -> list[str]:
     if isinstance(value, str):
         return [value.strip()] if value.strip() else []
     if not isinstance(value, list):

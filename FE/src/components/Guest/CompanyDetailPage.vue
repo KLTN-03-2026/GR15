@@ -34,7 +34,7 @@
                 <div class="mt-4 flex flex-wrap items-center gap-3 text-sm font-medium text-slate-600 dark:text-slate-400">
                   <RouterLink
                     v-if="company.nganh_nghe?.id"
-                    :to="`/industries/${company.nganh_nghe.id}`"
+                    :to="`/industries/${routeId(company.nganh_nghe)}`"
                     class="rounded-full bg-white/80 px-3 py-1.5 transition hover:text-[#2463eb] dark:bg-slate-800/80"
                   >
                     {{ companyIndustry }}
@@ -140,7 +140,7 @@
 
                 <div class="mt-4">
                   <RouterLink
-                    :to="`/jobs/${job.id}`"
+                    :to="`/jobs/${routeId(job)}`"
                     class="inline-flex rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white transition hover:bg-[#2463eb] dark:bg-white dark:text-slate-900 dark:hover:bg-[#2463eb] dark:hover:text-white"
                   >
                     Xem chi tiết
@@ -162,7 +162,7 @@
                   <p class="font-bold uppercase tracking-[0.25em] text-slate-400">Ngành nghề</p>
                   <RouterLink
                     v-if="company.nganh_nghe?.id"
-                    :to="`/industries/${company.nganh_nghe.id}`"
+                    :to="`/industries/${routeId(company.nganh_nghe)}`"
                     class="mt-2 inline-flex text-base font-semibold text-slate-900 hover:text-[#2463eb] dark:text-white"
                   >
                     {{ companyIndustry }}
@@ -230,6 +230,7 @@ import { followCompanyService, jobService } from '@/services/api'
 import { useNotify } from '@/composables/useNotify'
 import { connectPublicChannel, leaveRealtimeChannel } from '@/services/realtime'
 import { getAuthToken, getStoredCandidate } from '@/utils/authStorage'
+import { routeId } from '@/utils/routeIds'
 
 const route = useRoute()
 const notify = useNotify()

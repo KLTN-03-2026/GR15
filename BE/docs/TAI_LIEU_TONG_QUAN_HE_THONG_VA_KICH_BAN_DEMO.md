@@ -75,7 +75,7 @@ Các nhóm chính:
 - `AI/app/main.py`: đăng ký app và router.
 - `AI/app/routers`: endpoint AI như parse CV/JD, matching, generation, chat, interview.
 - `AI/app/services`: logic xử lý CV parser, JD parser, matching, chatbot, mock interview, interview copilot, career report.
-- `AI/app/providers`: provider template, Ollama local, Gemini và OpenAI legacy.
+- `AI/app/providers`: provider template, Ollama local và OpenAI legacy; luồng Gemini đã đóng trong cấu hình runtime hiện tại.
 - `AI/app/schemas`: schema Pydantic cho request/response.
 - `AI/tests`: regression test cho chatbot, mock interview, CV builder writing, career path simulator, skill alias và matching.
 - `AI/data/skill_aliases.json`: catalog kỹ năng/alias dùng để chuẩn hóa kỹ năng khi parse CV, parse JD, matching, shortlist/compare, chatbot và các seed demo.
@@ -111,7 +111,7 @@ Các nhóm chính:
 - Pydantic `2.11`.
 - pdfplumber cho trích xuất nội dung PDF.
 - python-dotenv cho cấu hình môi trường.
-- Provider AI linh hoạt: template fallback, Ollama local, Gemini và OpenAI legacy.
+- Provider AI linh hoạt: template fallback, Ollama local và OpenAI legacy; demo hiện ưu tiên Ollama local.
 
 ### 3.4. Tích Hợp Bên Ngoài
 
@@ -329,7 +329,7 @@ Nhà tuyển dụng có thể:
 - Gửi email lịch phỏng vấn và gửi lại email.
 - Dùng Interview Copilot để sinh câu hỏi/rubric/red flags.
 - Đánh giá sau phỏng vấn bằng AI.
-- Dùng AI Shortlist để chấm điểm ứng viên theo JD, có giải thích điểm bằng Gemini khi cấu hình provider cho phép, đồng thời vẫn giữ điểm số deterministic từ dữ liệu hệ thống.
+- Dùng AI Shortlist để chấm điểm ứng viên theo JD, có giải thích điểm bằng Ollama local khi cấu hình provider cho phép, đồng thời vẫn giữ điểm số deterministic từ dữ liệu hệ thống.
 - So sánh 2-5 ứng viên theo dạng ma trận, có điểm mạnh/yếu, kỹ năng khớp/thiếu, độ tin cậy và gợi ý câu hỏi phỏng vấn.
 - Gửi offer cho ứng viên.
 - Theo dõi ứng viên chấp nhận/từ chối offer.
@@ -439,7 +439,7 @@ Backend gọi AI service qua `App\Services\Ai\AiClientService`. Mỗi request AI
   - kinh nghiệm hỗ trợ cả năm và tháng, ví dụ `6 tháng`, `0.5`, `1 năm`, và UI hiển thị các giá trị nhỏ hơn 1 năm theo tháng,
   - scoring salary/location/work mode theo hướng trung lập nếu thiếu dữ liệu để tránh phạt sai,
   - trọng số thay đổi theo cấp bậc job: intern, fresher, junior, mid, senior, lead/manager,
-  - phần giải thích có thể dùng Gemini theo cấu hình `MATCH_EXPLANATION_PROVIDER=gemini`, nhưng Gemini chỉ diễn giải từ dữ liệu/điểm đã tính, không tự tính lại điểm.
+  - phần giải thích dùng Ollama theo cấu hình `MATCH_EXPLANATION_PROVIDER=ollama`; Ollama chỉ diễn giải từ dữ liệu/điểm đã tính, không tự tính lại điểm.
 - Dùng cho: Matched Jobs của ứng viên và shortlist của nhà tuyển dụng.
 - Ý nghĩa demo: điểm matching không chỉ dựa vào keyword kỹ năng, mà xét thêm bối cảnh thực tế khi ứng tuyển.
 
@@ -529,7 +529,7 @@ Backend gọi AI service qua `App\Services\Ai\AiClientService`. Mỗi request AI
 - Các request chấm lại top ứng viên được gọi song song bằng HTTP pool để giảm thời gian chờ khi HR bấm chấm lại/so sánh.
 - Dữ liệu gửi sang AI gồm `raw_text`, skill/experience/education đã parse của CV và `raw_text`, skill/requirements đã parse của JD; nhờ vậy điểm ngữ cảnh không bị 0 chỉ vì thiếu text trong payload.
 - Skill trong shortlist/compare được chuẩn hóa bằng cùng catalog alias để tránh lệch do cách viết khác nhau giữa CV upload, CV tạo trong hệ thống và JD.
-- Phần giải thích ngắn và giải thích chi tiết có thể do Gemini viết lại từ payload điểm, kỹ năng khớp/thiếu, kinh nghiệm, học vấn, lương, địa điểm và hình thức làm việc; điểm số vẫn lấy từ matcher deterministic.
+- Phần giải thích ngắn và giải thích chi tiết có thể do Ollama local viết lại từ payload điểm, kỹ năng khớp/thiếu, kinh nghiệm, học vấn, lương, địa điểm và hình thức làm việc; điểm số vẫn lấy từ matcher deterministic.
 - Compare hỗ trợ chọn 2-5 hồ sơ, trả về `matrix` gồm:
   - điểm tổng,
   - nguồn CV,
@@ -925,7 +925,7 @@ Các bước:
 - AI cho nhà tuyển dụng giúp giảm thời gian lọc hồ sơ.
 - Shortlist và compare có giải thích, giúp HR ra quyết định minh bạch hơn.
 - Matching/compare không chỉ dựa vào kỹ năng, mà bổ sung ngữ cảnh CV-JD, kinh nghiệm theo tháng/năm, lương, địa điểm, hình thức làm việc và độ tin cậy dữ liệu.
-- Gemini nếu bật chỉ viết phần giải thích từ dữ liệu đã tính; không thay thế công thức chấm điểm để tránh kết quả khó kiểm soát.
+- Ollama local chỉ viết phần giải thích từ dữ liệu đã tính; không thay thế công thức chấm điểm để tránh kết quả khó kiểm soát.
 - Interview Copilot hỗ trợ cả trước và sau phỏng vấn.
 - Nhiều vòng phỏng vấn được quản lý bằng bảng riêng `interview_rounds`.
 
@@ -1246,7 +1246,7 @@ Kết quả mong đợi:
 
 #### Bước 7 - Phỏng Vấn Và Interview Copilot
 
-1. Vào `/employer/interviews` hoặc chi tiết ứng tuyển.
+1. Vào `/employer/interviews` hoặc chi tiết ứng tuyển.  
 2. Tạo vòng phỏng vấn kỹ thuật:
    - tên vòng,
    - thời gian,
@@ -1355,6 +1355,338 @@ Luồng test được xem là đạt nếu:
 - Các bước quan trọng đều có trạng thái/timeline/notification hoặc log tương ứng.
 - Khi AI/payment/realtime lỗi môi trường, hệ thống có thông báo hoặc fallback rõ ràng, không làm hỏng luồng nghiệp vụ chính.
 
+### 12.5. Kịch Bản Quay Video Demo Gửi Giảng Viên Xem Trước
+
+Mục này là phiên bản dùng trực tiếp khi quay video. Nên quay theo một câu chuyện duy nhất để giảng viên dễ theo dõi: một ứng viên backend chuẩn bị CV, dùng AI để tìm job phù hợp, ứng tuyển vào TechViet Solutions; sau đó nhà tuyển dụng dùng AI để lọc, phỏng vấn, gửi offer; cuối cùng admin kiểm tra usage, billing và audit log.
+
+Thời lượng khuyến nghị: 15-20 phút. Nếu cần ngắn hơn, ưu tiên các cảnh 1, 2, 3, 4, 5, 6, 8 và 10.
+
+#### Cảnh 1 - Mở Đầu Và Giới Thiệu Mục Tiêu
+
+Màn hình quay: landing page hoặc `/jobs`.
+
+Thao tác:
+
+1. Mở trang chủ.
+2. Di chuyển nhanh qua thanh điều hướng, danh sách việc làm, công ty.
+
+Lời thoại gợi ý:
+
+> Em xin phép demo hệ thống SmartJob AI. Đây là nền tảng tuyển dụng có tích hợp trí tuệ nhân tạo, phục vụ ba nhóm chính: ứng viên, nhà tuyển dụng và quản trị viên. Điểm em muốn thể hiện trong video này là hệ thống không chỉ đăng tin và nộp CV, mà bao phủ một quy trình tuyển dụng gần như đầy đủ: từ chuẩn bị hồ sơ, matching việc làm, ứng tuyển, lọc ứng viên bằng AI, phỏng vấn, offer, onboarding cho đến phần admin giám sát AI usage, billing và audit log.
+
+> Trong video này em sẽ đi theo một luồng thống nhất: ứng viên backend ứng tuyển vào vị trí Backend Developer Laravel của công ty TechViet Solutions.
+
+Kết quả cần thấy trên video:
+
+- Người xem hiểu mục tiêu demo.
+- Người xem biết demo sẽ đi theo một câu chuyện end-to-end, không phải thao tác rời rạc.
+
+#### Cảnh 2 - Public Job Board Và Thông Tin Job
+
+Màn hình quay: `/jobs`, chi tiết job `Backend Developer Laravel`, trang công ty TechViet Solutions.
+
+Thao tác:
+
+1. Vào danh sách việc làm.
+2. Tìm `Laravel`.
+3. Mở job `Backend Developer Laravel`.
+4. Mở nhanh thông tin công ty TechViet Solutions.
+
+Lời thoại gợi ý:
+
+> Ở phía khách vãng lai, người dùng có thể tìm kiếm việc làm, xem chi tiết tin tuyển dụng và xem thông tin công ty. Ví dụ em tìm vị trí Laravel, hệ thống trả về job Backend Developer Laravel của TechViet Solutions. Ở trang chi tiết, người dùng thấy mô tả công việc, yêu cầu, kỹ năng, lương, địa điểm, hình thức làm việc và nút ứng tuyển.
+
+> Các dữ liệu này không chỉ dùng để hiển thị, mà còn là đầu vào cho các chức năng AI phía sau như parse JD, matching CV với JD, sinh cover letter và AI shortlist cho nhà tuyển dụng.
+
+Kết quả cần thấy trên video:
+
+- Tìm kiếm job hoạt động.
+- Chi tiết job có dữ liệu đủ rõ để dùng trong luồng AI.
+
+#### Cảnh 3 - Ứng Viên Đăng Nhập, Quản Lý Hồ Sơ Và Parse CV Bằng AI
+
+Màn hình quay: `/dashboard`, `/profile`, `/my-cv`.
+
+Thao tác:
+
+1. Đăng nhập `ungvien.backend@demo.vn`.
+2. Mở dashboard ứng viên.
+3. Vào hồ sơ/CV.
+4. Mở hồ sơ demo hoặc upload CV.
+5. Chạy parse CV bằng AI nếu môi trường đã sẵn sàng.
+6. Mở modal kết quả parse.
+
+Lời thoại gợi ý:
+
+> Em đăng nhập với vai trò ứng viên. Ở dashboard, ứng viên có thể quản lý thông tin cá nhân, hồ sơ, CV, kỹ năng, đơn ứng tuyển và các tính năng AI.
+
+> Tại màn hình hồ sơ/CV, hệ thống không chỉ lưu file CV. Khi ứng viên upload CV hoặc tạo CV trong hệ thống, AI có thể parse nội dung để trích xuất họ tên, email, số điện thoại, kỹ năng, kinh nghiệm và học vấn. Kết quả này được lưu dưới dạng dữ liệu có cấu trúc để phục vụ matching, career report, chatbot và mock interview.
+
+> Điểm quan trọng là hệ thống không áp dụng mù kết quả AI. Nếu CV có layout phức tạp, thiếu nội dung hoặc độ tin cậy thấp, hệ thống hiển thị cảnh báo và cho ứng viên kiểm tra lại các trường quan trọng trước khi áp dụng.
+
+Kết quả cần thấy trên video:
+
+- Hồ sơ/CV có dữ liệu.
+- Kết quả parse CV có kỹ năng, kinh nghiệm, học vấn hoặc cảnh báo chất lượng.
+- Người xem hiểu CV parse là nền tảng cho các tính năng AI tiếp theo.
+
+#### Cảnh 4 - CV Builder Và AI Writing
+
+Màn hình quay: `/cv-builder`.
+
+Thao tác:
+
+1. Mở CV Builder.
+2. Chọn template/màu/layout nếu có.
+3. Mở một phần như summary, objective hoặc kinh nghiệm.
+4. Dùng AI Writing để sinh gợi ý.
+5. Mở preview CV.
+
+Lời thoại gợi ý:
+
+> Ngoài upload CV, ứng viên có thể tạo CV trực tiếp bằng CV Builder. Ở đây có các phần thông tin cá nhân, mục tiêu nghề nghiệp, kinh nghiệm, kỹ năng, học vấn và dự án.
+
+> Với những phần ứng viên thường khó viết như mô tả bản thân hoặc mô tả kinh nghiệm, hệ thống có AI Writing để gợi ý nội dung chuyên nghiệp hơn. Như vậy AI không chỉ dùng ở bước tuyển dụng, mà hỗ trợ ứng viên ngay từ lúc chuẩn bị hồ sơ.
+
+Kết quả cần thấy trên video:
+
+- CV Builder hoạt động.
+- AI Writing sinh được nội dung hoặc có dữ liệu gợi ý sẵn.
+- Preview CV hiển thị được.
+
+#### Cảnh 5 - Matching Jobs, Career Report Và Chatbot
+
+Màn hình quay: `/matched-jobs`, `/career-report`, `/ai-center/chatbot`.
+
+Thao tác:
+
+1. Vào matched jobs.
+2. Chọn hồ sơ backend demo.
+3. Mở kết quả matching với job Backend Developer Laravel.
+4. Mở career report.
+5. Mở chatbot và hỏi một câu demo.
+
+Câu hỏi chatbot nên dùng:
+
+```text
+Với hồ sơ hiện tại, em nên ứng tuyển Backend Laravel hay Frontend Vue.js?
+```
+
+Hoặc:
+
+```text
+Hãy gợi ý lộ trình 30/60/90 ngày để em đạt vị trí Backend Developer Laravel.
+```
+
+Lời thoại gợi ý:
+
+> Sau khi hồ sơ đã có dữ liệu có cấu trúc, ứng viên có thể dùng chức năng matched jobs. Hệ thống so khớp CV với JD và trả về điểm phù hợp. Điểm này không chỉ dựa vào keyword, mà có breakdown theo kỹ năng, kinh nghiệm, học vấn, ngữ cảnh CV-JD, lương, địa điểm và hình thức làm việc.
+
+> Ở đây hệ thống cũng chuẩn hóa các cách viết kỹ năng khác nhau qua skill alias. Ví dụ JavaScript và JS, PostgreSQL và postgres có thể được hiểu là cùng một nhóm kỹ năng. Điều này giúp kết quả matching ổn định hơn.
+
+> Career report giúp ứng viên hiểu mình phù hợp với hướng nghề nào, còn thiếu kỹ năng gì và nên phát triển theo lộ trình nào. Chatbot thì dùng ngữ cảnh hồ sơ, matching, career report và dữ liệu job trong hệ thống để trả lời cá nhân hóa hơn, thay vì trả lời chung chung.
+
+Kết quả cần thấy trên video:
+
+- Matching có điểm và giải thích.
+- Career report hoặc chatbot trả lời dựa trên hồ sơ/job.
+- Có thể chỉ rõ kỹ năng khớp và kỹ năng thiếu.
+
+#### Cảnh 6 - Mock Interview Cho Ứng Viên
+
+Màn hình quay: `/ai-center/mock-interview`.
+
+Thao tác:
+
+1. Tạo phiên mock interview cho Backend Developer Laravel.
+2. Nhận câu hỏi đầu tiên.
+3. Trả lời ngắn:
+
+```text
+Em sẽ cố gắng học hỏi thêm.
+```
+
+4. Cho xem AI đánh giá/trừ điểm.
+5. Trả lời lại câu có cấu trúc hơn nếu muốn.
+6. Sinh báo cáo phiên phỏng vấn.
+
+Lời thoại gợi ý:
+
+> Phần mock interview giúp ứng viên luyện phỏng vấn trước khi gặp nhà tuyển dụng thật. AI sinh câu hỏi dựa trên CV, JD và vai trò ứng tuyển.
+
+> Em cố tình trả lời một câu rất ngắn là "Em sẽ cố gắng học hỏi thêm" để kiểm tra hệ thống đánh giá. AI sẽ không chỉ khen chung chung, mà có rubric như kỹ thuật, giao tiếp, độ phù hợp JD, độ rõ ràng, tính cụ thể và cấu trúc câu trả lời. Nếu câu trả lời quá ngắn hoặc thiếu minh chứng, hệ thống sẽ trừ điểm và gợi ý cải thiện.
+
+> Tính năng này giúp ứng viên biết mình cần bổ sung ví dụ, hành động cụ thể và kết quả đạt được khi trả lời phỏng vấn.
+
+Kết quả cần thấy trên video:
+
+- Mock interview sinh câu hỏi.
+- Câu trả lời yếu bị cảnh báo/trừ điểm.
+- Có feedback hoặc báo cáo tổng kết.
+
+#### Cảnh 7 - Ứng Viên Sinh Cover Letter Và Nộp Hồ Sơ
+
+Màn hình quay: chi tiết job, form ứng tuyển, `/applications`.
+
+Thao tác:
+
+1. Quay lại job Backend Developer Laravel.
+2. Chọn hồ sơ ứng viên.
+3. Bấm sinh cover letter bằng AI.
+4. Kiểm tra cảnh báo/audit kỹ năng nếu có.
+5. Nộp hồ sơ.
+6. Vào danh sách đơn ứng tuyển.
+
+Lời thoại gợi ý:
+
+> Khi ứng tuyển, ứng viên có thể dùng AI để sinh cover letter theo CV và JD. Điểm khác biệt là hệ thống có kiểm tra chất lượng thư. Nếu thư nhắc đến kỹ năng mà CV hoặc matching chưa chứng minh được, hệ thống có thể cảnh báo để hạn chế việc AI bịa kỹ năng.
+
+> Sau khi nộp hồ sơ, ứng viên theo dõi trạng thái trong màn hình applications. Timeline giúp ứng viên biết đơn đang ở bước nào: đã nộp, đang xét, phỏng vấn, offer hoặc onboarding.
+
+Kết quả cần thấy trên video:
+
+- Cover letter được sinh hoặc hiển thị.
+- Đơn ứng tuyển được tạo.
+- Timeline/trạng thái đơn hiển thị.
+
+#### Cảnh 8 - Nhà Tuyển Dụng: Công Ty, Tin Tuyển Dụng Và Parse JD
+
+Màn hình quay: `/employer`, `/employer/company`, `/employer/jobs`, job detail.
+
+Thao tác:
+
+1. Đăng nhập `hr.techviet@demo.vn`.
+2. Mở dashboard employer.
+3. Mở hồ sơ công ty.
+4. Mở job Backend Developer Laravel.
+5. Chạy parse JD bằng AI hoặc mở kết quả đã có.
+6. Chỉ quality warning và skill suggestion.
+
+Lời thoại gợi ý:
+
+> Bây giờ em chuyển sang vai trò nhà tuyển dụng. Nhà tuyển dụng có dashboard riêng để quản lý công ty, thành viên HR, tin tuyển dụng, ứng viên, phỏng vấn, billing và audit log.
+
+> Với tin tuyển dụng, hệ thống có parse JD bằng AI. AI trích xuất kỹ năng, yêu cầu, quyền lợi, lương, địa điểm và hình thức làm việc. Nếu JD quá ngắn, thiếu yêu cầu, thiếu lương hoặc thiếu hình thức làm việc, hệ thống hiển thị cảnh báo chất lượng để HR bổ sung.
+
+> Việc kiểm soát chất lượng JD rất quan trọng, vì JD là đầu vào cho matching, shortlist, compare và interview copilot.
+
+Kết quả cần thấy trên video:
+
+- Employer dashboard mở đúng vai trò.
+- Job detail có parse JD/quality warning/skill suggestion.
+
+#### Cảnh 9 - AI Shortlist, Compare Và Interview Copilot
+
+Màn hình quay: job detail, danh sách ứng viên, shortlist/compare, interview detail.
+
+Thao tác:
+
+1. Mở danh sách ứng viên của job.
+2. Chạy hoặc xem AI Shortlist.
+3. Chọn 2-3 ứng viên để compare nếu có dữ liệu.
+4. Cập nhật ứng viên demo sang vòng phỏng vấn.
+5. Tạo hoặc mở vòng phỏng vấn.
+6. Dùng Interview Copilot generate.
+7. Nhập ghi chú mẫu và dùng evaluate nếu kịp.
+
+Lời thoại gợi ý:
+
+> Sau khi có ứng viên nộp hồ sơ, nhà tuyển dụng có thể dùng AI Shortlist để xếp hạng ứng viên theo mức độ phù hợp với JD. Kết quả có điểm tổng, kỹ năng khớp, kỹ năng thiếu, độ tin cậy và giải thích.
+
+> Nếu cần so sánh nhiều ứng viên, hệ thống có compare matrix. Bảng này giúp HR nhìn nhanh điểm mạnh, điểm cần cải thiện, kỹ năng còn thiếu và câu hỏi phỏng vấn gợi ý cho từng ứng viên.
+
+> Khi chuyển sang phỏng vấn, Interview Copilot hỗ trợ HR sinh bộ câu hỏi, rubric, focus area và red flags dựa trên CV, JD và kết quả matching. Sau phỏng vấn, HR có thể nhập ghi chú để AI hỗ trợ đánh giá có cấu trúc. AI ở đây không thay HR ra quyết định, mà giúp quá trình lọc và phỏng vấn minh bạch hơn.
+
+Kết quả cần thấy trên video:
+
+- Shortlist/compare có điểm và giải thích.
+- Có thể tạo/mở vòng phỏng vấn.
+- Interview Copilot sinh câu hỏi/rubric hoặc đánh giá.
+
+#### Cảnh 10 - Offer, Ứng Viên Phản Hồi Và Onboarding
+
+Màn hình quay: chi tiết ứng tuyển employer, tab ứng viên `/applications`, onboarding.
+
+Thao tác:
+
+1. Ở employer, gửi offer hoặc mở offer đã có.
+2. Chuyển sang tab ứng viên.
+3. Mở đơn ứng tuyển.
+4. Chấp nhận offer.
+5. Quay lại employer để xem trạng thái.
+6. Mở onboarding checklist nếu có.
+
+Lời thoại gợi ý:
+
+> Hệ thống không dừng ở bước nộp CV. Sau phỏng vấn, nhà tuyển dụng có thể gửi offer với vị trí, mức lương, ngày bắt đầu và hạn phản hồi.
+
+> Ứng viên có thể chấp nhận hoặc từ chối offer ngay trên hệ thống. Khi offer được chấp nhận, luồng chuyển sang onboarding với các task như bổ sung giấy tờ, nhận thiết bị, ký hợp đồng hoặc tham gia orientation.
+
+> Phần này cho thấy hệ thống bao phủ toàn bộ vòng đời tuyển dụng, từ tìm việc đến nhận việc.
+
+Kết quả cần thấy trên video:
+
+- Offer hiển thị được.
+- Ứng viên phản hồi được.
+- Onboarding hoặc timeline được cập nhật.
+
+#### Cảnh 11 - Billing, AI Usage Và Admin Giám Sát
+
+Màn hình quay: `/wallet` hoặc `/employer/billing`, `/admin/ai-usage`, `/admin/billing`, `/admin/audit-logs`.
+
+Thao tác:
+
+1. Mở nhanh ví/gói dịch vụ ở ứng viên hoặc employer.
+2. Đăng nhập admin `admin@kltn.com`.
+3. Mở dashboard admin.
+4. Vào AI Usage.
+5. Vào Billing.
+6. Vào Audit Logs.
+
+Lời thoại gợi ý:
+
+> Cuối cùng là vai trò admin. Admin dùng để quản trị dữ liệu nền, người dùng, công ty, tin tuyển dụng, ứng tuyển, billing và các log vận hành.
+
+> Ở màn hình AI Usage, admin có thể xem các request AI vừa phát sinh như parse CV, matching, cover letter, chatbot, mock interview, parse JD, shortlist hoặc interview copilot. Hệ thống ghi nhận feature, trạng thái thành công hoặc lỗi, fallback và latency.
+
+> Ở phần billing, hệ thống quản lý ví, giao dịch, gói dịch vụ, quota và bảng giá tính năng AI. Ở audit log, admin có thể truy vết các thao tác quan trọng của ứng viên, nhà tuyển dụng và quản trị viên. Điều này giúp hệ thống có khả năng vận hành thực tế, không chỉ là giao diện demo.
+
+Kết quả cần thấy trên video:
+
+- Admin xem được AI usage.
+- Billing có dữ liệu ví/gói/giao dịch nếu đã phát sinh.
+- Audit log có thao tác trong luồng demo.
+
+#### Cảnh 12 - Kết Luận Video
+
+Màn hình quay: admin dashboard, AI usage hoặc quay lại job/application vừa demo.
+
+Lời thoại gợi ý:
+
+> Như vậy, video đã đi qua một luồng tuyển dụng end-to-end: khách xem job, ứng viên chuẩn bị CV và dùng AI để matching, định hướng, luyện phỏng vấn, sinh cover letter và ứng tuyển; nhà tuyển dụng dùng AI để parse JD, shortlist, compare và hỗ trợ phỏng vấn; sau đó hệ thống xử lý offer, onboarding, billing và admin giám sát usage/audit.
+
+> Điểm chính của hệ thống là AI được tích hợp vào đúng các bước nghiệp vụ, có giải thích và có kiểm soát chất lượng đầu vào/đầu ra, thay vì chỉ gọi AI để sinh văn bản. Em xin kết thúc phần demo tại đây.
+
+Kết quả cần thấy trên video:
+
+- Người xem nắm được toàn bộ giá trị hệ thống.
+- Kết thúc bằng thông điệp rõ ràng: end-to-end, AI hai phía, có quản trị vận hành.
+
+#### Checklist Quay Video Trước Khi Bấm Record
+
+- Đã đăng nhập sẵn 3 tab/profile: ứng viên, nhà tuyển dụng, admin.
+- Job `Backend Developer Laravel` đang hoạt động.
+- Hồ sơ ứng viên backend có kỹ năng Laravel/PHP/API/SQL/Git.
+- CV đã parse trước ít nhất một lần.
+- JD đã parse trước ít nhất một lần.
+- Matching có kết quả đẹp để tránh chờ lâu khi quay.
+- Có ít nhất một đơn ứng tuyển hoặc sẵn sàng nộp mới.
+- Shortlist/compare có dữ liệu.
+- Có thể tạo hoặc mở sẵn một vòng phỏng vấn.
+- Có offer/onboarding sẵn nếu môi trường không ổn định.
+- Admin mở được AI usage, billing và audit logs.
+- Nếu AI service, payment sandbox hoặc realtime bị lỗi, dùng dữ liệu đã chạy trước và nói rõ đây là phần đã có log/kết quả trong hệ thống.
+
 ## 13. Những Điểm Nên Nhấn Mạnh Khi Bảo Vệ
 
 ### 13.1. Điểm Kỹ Thuật
@@ -1367,7 +1699,7 @@ Luồng test được xem là đạt nếu:
 - Parse CV/JD có quality guard để giảm lỗi dữ liệu đầu vào.
 - Matching có breakdown đa tiêu chí: kỹ năng, kinh nghiệm, học vấn, ngữ cảnh CV-JD, lương, địa điểm, hình thức làm việc.
 - Điểm kỹ năng dùng skill alias catalog để chuẩn hóa các cách viết khác nhau; điểm ngữ cảnh dùng BM25/TF-IDF kết hợp lexical similarity và skill alias context, dễ giải thích hơn embedding đen hộp.
-- Gemini được dùng ở lớp sinh giải thích khi cấu hình cho phép, còn dữ liệu và điểm số vẫn do matcher deterministic tính.
+- Ollama local được dùng ở lớp sinh giải thích khi cấu hình cho phép, còn dữ liệu và điểm số vẫn do matcher deterministic tính.
 - AI shortlist/compare tối ưu tốc độ bằng gọi song song top ứng viên qua `Http::pool`.
 - Có realtime notification và event broadcasting.
 - Có billing/entitlement để kiểm soát tính năng AI.

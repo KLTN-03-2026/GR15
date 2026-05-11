@@ -6,6 +6,8 @@ import re
 from app.core.config import settings
 from app.core.logger import get_logger
 from app.providers.gemini_client import generate_text
+from app.providers.ollama_client import generate_text as generate_ollama_text
+from app.services.llm_timeout import TimeoutError, run_with_timeout
 from app.services.vietnamese_text import normalize_vietnamese_text_list
 
 
@@ -25,85 +27,123 @@ def generate_cv_builder_writing(
     tone = str(opts.get("tone") or "professional")
     provider_name = _resolve_provider_name()
 
-    if provider_name == "gemini":
-        try:
-            data = _generate_with_gemini(profile, section, item, tone)
-            return {
-                "success": True,
-                "message": "Đã sinh gợi ý nội dung CV Builder bằng Gemini.",
-                "model_version": f"cv_builder_writing_v1.1::gemini::{settings.gemini_model}",
-                "data": {
-                    **data,
-                    "model_version": f"cv_builder_writing_v1.1::gemini::{settings.gemini_model}",
-                    "meta": {
-                        "provider": "gemini",
-                        "model": settings.gemini_model,
-                        "section": section,
-                        "tone": tone,
-                    },
-                },
-            }
-        except Exception as exc:
-            logger.exception("Gemini CV Builder writing failed, fallback to rule-based writer.")
+    try:
+        data = run_with_timeout(
+            lambda: _generate_with_llm(profile, section, item, tone, provider_name),
+            settings.ai_llm_fallback_seconds,
+        )
+    except TimeoutError:
+        logger.warning(
+            "CV Builder writing LLM timed out provider=%s section=%s timeout_seconds=%s",
+            provider_name,
+            section,
+            settings.ai_llm_fallback_seconds,
+        )
+        provider_name = "rule_timeout_fallback"
+        data = _rule_based_payload(profile, section, item, tone)
+    except Exception as exc:
+        logger.exception("%s CV Builder writing failed.", provider_name)
+        model = settings.gemini_model if provider_name == "gemini" else settings.ollama_model
+        return {
+            "success": False,
+            "message": f"Không thể sinh gợi ý nội dung CV Builder bằng {provider_name}.",
+            "model_version": f"cv_builder_writing_v1.1::{provider_name}::{model}",
+            "data": {},
+            "error": str(exc),
+        }
 
+    model = (
+        "internal_rule_fallback"
+        if provider_name == "rule_timeout_fallback"
+        else settings.gemini_model if provider_name == "gemini" else settings.ollama_model
+    )
+    return {
+        "success": True,
+        "message": f"Đã sinh gợi ý nội dung CV Builder bằng {provider_name}.",
+        "model_version": f"cv_builder_writing_v1.1::{provider_name}::{model}",
+        "data": {
+            **data,
+            "model_version": f"cv_builder_writing_v1.1::{provider_name}::{model}",
+            "meta": {
+                "provider": provider_name,
+                "model": model,
+                "section": section,
+                "tone": tone,
+            },
+        },
+    }
+
+
+def _rule_based_payload(profile: dict, section: str, item: dict, tone: str) -> dict:
     if section == "skills":
-        data = {
+        return {
             "section": section,
             "suggestions": [],
             "skill_suggestions": _suggest_skills(profile),
-            "model_version": MODEL_VERSION,
-        }
-    else:
-        data = {
-            "section": section,
-            "suggestions": normalize_vietnamese_text_list(_suggestions(profile, section, item, tone)),
-            "skill_suggestions": [],
-            "model_version": MODEL_VERSION,
         }
 
     return {
-        "success": True,
-        "message": "Đã sinh gợi ý nội dung CV Builder bằng bộ gợi ý nội bộ.",
-        "model_version": f"cv_builder_writing_v1.1::rule_based::{settings.local_llm_model}",
-        "data": data,
-        "error": str(exc) if provider_name == "gemini" and "exc" in locals() else None,
+        "section": section,
+        "suggestions": normalize_vietnamese_text_list(_suggestions(profile, section, item, tone)),
+        "skill_suggestions": [],
     }
 
 
 def _resolve_provider_name() -> str:
-    provider = (settings.cv_builder_writing_provider or "gemini").strip().lower()
-    if provider in {"gemini", "template", "rule", "rules", "rule_based", "local"}:
-        return "gemini" if provider == "gemini" else "rule_based"
-    logger.warning("Unknown CV_BUILDER_WRITING_PROVIDER=%s, fallback to gemini", settings.cv_builder_writing_provider)
-    return "gemini"
+    provider = (settings.cv_builder_writing_provider or "ollama").strip().lower()
+    if provider in {"", "llm", "ollama"}:
+        return "ollama"
+    if provider == "gemini":
+        return "gemini"
+    if provider in {"template", "rule", "rules", "rule_based", "local"}:
+        logger.warning("CV_BUILDER_WRITING_PROVIDER=%s is non-LLM; forcing ollama.", settings.cv_builder_writing_provider)
+        return "ollama"
+    logger.warning("Unknown CV_BUILDER_WRITING_PROVIDER=%s, fallback to ollama", settings.cv_builder_writing_provider)
+    return "ollama"
 
 
-def _generate_with_gemini(profile: dict, section: str, item: dict, tone: str) -> dict:
-    raw = generate_text(
-        system_prompt=(
-            "Bạn là trợ lý viết CV cho hệ thống tuyển dụng. "
-            "Luôn trả lời bằng tiếng Việt, không bịa công ty, chứng chỉ, số liệu hoặc kinh nghiệm ngoài dữ liệu đầu vào. "
-            "Chỉ trả về JSON hợp lệ, không markdown, không giải thích thêm."
-        ),
-        user_prompt=_build_gemini_prompt(profile, section, item, tone),
+def _generate_with_llm(profile: dict, section: str, item: dict, tone: str, provider: str) -> dict:
+    if provider == "gemini":
+        raw = generate_text(
+            system_prompt=(
+                "Bạn là trợ lý viết CV cho hệ thống tuyển dụng. "
+                "Luôn trả lời bằng tiếng Việt, không bịa công ty, chứng chỉ, số liệu hoặc kinh nghiệm ngoài dữ liệu đầu vào. "
+                "Chỉ trả về JSON hợp lệ, không markdown, không giải thích thêm."
+            ),
+            user_prompt=_build_llm_prompt(profile, section, item, tone),
+            max_tokens=settings.cv_builder_writing_max_tokens,
+            temperature=0.25,
+        )
+        return _normalize_llm_payload(raw, section, profile)
+
+    raw = generate_ollama_text(
+        _build_llm_prompt(profile, section, item, tone),
         max_tokens=settings.cv_builder_writing_max_tokens,
-        temperature=0.35,
+        temperature=0.25,
+        top_p=0.8,
+        num_ctx=max(settings.ollama_num_ctx, 3072),
+        error_context="Ollama local cho CV Builder Writing",
     )
+
+    return _normalize_llm_payload(raw, section, profile)
+
+
+def _normalize_llm_payload(raw: str, section: str, profile: dict) -> dict:
     payload = _parse_json_payload(raw)
 
     if section == "skills":
-        skill_suggestions = _normalize_gemini_skills(payload.get("skill_suggestions") or payload.get("skills") or [], profile)
+        skill_suggestions = _normalize_llm_skills(payload.get("skill_suggestions") or payload.get("skills") or [], profile)
         if not skill_suggestions:
-            raise RuntimeError("Gemini không trả về skill_suggestions hợp lệ.")
+            raise RuntimeError("Ollama không trả về skill_suggestions hợp lệ.")
         return {
             "section": section,
             "suggestions": [],
             "skill_suggestions": skill_suggestions,
         }
 
-    suggestions = normalize_vietnamese_text_list(_normalize_gemini_suggestions(payload.get("suggestions") or []))
+    suggestions = normalize_vietnamese_text_list(_normalize_llm_suggestions(payload.get("suggestions") or []))
     if not suggestions:
-        raise RuntimeError("Gemini không trả về suggestions hợp lệ.")
+        raise RuntimeError("Ollama không trả về suggestions hợp lệ.")
 
     return {
         "section": section,
@@ -112,7 +152,7 @@ def _generate_with_gemini(profile: dict, section: str, item: dict, tone: str) ->
     }
 
 
-def _build_gemini_prompt(profile: dict, section: str, item: dict, tone: str) -> str:
+def _build_llm_prompt(profile: dict, section: str, item: dict, tone: str) -> str:
     schema = (
         '{"suggestions":["gợi ý 1","gợi ý 2","gợi ý 3"],"skill_suggestions":[]}'
         if section != "skills"
@@ -126,6 +166,9 @@ def _build_gemini_prompt(profile: dict, section: str, item: dict, tone: str) -> 
         "skills": "Gợi ý tối đa 8 kỹ năng phù hợp với vị trí/ngành mục tiêu, bỏ qua kỹ năng đã có trong CV. muc_do chỉ dùng một trong: co_ban, kha, tot, xuat_sac.",
     }
     return (
+        "Bạn là trợ lý viết CV cho hệ thống tuyển dụng. "
+        "Luôn trả lời bằng tiếng Việt, không bịa công ty, chứng chỉ, số liệu hoặc kinh nghiệm ngoài dữ liệu đầu vào. "
+        "Chỉ trả về JSON hợp lệ, không markdown, không giải thích thêm.\n"
         f"Section cần sinh: {section}\n"
         f"Tone: {tone}\n"
         f"Yêu cầu section: {section_rules.get(section, section_rules['summary'])}\n"
@@ -153,11 +196,11 @@ def _parse_json_payload(raw: str) -> dict:
             raise
         payload = json.loads(match.group(0))
     if not isinstance(payload, dict):
-        raise RuntimeError("Gemini trả về JSON không phải object.")
+        raise RuntimeError("LLM trả về JSON không phải object.")
     return payload
 
 
-def _normalize_gemini_suggestions(items: object) -> list[str]:
+def _normalize_llm_suggestions(items: object) -> list[str]:
     if not isinstance(items, list):
         return []
     suggestions: list[str] = []
@@ -169,7 +212,7 @@ def _normalize_gemini_suggestions(items: object) -> list[str]:
     return suggestions
 
 
-def _normalize_gemini_skills(items: object, profile: dict) -> list[dict]:
+def _normalize_llm_skills(items: object, profile: dict) -> list[dict]:
     if not isinstance(items, list):
         return []
     existing = {skill.lower() for skill in _skill_names(profile)}

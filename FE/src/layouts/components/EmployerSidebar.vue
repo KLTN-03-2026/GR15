@@ -42,9 +42,7 @@
           </span>
         </button>
       </template>
-
-
-</nav>
+    </nav>
   </aside>
 </template>
 

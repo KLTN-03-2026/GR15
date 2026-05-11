@@ -64,7 +64,7 @@
             <RouterLink
               v-for="job in expiringSavedJobs"
               :key="`expiring-${job.id}`"
-              :to="{ name: 'JobDetail', params: { id: job.id } }"
+              :to="{ name: 'JobDetail', params: { id: routeId(job) } }"
               class="block rounded-lg bg-white/80 p-3 text-sm transition hover:bg-white dark:bg-slate-950/60 dark:hover:bg-slate-950"
             >
               <span class="font-semibold text-slate-900 dark:text-white">{{ job.tieu_de }}</span>
@@ -82,7 +82,7 @@
             <RouterLink
               v-for="job in staleSavedJobs"
               :key="`stale-${job.id}`"
-              :to="{ name: 'JobDetail', params: { id: job.id } }"
+              :to="{ name: 'JobDetail', params: { id: routeId(job) } }"
               class="block rounded-lg bg-white/80 p-3 text-sm transition hover:bg-white dark:bg-slate-950/60 dark:hover:bg-slate-950"
             >
               <span class="font-semibold text-slate-900 dark:text-white">{{ job.tieu_de }}</span>
@@ -100,7 +100,7 @@
             <RouterLink
               v-for="job in similarJobs"
               :key="`similar-${job.id}`"
-              :to="{ name: 'JobDetail', params: { id: job.id } }"
+              :to="{ name: 'JobDetail', params: { id: routeId(job) } }"
               class="block rounded-lg bg-white/80 p-3 text-sm transition hover:bg-white dark:bg-slate-950/60 dark:hover:bg-slate-950"
             >
               <span class="font-semibold text-slate-900 dark:text-white">{{ job.tieu_de }}</span>
@@ -169,7 +169,7 @@
             </div>
 
             <RouterLink
-              :to="{ name: 'JobDetail', params: { id: job.id } }"
+              :to="{ name: 'JobDetail', params: { id: routeId(job) } }"
               class="mt-2 block text-lg font-bold text-slate-900 transition-colors group-hover:text-blue-600 dark:text-white"
             >
               {{ job.tieu_de }}
@@ -211,7 +211,7 @@
           </div>
           <div class="flex items-center gap-2">
             <RouterLink
-              :to="{ name: 'JobDetail', params: { id: job.id } }"
+              :to="{ name: 'JobDetail', params: { id: routeId(job) } }"
               class="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
             >
               Xem chi tiết
@@ -371,9 +371,7 @@
               </div>
             </div>
           </template>
-
-
-</div>
+        </div>
 
         <div class="flex flex-col gap-3 border-t border-slate-100 px-6 py-5 dark:border-slate-800 sm:flex-row sm:justify-end">
           <RouterLink
@@ -415,6 +413,7 @@ import {
   getEntitlementCoverageNote,
 } from '@/utils/billing'
 import { formatExperienceYears } from '@/utils/experience'
+import { routeId } from '@/utils/routeIds'
 
 const notify = useNotify()
 const router = useRouter()

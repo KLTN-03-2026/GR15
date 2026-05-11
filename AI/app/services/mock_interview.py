@@ -7,6 +7,7 @@ from app.core.config import settings
 from app.core.logger import get_logger
 from app.providers.mock_interview_gemini_provider import GeminiMockInterviewProvider
 from app.providers.mock_interview_ollama_provider import OllamaMockInterviewProvider
+from app.services.llm_timeout import TimeoutError, run_with_timeout
 from app.services.skill_catalog import extract_skills_from_text, normalize_search_text
 from app.services.vietnamese_text import (
     normalize_vietnamese_ai_text,
@@ -38,6 +39,12 @@ def generate_mock_interview_question(
     transcript = transcript or []
 
     try:
+        logger.info(
+            "Generate mock interview question session_id=%s provider=%s question_index=%s",
+            session_id,
+            _resolve_generation_provider(),
+            question_index,
+        )
         role_family = _resolve_role_family(interview_context)
         question_plan = _build_question_plan(interview_context)
         resolved_max_questions = _resolve_max_questions(max_questions)
@@ -87,6 +94,11 @@ def evaluate_mock_interview_answer(
     transcript = transcript or []
 
     try:
+        logger.info(
+            "Evaluate mock interview answer session_id=%s provider=%s",
+            session_id,
+            _resolve_generation_provider(),
+        )
         normalized_answer = normalize_search_text(answer)
         role_family = _resolve_role_family(interview_context)
         current_index = int(question_payload.get("question_index") or 1)
@@ -226,6 +238,11 @@ def generate_mock_interview_report(
     transcript = transcript or []
 
     try:
+        logger.info(
+            "Generate mock interview report session_id=%s provider=%s",
+            session_id,
+            _resolve_generation_provider(),
+        )
         evaluation_items = [item for item in transcript if (item.get("metadata") or {}).get("type") == "interview_feedback"]
         if not evaluation_items:
             return {
@@ -332,8 +349,7 @@ def _build_question_plan(interview_context: dict) -> list[dict]:
 
     candidate_skills = (candidate.get("parsed_skills") or [])[:6]
     related_job_skills = (related_job.get("skills") or [])[:6]
-    career_report = interview_context.get("career_report") or {}
-    job_title = related_job.get("title") or career_report.get("nghe_de_xuat") or "vị trí mục tiêu"
+    job_title = related_job.get("title") or candidate.get("vi_tri_ung_tuyen_muc_tieu") or "vị trí mục tiêu"
 
     role_defaults = {
         "backend": ("Laravel", "REST API", "Docker", "MySQL"),
@@ -457,7 +473,11 @@ def _refine_question_payload(question_payload: dict, interview_context: dict, tr
 
     try:
         provider, llm_provider = _resolve_mock_interview_provider()
-        refined_text = llm_provider.refine_question(refined, interview_context, transcript)
+        logger.info("Refine mock interview question provider=%s", provider)
+        refined_text = run_with_timeout(
+            lambda: llm_provider.refine_question(refined, interview_context, transcript),
+            settings.ai_llm_fallback_seconds,
+        )
         if refined_text:
             sanitized_text = _sanitize_interview_question_text(refined_text)
             if _is_valid_refined_question(sanitized_text, refined, interview_context) and not _is_duplicate_question(sanitized_text, asked_questions):
@@ -468,8 +488,14 @@ def _refine_question_payload(question_payload: dict, interview_context: dict, tr
                 "Fallback to guarded question because refined question is invalid or duplicated: %s",
                 sanitized_text,
             )
+    except TimeoutError:
+        logger.warning(
+            "Mock interview question refinement timed out provider=%s timeout_seconds=%s",
+            provider,
+            settings.ai_llm_fallback_seconds,
+        )
     except Exception as exc:
-        logger.warning("Fallback to rule_based question generation: %s", exc)
+        logger.warning("Fallback to rule_based question generation provider=rule_guarded_after_llm reason=%s", exc)
 
     refined["question_text"] = _sanitize_interview_question_text(refined.get("question_text") or "")
     if _is_duplicate_question(refined["question_text"], asked_questions):
@@ -480,12 +506,22 @@ def _refine_question_payload(question_payload: dict, interview_context: dict, tr
 
 def _refine_report_text(report_payload: dict, interview_context: dict) -> str:
     try:
-        _provider, llm_provider = _resolve_mock_interview_provider()
-        refined_text = llm_provider.refine_report(report_payload, interview_context)
+        provider, llm_provider = _resolve_mock_interview_provider()
+        logger.info("Refine mock interview report provider=%s", provider)
+        refined_text = run_with_timeout(
+            lambda: llm_provider.refine_report(report_payload, interview_context),
+            settings.ai_llm_fallback_seconds,
+        )
         if refined_text:
             return refined_text
+    except TimeoutError:
+        logger.warning(
+            "Mock interview report refinement timed out provider=%s timeout_seconds=%s",
+            provider,
+            settings.ai_llm_fallback_seconds,
+        )
     except Exception as exc:
-        logger.warning("Fallback to rule_based report generation: %s", exc)
+        logger.warning("Fallback to rule_based report generation provider=rule_based reason=%s", exc)
 
     return report_payload.get("de_xuat_cai_thien") or ""
 
@@ -989,8 +1025,7 @@ def _is_duplicate_question(candidate: str, asked_questions: list[str]) -> bool:
 def _build_dynamic_unasked_question(current_payload: dict, interview_context: dict, transcript: list[dict]) -> dict:
     related_job = interview_context.get("related_job") or {}
     candidate = interview_context.get("candidate_profile") or {}
-    career_report = interview_context.get("career_report") or {}
-    job_title = related_job.get("title") or career_report.get("nghe_de_xuat") or "vị trí mục tiêu"
+    job_title = related_job.get("title") or candidate.get("vi_tri_ung_tuyen_muc_tieu") or "vị trí mục tiêu"
     skills = (
         (current_payload.get("focus_skills") or [])
         + (related_job.get("skills") or [])
@@ -1078,9 +1113,9 @@ def _find_weakest_answer(evaluation_items: list[dict]) -> dict:
 
 
 def _build_recommended_focus(interview_context: dict, weakest_dimension: str, weaknesses: list[str]) -> list[str]:
-    report = interview_context.get("career_report") or {}
+    related_job = interview_context.get("related_job") or {}
     role_family = _resolve_role_family(interview_context)
-    suggested_skills = ((report.get("goi_y_ky_nang_bo_sung") or {}).get("skills") or [])[:3]
+    suggested_skills = (related_job.get("skills") or [])[:3]
     mapping = {
         "technical_score": "Củng cố ví dụ kỹ thuật và cách giải quyết vấn đề",
         "communication_score": "Luyện diễn đạt ngắn gọn, rõ ý và tự tin hơn",

@@ -107,7 +107,7 @@
 
                 <div class="mt-4">
                   <RouterLink
-                    :to="`/jobs/${job.id}`"
+                    :to="`/jobs/${routeId(job)}`"
                     class="inline-flex rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white transition hover:bg-[#2463eb] dark:bg-white dark:text-slate-900 dark:hover:bg-[#2463eb] dark:hover:text-white"
                   >
                     Xem chi tiết
@@ -128,7 +128,7 @@
                 <RouterLink
                   v-for="item in relatedSkills"
                   :key="item.id"
-                  :to="`/skills/${item.id}`"
+                  :to="`/skills/${routeId(item)}`"
                   class="rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-[#2463eb] hover:text-[#2463eb] dark:border-slate-700 dark:text-slate-200"
                 >
                   {{ item.ten_ky_nang }}
@@ -179,6 +179,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { jobService } from '@/services/api'
 import { useNotify } from '@/composables/useNotify'
+import { routeId } from '@/utils/routeIds'
 
 const route = useRoute()
 const notify = useNotify()

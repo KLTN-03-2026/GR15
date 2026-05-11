@@ -1,11 +1,7 @@
 from __future__ import annotations
 
-import json
-from json import JSONDecodeError
-from urllib.error import URLError
-from urllib.request import Request, urlopen
-
 from app.core.config import settings
+from app.providers.ollama_client import generate_text
 
 
 class OllamaMockInterviewProvider:
@@ -19,45 +15,13 @@ class OllamaMockInterviewProvider:
 
 
 def _call_ollama(prompt: str, max_tokens: int) -> str:
-    payload = {
-        "model": settings.ollama_model,
-        "prompt": prompt,
-        "stream": False,
-        "keep_alive": settings.ollama_keep_alive,
-        "options": {
-            "temperature": 0.25,
-            "num_predict": max_tokens,
-            "num_ctx": settings.ollama_num_ctx,
-            "num_thread": settings.ollama_num_thread,
-        },
-    }
-
-    request = Request(
-        settings.ollama_url,
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-
-    try:
-        with urlopen(request, timeout=120) as response:
-            body = response.read().decode("utf-8")
-    except URLError as exc:
-        raise RuntimeError(f"Không gọi được Ollama local cho mock interview: {exc}") from exc
-
-    try:
-        data = json.loads(body)
-    except JSONDecodeError as exc:
-        snippet = body[:300].strip()
-        raise RuntimeError(f"Ollama local trả về dữ liệu không hợp lệ cho mock interview: {snippet or 'rỗng'}") from exc
-
-    if data.get("error"):
-        raise RuntimeError(f"Ollama local báo lỗi ở mock interview: {data['error']}")
-
-    content = _finalize_text((data.get("response") or "").strip())
-    if not content:
-        raise RuntimeError("Ollama không trả về nội dung cho mock interview.")
-    return content
+    return _finalize_text(generate_text(
+        prompt,
+        max_tokens=max_tokens,
+        temperature=0.25,
+        top_p=0.8,
+        error_context="Ollama local cho mock interview",
+    ))
 
 
 def _build_question_prompt(question_payload: dict, interview_context: dict, transcript: list[dict]) -> str:

@@ -2,13 +2,14 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\HasEncodedId;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 
 class NganhNghe extends Model
 {
-    use HasFactory;
+    use HasFactory, HasEncodedId;
 
     protected $table = 'nganh_nghes';
 
@@ -24,6 +25,10 @@ class NganhNghe extends Model
     protected $casts = [
         'danh_muc_cha_id' => 'integer',
         'trang_thai' => 'integer',
+    ];
+
+    protected $appends = [
+        'encoded_id',
     ];
 
     // ==========================================

@@ -12,7 +12,6 @@ use App\Models\KyNang;
 use App\Models\NganhNghe;
 use App\Models\SuDungTinhNangAi;
 use App\Models\TinTuyenDung;
-use App\Models\TuVanNgheNghiep;
 use App\Services\Ai\AiClientService;
 use App\Services\Billing\FeatureAccessService;
 use App\Support\ApiErrorMessage;
@@ -313,7 +312,6 @@ class AiChatMessageController extends Controller
             now()->addMinutes(5),
             function () use ($nguoiDungId, $session): array {
                 $candidateProfile = [];
-                $careerReport = null;
                 $topMatches = [];
                 $relatedJob = null;
                 $ragContext = [];
@@ -347,16 +345,17 @@ class AiChatMessageController extends Controller
                                 ->all(),
                         ];
 
-                        $careerReport = TuVanNgheNghiep::query()
-                            ->where('ho_so_id', $hoSo->id)
-                            ->latest('created_at')
-                            ->first();
-
-                        $topMatches = KetQuaMatching::query()
+                        $topMatchQuery = KetQuaMatching::query()
                             ->with('tinTuyenDung:id,tieu_de')
                             ->where('ho_so_id', $hoSo->id)
-                            ->orderByDesc('diem_phu_hop')
-                            ->limit(2)
+                            ->orderByDesc('diem_phu_hop');
+
+                        if ($session->related_tin_tuyen_dung_id) {
+                            $topMatchQuery->where('tin_tuyen_dung_id', $session->related_tin_tuyen_dung_id);
+                        }
+
+                        $topMatches = $topMatchQuery
+                            ->limit($session->related_tin_tuyen_dung_id ? 1 : 2)
                             ->get()
                             ->map(function (KetQuaMatching $item): array {
                                 return [
@@ -404,12 +403,6 @@ class AiChatMessageController extends Controller
 
                 return [
                     'candidate_profile' => $candidateProfile,
-                    'career_report' => $careerReport ? [
-                        'nghe_de_xuat' => $careerReport->nghe_de_xuat,
-                        'muc_do_phu_hop' => $careerReport->muc_do_phu_hop,
-                        'goi_y_ky_nang_bo_sung' => $careerReport->goi_y_ky_nang_bo_sung,
-                        'bao_cao_chi_tiet' => $careerReport->bao_cao_chi_tiet,
-                    ] : null,
                     'top_matching_jobs' => $topMatches,
                     'related_job' => $relatedJob,
                     'rag_context' => $ragContext,
@@ -418,14 +411,12 @@ class AiChatMessageController extends Controller
         );
 
         $candidateProfile = $baseContext['candidate_profile'] ?? [];
-        $careerReport = $baseContext['career_report'] ?? null;
         $topMatches = $baseContext['top_matching_jobs'] ?? [];
         $relatedJob = $baseContext['related_job'] ?? null;
         $ragContext = $baseContext['rag_context'] ?? [];
 
         return [
             'candidate_profile' => $candidateProfile,
-            'career_report' => $careerReport,
             'top_matching_jobs' => $topMatches,
             'related_job' => $relatedJob,
             'rag_context' => $ragContext,
@@ -711,7 +702,6 @@ class AiChatMessageController extends Controller
 
     private function buildSessionSummary(array $context, string $latestQuestion, string $latestAnswer, ?string $latestIntent = null): string
     {
-        $careerReport = $context['career_report'] ?? [];
         $relatedJob = $context['related_job'] ?? [];
         $topMatches = $context['top_matching_jobs'] ?? [];
         $candidateProfile = $context['candidate_profile'] ?? [];
@@ -723,12 +713,10 @@ class AiChatMessageController extends Controller
             $parts[] = 'Chủ đề gần nhất: ' . $intentLabel . '.';
         }
 
-        if (!empty($careerReport['nghe_de_xuat'])) {
-            $parts[] = 'Hướng nghề đang ưu tiên: ' . $careerReport['nghe_de_xuat'] . '.';
-        }
-
         if (!empty($relatedJob['title'])) {
             $parts[] = 'Job đang tham chiếu: ' . $relatedJob['title'] . '.';
+        } elseif (!empty($candidateProfile['vi_tri_ung_tuyen_muc_tieu'])) {
+            $parts[] = 'Vị trí mục tiêu từ CV: ' . $candidateProfile['vi_tri_ung_tuyen_muc_tieu'] . '.';
         }
 
         $skills = array_slice($candidateProfile['parsed_skills'] ?? [], 0, 4);

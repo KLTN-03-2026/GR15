@@ -1,16 +1,13 @@
 from __future__ import annotations
 
 import json
-from json import JSONDecodeError
 from typing import Iterator
-from urllib.error import URLError
-from urllib.request import Request, urlopen
 
 from app.core.config import settings
+from app.providers.ollama_client import generate_text, stream_text
 from app.services.chatbot_intent_engine import (
     ensure_chat_list,
     ensure_chat_mapping,
-    extract_report_skill_hints,
     normalize_chat_history_items,
     normalize_match_entries,
 )
@@ -19,93 +16,26 @@ from app.services.chatbot_intent_engine import (
 class OllamaChatProvider:
     def generate(self, question: str, context: dict, history: list[dict]) -> str:
         prompt = _build_prompt(question, context, history)
-        payload = {
-            "model": settings.ollama_model,
-            "prompt": prompt,
-            "stream": False,
-            "keep_alive": settings.ollama_keep_alive,
-            "options": {
-                "temperature": 0,
-                "top_p": 0.8,
-                "num_predict": _resolve_num_predict(question),
-                "num_ctx": settings.ollama_num_ctx,
-                "num_thread": settings.ollama_num_thread,
-            },
-        }
-
-        request = Request(
-            settings.ollama_url,
-            data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-
-        try:
-            with urlopen(request, timeout=120) as response:
-                body = response.read().decode("utf-8")
-        except URLError as exc:
-            raise RuntimeError(f"Không gọi được Ollama local cho chatbot: {exc}") from exc
-
-        try:
-            data = json.loads(body)
-        except JSONDecodeError as exc:
-            snippet = body[:300].strip()
-            raise RuntimeError(f"Ollama local trả về dữ liệu không hợp lệ: {snippet or 'rỗng'}") from exc
-
-        if data.get("error"):
-            raise RuntimeError(f"Ollama local báo lỗi: {data['error']}")
-
-        content = _finalize_answer((data.get("response") or "").strip())
-        if not content:
-            raise RuntimeError("Ollama không trả về nội dung chatbot.")
-        return content
+        return _finalize_answer(generate_text(
+            prompt,
+            max_tokens=_resolve_num_predict(question),
+            temperature=0,
+            top_p=0.8,
+            error_context="Ollama local cho chatbot",
+        ))
 
     def stream(self, question: str, context: dict, history: list[dict]) -> Iterator[str]:
         prompt = _build_prompt(question, context, history)
-        payload = {
-            "model": settings.ollama_model,
-            "prompt": prompt,
-            "stream": True,
-            "keep_alive": settings.ollama_keep_alive,
-            "options": {
-                "temperature": 0,
-                "top_p": 0.8,
-                "num_predict": _resolve_num_predict(question),
-                "num_ctx": settings.ollama_num_ctx,
-                "num_thread": settings.ollama_num_thread,
-            },
-        }
-
-        request = Request(
-            settings.ollama_url,
-            data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-
-        try:
-            with urlopen(request, timeout=120) as response:
-                for raw_line in response:
-                    line = raw_line.decode("utf-8").strip()
-                    if not line:
-                        continue
-
-                    try:
-                        data = json.loads(line)
-                    except JSONDecodeError:
-                        continue
-
-                    if data.get("error"):
-                        raise RuntimeError(f"Ollama local báo lỗi: {data['error']}")
-
-                    chunk = _sanitize_chunk(data.get("response") or "")
-                    if chunk:
-                        yield chunk
-
-                    if data.get("done") is True:
-                        break
-        except URLError as exc:
-            raise RuntimeError(f"Không gọi được Ollama local cho chatbot: {exc}") from exc
+        for chunk in stream_text(
+            prompt,
+            max_tokens=_resolve_num_predict(question),
+            temperature=0,
+            top_p=0.8,
+            error_context="Ollama local cho chatbot",
+        ):
+            sanitized = _sanitize_chunk(chunk)
+            if sanitized:
+                yield sanitized
 
 
 def _build_prompt(question: str, context: dict, history: list[dict]) -> str:
@@ -153,15 +83,7 @@ Lý do:
 - ...
 Hướng thay thế:
 - ...
-- Nếu người dùng hỏi về lộ trình, kế hoạch 3 tháng hoặc 6 tháng, phải chia rõ theo từng giai đoạn:
-Mô phỏng lộ trình nghề nghiệp 30/60/90 ngày:
-- ...
-30 ngày:
-- ...
-60 ngày:
-- ...
-90 ngày:
-- ...
+- Nếu người dùng hỏi về lộ trình, phải bám đúng khoảng thời gian/chủ đề người dùng nêu. Chỉ dùng khung 30/60/90 ngày khi người dùng hỏi rõ 30/60/90 ngày hoặc 3 tháng.
 - Trả lời phải bám sát đúng câu hỏi hiện tại, không chuyển sang chủ đề khác.
 - Ý định câu hỏi đã được hệ thống phân loại là: {resolved_intent}.
 - Hãy bám sát đúng ý định đã phân loại. Không được đổi sang dạng trả lời chung chung.
@@ -181,11 +103,9 @@ Câu hỏi hiện tại:
 def _compact_context(context: dict) -> dict:
     context = ensure_chat_mapping(context)
     candidate = ensure_chat_mapping(context.get("candidate_profile"))
-    report = ensure_chat_mapping(context.get("career_report"))
     matches = normalize_match_entries(context.get("top_matching_jobs"))
     related_job = ensure_chat_mapping(context.get("related_job"))
     conversation_summary = context.get("conversation_summary")
-    report_hints = extract_report_skill_hints(report)
 
     return {
         "conversation_summary": conversation_summary,
@@ -199,15 +119,6 @@ def _compact_context(context: dict) -> dict:
             "parsed_skills": ensure_chat_list(candidate.get("parsed_skills"))[:8],
             "builder_skills": ensure_chat_list(candidate.get("builder_skills"))[:8],
         },
-        "career_report": {
-            "nghe_de_xuat": report.get("nghe_de_xuat"),
-            "muc_do_phu_hop": report.get("muc_do_phu_hop"),
-            "goi_y_ky_nang_bo_sung": {
-                "skills": report_hints.get("skills", [])[:6],
-                "strength_categories": report_hints.get("strength_categories", [])[:4],
-                "recommended_roles": report_hints.get("recommended_roles", [])[:3],
-            },
-        } if report else None,
         "top_matching_jobs": [
             {
                 "job_title": item.get("job_title"),
@@ -299,5 +210,5 @@ def _resolve_num_predict(question: str) -> int:
         "nên theo", "huong khac", "hướng khác", "định hướng", "dinh huong",
     ]
     if any(marker in normalized for marker in detailed_markers):
-        return max(settings.chatbot_max_tokens, 280)
+        return min(max(settings.chatbot_max_tokens, 260), 360)
     return settings.chatbot_max_tokens

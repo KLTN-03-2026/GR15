@@ -6,6 +6,7 @@ use App\Models\AppNotification;
 use App\Models\NguoiDung;
 use App\Models\TinTuyenDung;
 use App\Models\UngTuyen;
+use App\Support\EncodedId;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 
@@ -90,15 +91,18 @@ class ReEngagementService
                 continue;
             }
 
+            $encodedJobId = EncodedId::encode((int) $job['id']);
+
             if (!$dryRun) {
                 $this->notificationService->createForUser(
                     $candidate,
                     'candidate_saved_job_expiring',
                     'Tin đã lưu sắp hết hạn',
                     "Vị trí {$job['tieu_de']} sẽ hết hạn trong {$job['days_until_deadline']} ngày. Đây là thời điểm tốt để xem lại và ứng tuyển.",
-                    "/jobs/{$job['id']}",
+                    "/jobs/{$encodedJobId}",
                     [
                         'tin_tuyen_dung_id' => (int) $job['id'],
+                        'tin_tuyen_dung_encoded_id' => $encodedJobId,
                         'ngay_het_han' => $job['ngay_het_han'],
                         'days_until_deadline' => $job['days_until_deadline'],
                         'source' => 're_engagement_engine',
@@ -123,6 +127,7 @@ class ReEngagementService
                     '/saved-jobs',
                     [
                         'tin_tuyen_dung_id' => (int) $job['id'],
+                        'tin_tuyen_dung_encoded_id' => EncodedId::encode((int) $job['id']),
                         'saved_at' => $job['saved_at'],
                         'source' => 're_engagement_engine',
                     ],
@@ -137,15 +142,18 @@ class ReEngagementService
                 continue;
             }
 
+            $encodedJobId = EncodedId::encode((int) $job['id']);
+
             if (!$dryRun) {
                 $this->notificationService->createForUser(
                     $candidate,
                     'candidate_similar_job_suggestion',
                     'Có job tương tự tin bạn đã lưu',
                     "Hệ thống tìm thấy {$job['tieu_de']} khá giống các tin bạn đã lưu, điểm gợi ý {$job['match_score']}/100.",
-                    "/jobs/{$job['id']}",
+                    "/jobs/{$encodedJobId}",
                     [
                         'tin_tuyen_dung_id' => (int) $job['id'],
+                        'tin_tuyen_dung_encoded_id' => $encodedJobId,
                         'match_score' => $job['match_score'],
                         'match_reasons' => $job['match_reasons'],
                         'source_saved_jobs' => $job['source_saved_jobs'],

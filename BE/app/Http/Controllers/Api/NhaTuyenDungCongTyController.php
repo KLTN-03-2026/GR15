@@ -750,7 +750,7 @@ class NhaTuyenDungCongTyController extends Controller
             $congTy,
             $user,
             'member_permissions_updated',
-            "Cập nhật quyền chức năng của {$member->email}.",
+            "Cập nhật quyền chức năng của {$member->ho_ten} ({$member->email}).",
             $member,
             ['quyen_noi_bo' => $permissions],
         );
@@ -842,7 +842,7 @@ class NhaTuyenDungCongTyController extends Controller
             ], 404);
         }
 
-        $congTy->loadMissing('vaiTroNoiBos');
+
 
         return response()->json([
             'success' => true,

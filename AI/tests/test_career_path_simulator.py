@@ -63,12 +63,11 @@ class CareerPathSimulatorTests(unittest.TestCase):
             INTENT_LEARNING_PLAN,
         )
 
-        self.assertIn("Mô phỏng lộ trình nghề nghiệp 30/60/90 ngày:", answer)
+        self.assertIn("Lộ trình 90 ngày:", answer)
         self.assertIn("Mục tiêu chính: Backend Developer Laravel", answer)
         self.assertIn("Docker", answer)
-        self.assertIn("30 ngày:", answer)
-        self.assertIn("60 ngày:", answer)
-        self.assertIn("90 ngày:", answer)
+        self.assertIn("30 ngày đầu:", answer)
+        self.assertIn("Ngày 61-90:", answer)
         self.assertIn("Backend Developer Laravel", answer)
 
     def test_chatbot_non_model_provider_returns_simulator_answer(self) -> None:
@@ -85,7 +84,7 @@ class CareerPathSimulatorTests(unittest.TestCase):
         self.assertEqual(response["data"]["intent"], INTENT_LEARNING_PLAN)
         self.assertIn("Mô phỏng lộ trình nghề nghiệp 30/60/90 ngày:", response["data"]["answer"])
 
-    def test_job_recommendation_tolerates_legacy_string_skill_hint_payload(self) -> None:
+    def test_job_recommendation_ignores_legacy_report_skill_hint_payload(self) -> None:
         context = simulator_context()
         context["career_report"]["goi_y_ky_nang_bo_sung"] = "Docker, Redis, Thiết kế hệ thống"
 
@@ -98,21 +97,15 @@ class CareerPathSimulatorTests(unittest.TestCase):
 
         self.assertIn("Vị trí gần nhất hiện tại là Backend Developer Laravel.", answer)
 
-    def test_compact_context_accepts_legacy_string_skill_hint_payload(self) -> None:
+    def test_compact_context_does_not_include_career_report_payload(self) -> None:
         context = simulator_context()
         context["career_report"]["goi_y_ky_nang_bo_sung"] = "Docker, Redis, Thiết kế hệ thống"
 
         ollama_context = compact_ollama_context(context)
         openai_context = compact_openai_context(context)
 
-        self.assertEqual(
-            ollama_context["career_report"]["goi_y_ky_nang_bo_sung"]["skills"][:2],
-            ["Docker", "Redis"],
-        )
-        self.assertEqual(
-            openai_context["career_report"]["goi_y_ky_nang_bo_sung"]["skills"][:2],
-            ["Docker", "Redis"],
-        )
+        self.assertNotIn("career_report", ollama_context)
+        self.assertNotIn("career_report", openai_context)
 
     def test_learning_plan_prefers_explicit_vue_topic_over_profile_target(self) -> None:
         context = simulator_context()
@@ -137,6 +130,18 @@ class CareerPathSimulatorTests(unittest.TestCase):
         self.assertIn("Mục tiêu chính: Frontend Vue.js.", answer)
         self.assertIn("Vue.js nền tảng", answer)
         self.assertNotIn("Mục tiêu chính: System Administrator.", answer)
+
+    def test_learning_plan_uses_specific_duration_when_requested(self) -> None:
+        answer = build_template_answer(
+            "Hãy gợi ý lộ trình 2 tuần để tôi học frontend VueJS.",
+            simulator_context(),
+            [],
+            INTENT_LEARNING_PLAN,
+        )
+
+        self.assertIn("Lộ trình 2 tuần:", answer)
+        self.assertIn("Mục tiêu chính: Frontend Vue.js.", answer)
+        self.assertNotIn("Mô phỏng lộ trình nghề nghiệp 30/60/90 ngày:", answer)
 
 
 if __name__ == "__main__":

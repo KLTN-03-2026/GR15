@@ -9,20 +9,25 @@ use Illuminate\Support\Collection;
 
 class ApplicationTimelineService
 {
-    public function build(UngTuyen $application): array
+    public function build(UngTuyen $application, bool $includeInternalRounds = true): array
     {
         $items = collect();
 
-        $this->pushApplicationMilestones($items, $application);
-        $this->pushInterviewMilestones($items, $application);
+        $this->pushApplicationMilestones($items, $application, $includeInternalRounds);
+        $this->pushInterviewMilestones($items, $application, $includeInternalRounds);
         $this->pushOfferMilestones($items, $application);
         $this->pushOnboardingMilestones($items, $application);
 
         return $items
-            ->sortBy(fn (array $item) => $item['sort_at'] ?? $item['occurred_at'] ?? $item['scheduled_at'] ?? $application->created_at?->toISOString())
+            ->sortBy(fn (array $item) => sprintf(
+                '%03d|%s',
+                $item['stage_order'] ?? 999,
+                $item['sort_at'] ?? $item['occurred_at'] ?? $item['scheduled_at'] ?? $application->created_at?->toISOString()
+            ))
             ->values()
             ->map(function (array $item, int $index): array {
                 unset($item['sort_at']);
+                unset($item['stage_order']);
                 $item['order'] = $index + 1;
 
                 return $item;
@@ -30,7 +35,7 @@ class ApplicationTimelineService
             ->all();
     }
 
-    private function pushApplicationMilestones(Collection $items, UngTuyen $application): void
+    private function pushApplicationMilestones(Collection $items, UngTuyen $application, bool $includeInternalNotes): void
     {
         $items->push([
             'key' => 'application_submitted',
@@ -42,6 +47,7 @@ class ApplicationTimelineService
             'status' => 'completed',
             'occurred_at' => $application->thoi_gian_ung_tuyen?->toISOString(),
             'icon' => 'send',
+            'stage_order' => 10,
             'sort_at' => $application->thoi_gian_ung_tuyen?->toISOString() ?: $application->created_at?->toISOString(),
         ]);
 
@@ -54,6 +60,7 @@ class ApplicationTimelineService
                 'status' => 'cancelled',
                 'occurred_at' => $application->thoi_gian_rut_don?->toISOString(),
                 'icon' => 'undo',
+                'stage_order' => 99,
                 'sort_at' => $application->thoi_gian_rut_don?->toISOString() ?: $application->updated_at?->toISOString(),
             ]);
         }
@@ -67,6 +74,7 @@ class ApplicationTimelineService
                 'status' => 'completed',
                 'occurred_at' => $application->updated_at?->toISOString(),
                 'icon' => 'visibility',
+                'stage_order' => 20,
                 'sort_at' => $application->updated_at?->toISOString(),
             ]);
         }
@@ -76,38 +84,48 @@ class ApplicationTimelineService
                 'key' => 'application_final_status',
                 'group' => 'application',
                 'title' => $this->applicationStatusLabel((int) $application->trang_thai),
-                'description' => $application->ghi_chu ?: 'Trạng thái ứng tuyển đã được cập nhật.',
+                'description' => $includeInternalNotes && $application->ghi_chu
+                    ? $application->ghi_chu
+                    : 'Trạng thái ứng tuyển đã được cập nhật.',
                 'status' => (int) $application->trang_thai === UngTuyen::TRANG_THAI_TU_CHOI ? 'cancelled' : 'completed',
                 'occurred_at' => $application->updated_at?->toISOString(),
                 'icon' => (int) $application->trang_thai === UngTuyen::TRANG_THAI_TU_CHOI ? 'cancel' : 'task_alt',
+                'stage_order' => 50,
                 'sort_at' => $application->updated_at?->toISOString(),
             ]);
         }
     }
 
-    private function pushInterviewMilestones(Collection $items, UngTuyen $application): void
+    private function pushInterviewMilestones(Collection $items, UngTuyen $application, bool $includeInternalRounds): void
     {
-        if ($application->ngay_hen_phong_van) {
+        $rounds = $application->relationLoaded('interviewRounds')
+            ? $application->interviewRounds
+            : $application->interviewRounds()->get();
+
+        if (!$includeInternalRounds) {
+            $rounds = $rounds
+                ->filter(fn (InterviewRound $round) => $round->loai_vong !== InterviewRound::LOAI_HR)
+                ->values();
+        }
+
+        if ($rounds->isEmpty() && $application->ngay_hen_phong_van) {
             $items->push([
                 'key' => 'legacy_interview',
                 'group' => 'interview',
                 'title' => 'Lịch phỏng vấn tổng',
                 'description' => trim(implode(' • ', array_filter([
                     $this->interviewModeLabel($application->hinh_thuc_phong_van),
-                    $application->nguoi_phong_van ? 'Người phỏng vấn: ' . $application->nguoi_phong_van : null,
+                    $application->ten_nguoi_phong_van ? 'Người phỏng vấn: ' . $application->ten_nguoi_phong_van : null,
                     $application->ket_qua_phong_van ? 'Kết quả: ' . $application->ket_qua_phong_van : null,
                 ]))),
                 'status' => $this->interviewAttendanceStatus($application->trang_thai_tham_gia_phong_van),
                 'scheduled_at' => $application->ngay_hen_phong_van?->toISOString(),
                 'occurred_at' => $application->thoi_gian_phan_hoi_phong_van?->toISOString(),
                 'icon' => 'event',
+                'stage_order' => 30,
                 'sort_at' => $application->ngay_hen_phong_van?->toISOString(),
             ]);
         }
-
-        $rounds = $application->relationLoaded('interviewRounds')
-            ? $application->interviewRounds
-            : $application->interviewRounds()->get();
 
         foreach ($rounds as $round) {
             $items->push([
@@ -118,13 +136,14 @@ class ApplicationTimelineService
                 'description' => trim(implode(' • ', array_filter([
                     $this->roundTypeLabel($round->loai_vong),
                     $this->interviewModeLabel($round->hinh_thuc_phong_van),
-                    $round->nguoi_phong_van ? 'Người phỏng vấn: ' . $round->nguoi_phong_van : null,
+                    ($round->interviewer?->ho_ten ?? $round->nguoi_phong_van) ? 'Người phỏng vấn: ' . ($round->interviewer?->ho_ten ?? $round->nguoi_phong_van) : null,
                     $round->ket_qua ? 'Kết quả: ' . $round->ket_qua : null,
                 ]))),
                 'status' => $this->roundStatus($round),
                 'scheduled_at' => $round->ngay_hen_phong_van?->toISOString(),
                 'occurred_at' => $round->thoi_gian_phan_hoi?->toISOString(),
                 'icon' => 'groups',
+                'stage_order' => 30 + min(max((int) ($round->thu_tu ?: 1), 1), 19),
                 'sort_at' => $round->ngay_hen_phong_van?->toISOString() ?: $round->created_at?->toISOString(),
             ]);
         }
@@ -145,6 +164,7 @@ class ApplicationTimelineService
             'occurred_at' => $application->thoi_gian_gui_offer?->toISOString(),
             'due_at' => $application->han_phan_hoi_offer?->toISOString(),
             'icon' => 'workspace_premium',
+            'stage_order' => 60,
             'sort_at' => $application->thoi_gian_gui_offer?->toISOString(),
         ]);
 
@@ -158,6 +178,7 @@ class ApplicationTimelineService
                 'status' => $accepted ? 'completed' : 'cancelled',
                 'occurred_at' => $application->thoi_gian_phan_hoi_offer?->toISOString(),
                 'icon' => $accepted ? 'verified' : 'block',
+                'stage_order' => 70,
                 'sort_at' => $application->thoi_gian_phan_hoi_offer?->toISOString(),
             ]);
         }
@@ -183,6 +204,7 @@ class ApplicationTimelineService
             'scheduled_at' => $plan->ngay_bat_dau?->toDateString(),
             'occurred_at' => $plan->hoan_tat_luc?->toISOString(),
             'icon' => 'fact_check',
+            'stage_order' => 80,
             'sort_at' => $plan->ngay_bat_dau?->toDateString() ?: $plan->created_at?->toISOString(),
         ]);
     }

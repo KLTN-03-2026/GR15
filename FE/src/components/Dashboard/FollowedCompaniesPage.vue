@@ -117,7 +117,7 @@
                 </span>
               </div>
               <RouterLink
-                :to="{ name: 'CompanyDetail', params: { id: company.id } }"
+                :to="{ name: 'CompanyDetail', params: { id: routeId(company) } }"
                 class="mt-3 block text-2xl font-bold text-slate-900 transition hover:text-blue-600 dark:text-white dark:hover:text-blue-300"
               >
                 {{ company.ten_cong_ty }}
@@ -171,7 +171,7 @@
                 <div class="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
                   <div>
                     <RouterLink
-                      :to="{ name: 'JobDetail', params: { id: job.id } }"
+                      :to="{ name: 'JobDetail', params: { id: routeId(job) } }"
                       class="font-bold text-slate-900 hover:text-blue-600 dark:text-white dark:hover:text-blue-300"
                     >
                       {{ job.tieu_de }}
@@ -195,7 +195,7 @@
 
           <div class="mt-auto flex flex-wrap gap-3 pt-1">
             <RouterLink
-              :to="{ name: 'CompanyDetail', params: { id: company.id } }"
+              :to="{ name: 'CompanyDetail', params: { id: routeId(company) } }"
               class="rounded-2xl bg-[#2463eb] px-5 py-3 text-sm font-bold text-white transition hover:bg-blue-700"
             >
               Xem chi tiết công ty
@@ -249,6 +249,7 @@ import { followCompanyService } from '@/services/api'
 import { useNotify } from '@/composables/useNotify'
 import { connectPrivateChannel } from '@/services/realtime'
 import { getStoredCandidate } from '@/utils/authStorage'
+import { routeId } from '@/utils/routeIds'
 
 const notify = useNotify()
 
